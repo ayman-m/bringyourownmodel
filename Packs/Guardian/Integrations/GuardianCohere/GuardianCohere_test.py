@@ -940,3 +940,32 @@ def test_conversation_usage_wins_over_the_stream(mocker):
     mocker.patch.object(c, "submit_turn", return_value=_sse({"usage": {"tokens": {"input_tokens": 50, "output_tokens": 5}}}))
     mocker.patch.object(c, "poll_conversation", return_value=convo)
     assert c.chat_completion({"messages": [{"role": "user", "content": "hi"}]})["usage"]["prompt_tokens"] == 9
+
+
+def test_a_stream_error_is_read_from_the_last_event():
+    from GuardianCohere import _error_from_stream
+
+    raw = _sse({"type": "content-delta", "delta": {"text": "x"}},
+               {"type": "stream-end", "delta": {"finish_reason": "ERROR",
+                                                 "error": {"error_code": "MODEL_NOT_FOUND", "message": "Model not found.", "context": {"model_id": "command"}}}})
+    text = _error_from_stream(raw)
+    assert "MODEL_NOT_FOUND: Model not found." in text and "command" in text and "ERROR" in text
+
+
+def test_stream_errors_ignore_normal_endings_and_junk():
+    from GuardianCohere import _error_from_stream
+
+    assert _error_from_stream(_sse({"type": "stream-end", "delta": {"finish_reason": "COMPLETE", "error": None}})) is None
+    assert _error_from_stream(_sse({"type": "stream-end", "delta": {"finish_reason": "TOOL_CALL"}})) is None
+    assert _error_from_stream("data: not json\n") is None and _error_from_stream(None) is None
+    assert "TIMEOUT" in _error_from_stream(_sse({"type": "stream-end", "delta": {"finish_reason": "TIMEOUT"}}))
+
+
+def test_chat_completion_fails_fast_on_a_stream_error_without_polling(mocker):
+    c = _client()
+    mocker.patch.object(c, "baseline_message_count", return_value=0)
+    mocker.patch.object(c, "submit_turn", return_value=_sse({"type": "stream-end", "delta": {"finish_reason": "ERROR", "error": {"error_code": "BOOM", "message": "bad"}}}))
+    poll = mocker.patch.object(c, "poll_conversation")
+    with pytest.raises(DemistoException, match="BOOM: bad"):
+        c.chat_completion({"messages": [{"role": "user", "content": "hi"}]})
+    poll.assert_not_called()

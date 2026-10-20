@@ -372,6 +372,48 @@ def _usage_from_stream(raw: Any) -> Optional[Dict[str, Any]]:
     }
 
 
+def _error_from_stream(raw: Any) -> Optional[str]:
+    """The error North reported in the chat stream's last event (``error`` with ``error_code`` and ``message``,
+    or a finish reason of ERROR_LIMIT / TIMEOUT), as one line, or ``None``. Without this a failed turn only shows up as
+    a conversation that never gets a new reply. Never raises."""
+    if not isinstance(raw, str) or ("error" not in raw and "finish_reason" not in raw):
+        return None
+
+    def walk(node: Any, out: Dict[str, Any]) -> None:
+        if isinstance(node, dict):
+            err = node.get("error")
+            if isinstance(err, dict) and err.get("error_code"):
+                out["error"] = err
+            reason = node.get("finish_reason")
+            if isinstance(reason, str):
+                out["finish_reason"] = reason
+            for value in node.values():
+                walk(value, out)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value, out)
+
+    found: Dict[str, Any] = {}
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        try:
+            walk(json.loads(line[5:].strip()), found)
+        except (TypeError, ValueError):
+            continue
+    err = found.get("error")
+    reason = found.get("finish_reason")
+    if isinstance(err, dict):
+        text = f"{err.get('error_code')}: {err.get('message') or 'no message'}"
+        if err.get("context"):
+            text += f" (context: {json.dumps(err.get('context'), default=str)[:300]})"
+        return f"{text} [finish reason {reason}]" if reason else text
+    if reason in ("ERROR", "ERROR_LIMIT", "TIMEOUT"):
+        return f"finish reason {reason} with no detail"
+    return None
+
+
 """ HELPER FUNCTIONS (argument parsing — shared shape with the other Guardian providers) """
 
 
@@ -728,6 +770,9 @@ class CohereNorthClient(BaseClient):
                 baseline_count = self.baseline_message_count(conversation_id)
             body = self.build_request_body(request, conversation_id)
             streamed = self.submit_turn(body)
+            stream_error = _error_from_stream(streamed)
+            if stream_error:
+                raise DemistoException(f"Cohere North ended the turn with an error: {stream_error}")
             convo = self.poll_conversation(conversation_id, baseline_count)
             result = self.normalize_response(convo, conversation_id)
             if result["usage"].get("prompt_tokens") is None:
