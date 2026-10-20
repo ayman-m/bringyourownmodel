@@ -75,6 +75,15 @@ configuration:
   additionalinfo: >-
     Label reported as `Guardian.LLM.Completion.model` and by `!guardian-model`. North does not report a model
     name, because the agent you configure decides which model is used. The label is for display only.
+- display: Model ID
+  name: model_id
+  type: 0
+  required: false
+  additionalinfo: >-
+    Optional. The model name sent to North with every request (as `model`). Leave empty and North uses the agent's
+    own model, which on some deployments is a name the deployment does not have (error MODEL_NOT_FOUND, model_id
+    "command"). Run `!guardian-cohere-list-models` to see the names this endpoint offers, then enter one here, and
+    set the Model label to the same name.
 - display: Model size
   name: model_tier
   type: 15
@@ -234,6 +243,25 @@ script:
     - contextPath: Guardian.LLM.Completion.usage.cached_tokens
       description: Cached prompt-token count, when the provider reports one (e.g. OpenAI prompt_tokens_details.cached_tokens); null otherwise.
       type: Number
+  - name: guardian-cohere-list-models
+    description: >-
+      Lists the models this Cohere North endpoint offers, so a model name can be checked before it is configured.
+      Read-only. North's models route is not public: the command tries /api/v1/models and then /v1/models, and
+      reports what each answered when neither works.
+    arguments: []
+    outputs:
+    - contextPath: GuardianCohere.Model.id
+      description: Model identifier as North reports it.
+      type: String
+    - contextPath: GuardianCohere.Model.name
+      description: Display name (the identifier when North gives none).
+      type: String
+    - contextPath: GuardianCohere.Model.default
+      description: True for the model North marks as its default.
+      type: Boolean
+    - contextPath: GuardianCohere.Model.capabilities
+      description: Capabilities North reports for the model (for example Reasoning, Vision).
+      type: Unknown
 fromversion: 6.10.0
 marketplaces:
 - xsoar

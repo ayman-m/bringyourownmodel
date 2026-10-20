@@ -796,3 +796,78 @@ def test_cohere_yml_declares_the_model_argument():
     doc = yaml.safe_load((pathlib.Path(__file__).parent / "GuardianCohere.yml").read_text())
     args = {a["name"]: a for a in doc["script"]["commands"][0]["arguments"]}
     assert args["model"]["required"] is False and "MODEL_SELECTION_UNSUPPORTED:" in args["model"]["description"]
+
+
+def test_the_request_carries_a_model_only_when_a_model_id_is_set():
+    plain = _client().build_request_body({"messages": [{"role": "user", "content": "hi"}]}, "c1")
+    assert "model" not in plain
+    c = _client()
+    c.model_id = "openai/gpt-oss-120b"
+    assert c.build_request_body({"messages": [{"role": "user", "content": "hi"}]}, "c1")["model"] == "openai/gpt-oss-120b"
+
+
+def test_build_client_reads_the_model_id_param():
+    params = {"endpoint_url": "https://north.example.com", "agent_id": "a", "session_id": "s", "bearer_token": "t",
+              "model_id": " google/gemma-4-31B-it "}
+    assert build_client(params, verify=True, proxy=False).model_id == "google/gemma-4-31B-it"
+
+
+def test_list_models_reads_a_data_wrapper_and_marks_the_default(mocker):
+    from GuardianCohere import guardian_cohere_list_models_command
+
+    c = _client()
+    mocker.patch.object(c, "_http_request", return_value={"data": [
+        {"id": "vendor-llm-v2-pro", "is_default": True, "capabilities": ["Reasoning", "Vision"]},
+        {"model_id": "openai/gpt-oss-120b", "capabilities": {"Reasoning": True, "Vision": False}},
+        "MiniMaxAI/MiniMax-M2.7",
+        {"nothing": 1},
+    ]})
+    res = guardian_cohere_list_models_command(c, {})
+    assert [m["id"] for m in res.outputs] == ["vendor-llm-v2-pro", "openai/gpt-oss-120b", "MiniMaxAI/MiniMax-M2.7"]
+    assert res.outputs[0]["default"] is True and res.outputs[0]["capabilities"] == ["Reasoning", "Vision"]
+    assert res.outputs[1]["capabilities"] == ["Reasoning"]
+    assert "vendor-llm-v2-pro" in res.readable_output and res.outputs_prefix == "GuardianCohere.Model"
+
+
+def test_list_models_falls_back_to_the_second_path(mocker):
+    from GuardianCohere import guardian_cohere_list_models_command
+
+    c = _client()
+    seen = []
+
+    def fake(**kw):
+        seen.append(kw["full_url"])
+        if kw["full_url"].endswith("/api/v1/models"):
+            raise DemistoException("Error in API call [404] - Not Found")
+        return {"models": [{"name": "m1"}]}
+
+    mocker.patch.object(c, "_http_request", side_effect=fake)
+    res = guardian_cohere_list_models_command(c, {})
+    assert seen == ["https://north.example.com/api/v1/models", "https://north.example.com/v1/models"]
+    assert res.outputs[0]["id"] == "m1"
+
+
+def test_list_models_says_what_each_path_answered_when_none_works(mocker):
+    from GuardianCohere import guardian_cohere_list_models_command
+
+    c = _client()
+    mocker.patch.object(c, "_http_request", side_effect=DemistoException("Error in API call [404] - Not Found"))
+    with pytest.raises(DemistoException) as err:
+        guardian_cohere_list_models_command(c, {})
+    text = str(err.value)
+    assert "/api/v1/models" in text and "/v1/models" in text and "404" in text
+
+
+def test_list_models_reports_an_unreadable_answer(mocker):
+    from GuardianCohere import guardian_cohere_list_models_command
+
+    c = _client()
+    mocker.patch.object(c, "_http_request", return_value={"unexpected": "shape"})
+    with pytest.raises(DemistoException, match="no model names could be read"):
+        guardian_cohere_list_models_command(c, {})
+
+
+def test_yml_declares_the_list_models_command_and_the_model_id_param():
+    import pathlib
+    text = (pathlib.Path(__file__).with_name("GuardianCohere.yml")).read_text()
+    assert "- name: guardian-cohere-list-models" in text and "name: model_id" in text

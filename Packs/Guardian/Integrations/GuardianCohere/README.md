@@ -67,6 +67,16 @@ The client is built for a stateful, sometimes-async North endpoint:
 
 ## Commands
 
+### guardian-cohere-list-models
+
+Lists the models the North endpoint offers (read-only), so a model name can be checked before it is configured.
+North's models route is not public: the command tries `/api/v1/models`, then `/v1/models`, and shows what each
+answered when neither works. Output: `GuardianCohere.Model` (`id`, `name`, `default`, `capabilities`).
+
+```
+!guardian-cohere-list-models
+```
+
 ### guardian-llm-chat
 
 Provider-independent chat completion (identical arguments and `Guardian.LLM.Completion` output across

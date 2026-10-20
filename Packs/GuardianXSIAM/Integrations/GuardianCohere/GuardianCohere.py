@@ -431,6 +431,7 @@ class CohereNorthClient(BaseClient):
         verify: bool,
         proxy: bool,
         timeout: int = DEFAULT_TIMEOUT,
+        model_id: str = "",
     ) -> None:
         self.endpoint = (endpoint or "").rstrip("/")
         super().__init__(base_url=self.endpoint, verify=verify, proxy=proxy, timeout=timeout)
@@ -439,6 +440,7 @@ class CohereNorthClient(BaseClient):
         self.bearer_token = bearer_token or ""
         self.model_label = model_label or DEFAULT_MODEL_LABEL
         self.model_tier = model_tier or DEFAULT_MODEL_TIER
+        self.model_id = (model_id or "").strip()
         self.conversation_mode = conversation_mode or DEFAULT_CONVERSATION_MODE
         self.tool_format = tool_format or DEFAULT_TOOL_FORMAT
         self.request_timeout = timeout
@@ -480,6 +482,9 @@ class CohereNorthClient(BaseClient):
             "agent": {"id": self.agent_id},
             "conversation": {"id": conversation_id},
         }
+
+        if self.model_id:
+            body["model"] = self.model_id  # only when the operator set a Model ID: otherwise North picks the model
 
         system_text = _extract_system_text(messages)
         if system_text:
@@ -696,6 +701,7 @@ def build_client(params: Dict[str, Any], verify: bool, proxy: bool) -> CohereNor
         bearer_token=bearer_token,
         model_label=model_label,
         model_tier=model_tier,
+        model_id=(params.get("model_id") or "").strip(),
         conversation_mode=conversation_mode,
         tool_format=tool_format,
         verify=verify,
@@ -846,6 +852,88 @@ def guardian_llm_chat_command(client: CohereNorthClient, args: Dict[str, Any]) -
     )
 
 
+MODELS_PATHS = ("/api/v1/models", "/v1/models")
+
+
+def _model_entries(payload: Any) -> List[Any]:
+    """The list of model entries in a models response, whichever wrapper the server uses."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("models", "data", "items", "results"):
+            if isinstance(payload.get(key), list):
+                return payload[key]
+    return []
+
+
+def _model_row(entry: Any) -> Optional[Dict[str, Any]]:
+    """One normalized row (id, name, default, capabilities) from a models-list entry, or None when it names nothing."""
+    if isinstance(entry, str):
+        return {"id": entry, "name": entry, "default": False, "capabilities": []} if entry.strip() else None
+    if not isinstance(entry, dict):
+        return None
+    model_id = next((str(entry[k]) for k in ("id", "model_id", "model", "name") if entry.get(k)), "")
+    if not model_id:
+        return None
+    name = next((str(entry[k]) for k in ("display_name", "name", "label") if entry.get(k)), model_id)
+    capabilities = entry.get("capabilities") or entry.get("features") or entry.get("tags") or []
+    if isinstance(capabilities, dict):
+        capabilities = [k for k, v in capabilities.items() if v]
+    if not isinstance(capabilities, list):
+        capabilities = [capabilities]
+    return {
+        "id": model_id,
+        "name": name,
+        "default": bool(entry.get("default") or entry.get("is_default")),
+        "capabilities": [str(c) for c in capabilities],
+    }
+
+
+def guardian_cohere_list_models_command(client: CohereNorthClient, args: Dict[str, Any]) -> CommandResults:
+    """List the models this Cohere North deployment offers, so a model name can be checked before it is configured.
+
+    Read-only: one GET per candidate path, stopping at the first that answers. North's models route is not public,
+    so the command tries ``/api/v1/models`` and then ``/v1/models`` and reports the status of each when none answers.
+    """
+    tried: List[str] = []
+    payload: Any = None
+    found_path = ""
+    for path in MODELS_PATHS:
+        try:
+            payload = client._http_request(
+                method="GET",
+                full_url=f"{client.endpoint}{path}",
+                headers=client._auth_headers(),
+                timeout=min(client.request_timeout, POLL_GET_TIMEOUT_CAP),
+                ok_codes=(200,),
+                resp_type="json",
+            )
+            found_path = path
+            break
+        except DemistoException as exc:
+            tried.append(f"{path}: {str(exc).splitlines()[0][:160]}")
+    if not found_path:
+        raise DemistoException(
+            "This North endpoint did not answer a models request. Tried " + "; ".join(tried) + ". Pick the model in the "
+            "North model picker and set the instance's Model ID to its name."
+        )
+    rows = [row for row in (_model_row(e) for e in _model_entries(payload)) if row]
+    if not rows:
+        shape = sorted(payload.keys()) if isinstance(payload, dict) else type(payload).__name__
+        raise DemistoException(f"{found_path} answered, but no model names could be read from it (response shape: {shape}).")
+    return CommandResults(
+        outputs_prefix="GuardianCohere.Model",
+        outputs_key_field="id",
+        outputs=rows,
+        readable_output=tableToMarkdown(
+            f"Models available on this North endpoint ({found_path})",
+            [{"Model": r["id"], "Name": r["name"], "Default": "yes" if r["default"] else "", "Capabilities": ", ".join(r["capabilities"])} for r in rows],
+            headers=["Model", "Name", "Default", "Capabilities"],
+        ),
+        raw_response=payload,
+    )
+
+
 def main() -> None:
     """main function, parses params and runs command functions"""
     params = demisto.params()
@@ -865,6 +953,8 @@ def main() -> None:
             return_results(test_module(client))
         elif command == "guardian-llm-chat":
             return_results(guardian_llm_chat_command(client, args))
+        elif command == "guardian-cohere-list-models":
+            return_results(guardian_cohere_list_models_command(client, args))
         else:
             raise NotImplementedError(f"Command {command} is not implemented.")
     except Exception as e:

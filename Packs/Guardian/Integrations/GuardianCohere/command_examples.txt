@@ -1,3 +1,4 @@
 !guardian-llm-chat messages=`[{"role":"user","content":"say hi in exactly two words"}]`
 !guardian-llm-chat messages=`[{"role":"system","content":"You are a SOC analyst assistant."},{"role":"user","content":"Summarize this alert."}]` temperature=0.2
 !guardian-llm-chat messages=`[{"role":"user","content":"What is the reputation of 8.8.8.8?"}]` tools=`[{"type":"function","function":{"name":"ip_reputation","description":"Look up IP reputation","parameters":{"type":"object","properties":{"ip":{"type":"string"}},"required":["ip"]}}}]` tool_choice=auto
+!guardian-cohere-list-models
