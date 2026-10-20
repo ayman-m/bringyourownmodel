@@ -1,0 +1,54 @@
+args:
+- name: probe_key
+  description: >-
+    Internal use only. Used by the sweep to read another incident's context. Do not set it by hand.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  The hourly maintenance sweep. Each of its five steps runs on its own, so a failure in one does not stop the
+  others. (1) Consolidates each active agent run's audit buffer into the `guardian_audit` List. (2) Moves
+  `guardian_audit` rows older than `audit_retention_days` (default 30) into per-day archive Lists. (3) Marks
+  approvals still pending after `approval_sla_minutes` (default 60) as expired. (4) Removes `guardian_memory`
+  rows past their time to live. (5) Stalled-run watchdog: finds agent runs still marked running whose incident
+  has not changed for `stalled_run_minutes` (default 15), and either restarts the loop or stops it and
+  releases any pending approval, as set by `watchdog_policy`. In this edition the watchdog sees only runs that
+  have an issue. Runs from the GuardianHousekeeping job, or on demand from anywhere, including the Playground.
+commonfields:
+  id: GuardianHousekeeping
+  version: -1
+enabled: true
+name: GuardianHousekeeping
+outputs:
+- contextPath: Guardian.Housekeeping.ts
+  description: Server-derived timestamp this sweep ran at.
+  type: String
+- contextPath: Guardian.Housekeeping.settings_used
+  description: The resolved settings (with defaults filled in) this sweep used.
+  type: Unknown
+- contextPath: Guardian.Housekeeping.ops.consolidate_ledgers
+  description: Per-incident audit-ledger consolidation result.
+  type: Unknown
+- contextPath: Guardian.Housekeeping.ops.rotate_audit
+  description: Audit rotation/sharding result.
+  type: Unknown
+- contextPath: Guardian.Housekeeping.ops.reap_approvals
+  description: "Result of expiring stale pending approvals."
+  type: Unknown
+- contextPath: Guardian.Housekeeping.ops.reap_memory
+  description: "Result of removing expired memory rows."
+  type: Unknown
+- contextPath: Guardian.Housekeeping.ops.watchdog
+  description: "Result of the stalled-run watchdog (restarted, stopped, skipped and errors)."
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

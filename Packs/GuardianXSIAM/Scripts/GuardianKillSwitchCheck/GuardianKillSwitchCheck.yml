@@ -1,0 +1,31 @@
+args: []
+comment: >-
+  Playbook preflight task. Reads `guardian_kill_switch` and reports whether the agent may start; the playbook
+  branches on `Guardian.Preflight.KillSwitch.proceed`. It is read-only. The reasoning loop checks the kill
+  switch on every tick, so this task gives an early exit and visibility, not the control itself. If the List
+  cannot be read, the run proceeds.
+commonfields:
+  id: GuardianKillSwitchCheck
+  version: -1
+enabled: true
+name: GuardianKillSwitchCheck
+outputs:
+- contextPath: Guardian.Preflight.KillSwitch.halted
+  description: True when the kill switch is on.
+  type: Boolean
+- contextPath: Guardian.Preflight.KillSwitch.proceed
+  description: '"true" when the run may proceed, "false" when the kill switch is on (a lowercase string, for playbook conditions).'
+  type: String
+- contextPath: Guardian.Preflight.KillSwitch.reason
+  description: Plain-language reason for the result.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

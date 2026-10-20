@@ -1,0 +1,71 @@
+args:
+- name: specialist
+  description: >-
+    Required. The specialist to dispatch. Currently "phishing-analyst", which investigates a suspected
+    phishing lead (a sender, mailbox item, URL, domain, attachment hash or short description) with mailbox
+    search, indicator enrichment, threat intelligence and the SOC knowledge base, and reports a verdict and
+    confidence. It uses a limited, read-only set of tools and cannot contain anything itself.
+  required: true
+  auto: PREDEFINED
+  predefined:
+  - phishing-analyst
+  isArray: false
+  default: false
+  secret: false
+- name: task
+  description: >-
+    The specific question or task for the specialist, for example "Is the email from
+    billing-support@examp1e.com to this incident's reported user a phishing attempt?". Be specific: the
+    specialist sees only what you write here.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: max_iterations
+  description: "Optional. Maximum number of tool-calling iterations. Defaults to 3, maximum 5."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Delegate a focused, self-contained sub-task (e.g. "assess whether this email is phishing") to a named
+  specialist; returns ONE summary, saving your own tool-calling turns on narrow, delegable work. NOT for
+  containment or case mutation -- those still require your own direct call and approval.
+commonfields:
+  id: GuardianSubagentDispatch
+  version: -1
+enabled: true
+name: GuardianSubagentDispatch
+outputs:
+- contextPath: Guardian.SubagentResult.specialist
+  description: The specialist that was dispatched.
+  type: String
+- contextPath: Guardian.SubagentResult.summary
+  description: "The specialist's final summary. It is the only output of the run that the caller sees."
+  type: String
+- contextPath: Guardian.SubagentResult.iterations_used
+  description: How many tool-calling iterations this run actually used.
+  type: Number
+- contextPath: Guardian.SubagentResult.max_iterations
+  description: "The iteration budget applied to this run, after the maximum is enforced."
+  type: Number
+- contextPath: Guardian.SubagentResult.bounded_exit
+  description: >-
+    True if the iteration budget ran out before the specialist gave a final answer, so a final turn was forced
+    to produce the summary.
+  type: Boolean
+- contextPath: Guardian.SubagentResult.tool_calls
+  description: >-
+    A short log of every tool call the run made or refused (tool_name, status, ok). Raw tool results are not
+    included.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

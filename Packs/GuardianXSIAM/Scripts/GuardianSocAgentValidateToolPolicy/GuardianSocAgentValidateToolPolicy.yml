@@ -1,0 +1,30 @@
+args: []
+comment: >-
+  Operator-only SOC Agent indicator action. Checks the effective runtime tool allowlist against the latest
+  saved discovery snapshot. It is read-only: it does not refresh discovery, change Lists or run any tool.
+commonfields:
+  id: GuardianSocAgentValidateToolPolicy
+  version: -1
+enabled: true
+name: GuardianSocAgentValidateToolPolicy
+outputs:
+- contextPath: Guardian.SocAgent.ToolPolicy.valid
+  description: "Whether the effective tool policy has no malformed, duplicate or unavailable commands."
+  type: Boolean
+- contextPath: Guardian.SocAgent.ToolPolicy.unavailable
+  description: Allowed commands absent from the latest discovery snapshot.
+  type: Unknown
+- contextPath: Guardian.SocAgent.ToolPolicy.refreshed_at
+  description: Timestamp of the availability snapshot used for validation.
+  type: Date
+script: '-'
+system: false
+tags:
+- indicator-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

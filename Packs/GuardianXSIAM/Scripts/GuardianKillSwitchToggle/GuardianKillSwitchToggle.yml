@@ -1,0 +1,69 @@
+args:
+- name: state
+  description: >-
+    `on` turns the kill switch on and halts the agent within one poll cycle. `off` turns it off, resumes
+    normal operation and allows new runs.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - 'on'
+  - 'off'
+- name: reason
+  description: "Optional reason, recorded on the `guardian_kill_switch` state and in the audit row."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: actor
+  description: "Who is toggling the switch. Defaults to `operator`. The value `agent` is rejected."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  `!guardian-killswitch state=on|off [reason=...]` turns the operator kill switch on or off and audits the
+  change. `state=on` halts the whole agent within one poll cycle: the reasoning loop checks the switch on
+  every tick and the tool bridge before every command. `state=off` resumes normal operation and allows new
+  "Guardian Agent Run" incidents again. This is an operator-only command: the agent cannot change the kill
+  switch through the tool bridge, and the command is not on the agent's tool allowlist.
+commonfields:
+  id: guardian-killswitch
+  version: -1
+enabled: true
+name: guardian-killswitch
+outputs:
+- contextPath: Guardian.KillSwitch.state
+  description: 'The state that was set: on or off.'
+  type: String
+- contextPath: Guardian.KillSwitch.enabled
+  description: Whether the kill switch is now enabled (true halts the agent).
+  type: Boolean
+- contextPath: Guardian.KillSwitch.reason
+  description: The reason recorded on the state change, if any.
+  type: String
+- contextPath: Guardian.KillSwitch.toggled_by
+  description: The actor who toggled the switch.
+  type: String
+- contextPath: Guardian.KillSwitch.ts
+  description: Server-derived ISO-8601 timestamp of the toggle.
+  type: String
+- contextPath: Guardian.KillSwitch.created
+  description: Whether the guardian_kill_switch List had to be bootstrapped
+    (created) rather than updated.
+  type: Boolean
+- contextPath: Guardian.KillSwitch.audited
+  description: Whether the audit row wrote successfully.
+  type: Boolean
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

@@ -1,0 +1,33 @@
+{
+    "id": "GuardianHousekeeping",
+    "version": -1,
+    "name": "GuardianHousekeeping",
+    "details": "Hourly maintenance: consolidates per-incident audit ledgers, rotates guardian_audit, reaps stale pending approvals and expired memory, and runs the stalled-run watchdog, which re-arms or stops a Guardian Agent Run whose loop stopped scheduling itself. Runs a playbook that calls !GuardianHousekeeping.",
+    "type": "Unclassified",
+    "playbookId": "GuardianHousekeeping",
+    "labels": [
+        {
+            "type": "Instance",
+            "value": "GuardianHousekeeping"
+        }
+    ],
+    "tags": [
+        "guardian",
+        "guardian-housekeeping"
+    ],
+    "scheduled": true,
+    "recurrent": true,
+    "humanCron": {
+        "timePeriodType": "hours",
+        "timePeriod": 1
+    },
+    "cronView": false,
+    "timezone": "UTC",
+    "shouldTriggerNew": false,
+    "closePrevRun": true,
+    "notifyOwner": false,
+    "isFeed": false,
+    "selectedFeeds": [],
+    "isAllFeeds": false,
+    "fromVersion": "6.10.0"
+}

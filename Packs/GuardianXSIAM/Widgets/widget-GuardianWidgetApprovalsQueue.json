@@ -1,0 +1,21 @@
+{
+  "id": "Guardian Approvals Queue",
+  "version": -1,
+  "fromVersion": "6.10.0",
+  "name": "Guardian Approvals Queue",
+  "dataType": "scripts",
+  "widgetType": "table",
+  "query": "GuardianWidgetApprovalsQueue",
+  "params": {
+    "tableColumns": [
+      {"displayed": true, "isDefault": true, "key": "Approval ID"},
+      {"displayed": true, "isDefault": true, "key": "Kind"},
+      {"displayed": true, "isDefault": true, "key": "Tool / Plan"},
+      {"displayed": true, "isDefault": true, "key": "Incident"},
+      {"displayed": true, "isDefault": true, "key": "Risk"},
+      {"displayed": true, "isDefault": true, "key": "Age (min)"}
+    ]
+  },
+  "isPredefined": false,
+  "description": "Pending approvals from guardian_approvals_ledger (status:pending only), oldest-first, with computed age."
+}

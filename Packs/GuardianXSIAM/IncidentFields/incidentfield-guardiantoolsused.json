@@ -1,0 +1,19 @@
+{
+    "id": "incident_guardiantoolsused",
+    "version": -1,
+    "cliName": "guardiantoolsused",
+    "name": "Guardian Tools Used",
+    "type": "longText",
+    "group": 0,
+    "hidden": false,
+    "associatedToAll": false,
+    "associatedTypes": [
+        "Guardian Agent Run"
+    ],
+    "systemAssociatedTypes": null,
+    "unmapped": false,
+    "content": true,
+    "system": false,
+    "fromVersion": "6.10.0",
+    "isReadOnly": false
+}

@@ -1,0 +1,17 @@
+{
+    "id": "indicator_socagentstate",
+    "name": "Guardian Agent State",
+    "cliName": "socagentstate",
+    "type": "singleSelect",
+    "selectValues": ["Ready", "Paused", "Degraded", "Needs review"],
+    "associatedTypes": ["SOC Agent"],
+    "associatedToAll": false,
+    "content": true,
+    "system": false,
+    "group": 2,
+    "unsearchable": true,
+    "required": false,
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "marketplaces": ["xsoar"]
+}

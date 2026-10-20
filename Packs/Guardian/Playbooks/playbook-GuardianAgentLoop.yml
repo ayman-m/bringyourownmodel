@@ -1,0 +1,486 @@
+id: GuardianAgentLoop
+version: -1
+name: GuardianAgentLoop
+description: >-
+  The Guardian agent's run, as visible steps: check the kill switch, check the job guard, resolve the model profile,
+  build the system prompt, build the tool list, load the skill (only when the preload_skill input is true), then one
+  task that runs the whole model session. The steps before the session are plain preparation with no model involved.
+  The session is one conversation: the model picks tools, the security gate vets each call, results return to the
+  model, and approvals and the verdict are handled in the same session. It re-schedules itself once per turn until the
+  model concludes, the kill switch is thrown or the turn limit is reached (25 for a small model, 40 for a medium one, 60 for a large one; MAX_TICKS in guardian_settings overrides), so do not wrap
+  it in GenericPolling. The kill switch and job guard are also re-checked inside the session on every turn: the early
+  checks give visibility and an early exit, they are not the only gates.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 2ae40b88-0453-4320-8458-c47f754776c7
+    type: start
+    task:
+      id: 2ae40b88-0453-4320-8458-c47f754776c7
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 6c546c59-9cec-5d08-9e25-b1706c088a00
+    type: regular
+    task:
+      id: 6c546c59-9cec-5d08-9e25-b1706c088a00
+      version: -1
+      name: Check kill switch
+      description: >-
+        Reads guardian_kill_switch. Read-only; a failed read lets the run continue (fail-open).
+        The reasoning loop re-checks the switch on every tick, so a switch thrown mid-run still halts it.
+      script: 'GuardianKillSwitchCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 6b87a8e6-2b0c-5a7b-9717-a95c1fa2658d
+    type: condition
+    task:
+      id: 6b87a8e6-2b0c-5a7b-9717-a95c1fa2658d
+      version: -1
+      name: Kill switch on?
+      description: >-
+        Ends the playbook at the Halted task when the kill switch is on.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "3"
+      halted:
+      - "90"
+    separatecontext: false
+    conditions:
+    - label: halted
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Preflight.KillSwitch.proceed
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 340
+        }
+      }
+  "3":
+    id: "3"
+    taskid: e98e351a-4f25-508e-bb73-474c4e990ff8
+    type: regular
+    task:
+      id: e98e351a-4f25-508e-bb73-474c4e990ff8
+      version: -1
+      name: Check job guard
+      description: >-
+        For a run started by a scheduled Job, asks GuardianJobGuard whether that Job was auto-disabled after
+        repeated failures. A run with no Job (manual, eval) has nothing to check. Fail-open.
+      script: 'GuardianJobGuardCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 485
+        }
+      }
+  "4":
+    id: "4"
+    taskid: f56858e3-1425-548a-83f8-cce99384f5fa
+    type: condition
+    task:
+      id: f56858e3-1425-548a-83f8-cce99384f5fa
+      version: -1
+      name: Job disabled?
+      description: >-
+        Ends the playbook at the Halted task when the spawning Job is auto-disabled.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "5"
+      halted:
+      - "91"
+    separatecontext: false
+    conditions:
+    - label: halted
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Preflight.JobGuard.proceed
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 630
+        }
+      }
+  "5":
+    id: "5"
+    taskid: 6d0f9539-ed36-5ee2-9d8f-e94c7cf11810
+    type: regular
+    task:
+      id: 6d0f9539-ed36-5ee2-9d8f-e94c7cf11810
+      version: -1
+      name: Resolve model profile
+      description: >-
+        Works out the model numbers this run uses: the model size (from the model catalogue, looked up by the model name; only an explicit guardian_settings.model_tier or a profile override changes it), the input budget
+        and the tool-list budget, from an operator override, else the model profile (guardian_model_profile: documented
+        limits from the model catalogue, or a probe result from the daily GuardianModelAdaptation job), else guardian_settings. Prints each value with its source and leaves the
+        result in context at Guardian.ModelProfile so every later task and the model session use the same numbers.
+        Warns when the size disagrees with the provider instance's "Model size" dropdown, or a probed profile is
+        old. Never blocks the run.
+      script: 'GuardianModelProfileCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "6"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 775
+        }
+      }
+  "6":
+    id: "6"
+    taskid: fbddce87-b3c7-54b3-b5b7-bfb935ad6e25
+    type: regular
+    task:
+      id: fbddce87-b3c7-54b3-b5b7-bfb935ad6e25
+      version: -1
+      name: Build system prompt
+      description: >-
+        Assembles the agent's system prompt (persona, action policy, approval mode, skills index) and leaves it in
+        context at Guardian.SystemPrompt. No model is involved.
+      script: 'GuardianPromptBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      summary_only:
+        simple: "true"
+    nexttasks:
+      '#none#':
+      - "7"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 920
+        }
+      }
+  "7":
+    id: "7"
+    taskid: b1210df7-bde8-564f-bff0-7f202639ce92
+    type: regular
+    task:
+      id: b1210df7-bde8-564f-bff0-7f202639ce92
+      version: -1
+      name: Build tool list
+      description: >-
+        Builds the list of tools offered to the model: the allowlisted commands that exist on this server, minus the
+        denylist, trimmed to this run's tool-list budget (see "Resolve model profile"). Leaves it in context at
+        Guardian.ToolCatalog. No model is involved.
+      script: 'GuardianToolCatalogBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      use_snapshot:
+        simple: "true"
+    nexttasks:
+      '#none#':
+      - "10"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1065
+        }
+      }
+  "10":
+    id: "10"
+    taskid: 80a53062-01cb-5fcc-aa83-dd99b14c2559
+    type: condition
+    task:
+      id: 80a53062-01cb-5fcc-aa83-dd99b14c2559
+      version: -1
+      name: Preload skill?
+      description: >-
+        Runs the next task only when the preload_skill input is true (default false).
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "8"
+      skill:
+      - "11"
+    separatecontext: false
+    conditions:
+    - label: skill
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: inputs.preload_skill
+            iscontext: true
+          right:
+            value:
+              simple: "true"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1210
+        }
+      }
+  "11":
+    id: "11"
+    taskid: 63075ab9-934d-512a-b77c-b3b1c7124eab
+    type: regular
+    task:
+      id: 63075ab9-934d-512a-b77c-b3b1c7124eab
+      version: -1
+      name: Load skill
+      description: >-
+        Loads the skill named by the skill input (a playbook of investigation guidance) into context at
+        Guardian.SkillBody. The model session adds it to the system prompt when it fits the model's input
+        budget, otherwise the model can load it itself. No model is involved. A skill that cannot be loaded
+        never stops the run.
+      script: 'GuardianSkillRead'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      name:
+        simple: ${inputs.skill}
+      summary_only:
+        simple: "true"
+    nexttasks:
+      '#none#':
+      - "8"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 1210
+        }
+      }
+  "8":
+    id: "8"
+    taskid: 45d685e0-703d-467f-8397-bad11167811c
+    type: regular
+    task:
+      id: 45d685e0-703d-467f-8397-bad11167811c
+      version: -1
+      name: Run Guardian model session
+      description: >-
+        The whole conversation with the model is this one task, deliberately: each turn the model chooses which tools
+        to call, the security gate vets every call, results go back to the model, and approvals and the final verdict
+        are handled in the same session. It reads the prompt and tool list built above and re-schedules itself
+        (ScheduledCommand) for each turn until the model concludes, a kill switch is thrown or the tick limit is hit.
+      script: 'GuardianReasoningTick'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      prompt:
+        simple: ${inputs.prompt}
+      skill:
+        simple: ${inputs.skill}
+      use_prebuilt:
+        simple: "true"
+    nexttasks:
+      '#none#':
+      - "9"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1355
+        }
+      }
+  "9":
+    id: "9"
+    taskid: d98c531a-5670-4651-adc6-bfc49b1c330d
+    type: title
+    task:
+      id: d98c531a-5670-4651-adc6-bfc49b1c330d
+      version: -1
+      name: Done
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1525
+        }
+      }
+  "90":
+    id: "90"
+    taskid: 12f5dbcf-be17-5c2c-9b0a-f13ebaaa4c38
+    type: title
+    task:
+      id: 12f5dbcf-be17-5c2c-9b0a-f13ebaaa4c38
+      version: -1
+      name: "Halted - kill switch is on"
+      type: title
+      iscommand: false
+      brand: ""
+      description: >-
+        The Guardian kill switch is on, so no model session was started. Turn it off with !guardian-killswitch state=off
+        (or Resume Agent) and start a new run.
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 340
+        }
+      }
+  "91":
+    id: "91"
+    taskid: 6071fc4c-b55b-51af-a83c-6a3df28e2f34
+    type: title
+    task:
+      id: 6071fc4c-b55b-51af-a83c-6a3df28e2f34
+      version: -1
+      name: "Halted - Job is auto-disabled"
+      type: title
+      iscommand: false
+      brand: ""
+      description: >-
+        GuardianJobGuard auto-disabled the Job that started this run after repeated failures, so no model session was
+        started. Fix the cause and re-enable the Job.
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 630
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 1540,
+        "width": 730,
+        "x": 450,
+        "y": 50
+      }
+    }
+  }
+inputs:
+- key: prompt
+  value:
+    simple: >-
+      You are the SOC intake triage agent. Load the xsoar_case_triage skill
+      first. Find the most urgent OPEN incidents (active status, approaching
+      or breaching SLA, high/critical severity) using SearchIncidentsV2 /
+      getIncidents -- ALWAYS pass a small page size (10-20) and a narrowing
+      filter (severity/status/query); never fetch the entire open-incident
+      queue in one call, a busy tenant can hold hundreds of open incidents and
+      an unbounded query is slow and wastes budget. For the top few, read the
+      War Room (getEntries), enrich any indicators (ip/domain/url/file/whois)
+      -- prefer these manual reputation commands over relying on stale
+      auto-extraction enrichment, since they bypass the ~3-day
+      indicator-enrichment cache and give a fresher verdict -- and produce a
+      concise triage assessment per incident (severity justification,
+      suspected verdict, recommended next action). This is READ-ONLY triage:
+      recommend, do not mutate or close anything. Narrate a ranked triage
+      summary to the War Room.
+  required: true
+  description: >-
+    The investigation task for this run (e.g. "Investigate whether IP 8.8.8.8
+    is malicious -- enrich it, then give a verdict."). Seeds the tick-0
+    transcript; ignored on every later self-rescheduled tick. Defaults to the SOC intake triage sweep (the GuardianIntakeSweep job) so a Job-created incident runs the sweep with no per-incident wiring. Override it with a specific mission (for example a single-indicator or single-incident investigation) by setting this input when you start the playbook.
+  playbookInputQuery: null
+- key: skill
+  value:
+    simple: xsoar_case_triage
+  required: false
+  description: >-
+    Optional skill name for this run (see guardian_skills_index). Defaults to xsoar_case_triage to match the default intake triage prompt above; override it alongside `prompt` for a differently-skilled run.
+  playbookInputQuery: null
+- key: preload_skill
+  value:
+    simple: "false"
+  required: false
+  description: >-
+    When "true", the skill named by the skill input is loaded and added to the model's system prompt (if it fits
+    within 15% of max_input_tokens). Default "false": it costs a few thousand tokens per run and its benefit depends on the model and the task, so measure it for your own model before turning it on.
+  playbookInputQuery: null
+outputs: []
+fromversion: 6.10.0
+marketplaces:
+- xsoar

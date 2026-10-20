@@ -1,0 +1,28 @@
+args: []
+comment: >-
+  Runs after the model session and stores one memory row for the finished run (key run:<issue id>): the
+  issue's family, rule id, asset ids, verdict or posture assessment, priority and one-line summary, tagged so that
+  later runs on the same rule or asset find it. Needs no Job and does not depend on the model remembering to store
+  anything. Writes nothing when the run ended without a verdict. Changes no issue field.
+commonfields:
+  id: GuardianRunCapture
+  version: -1
+enabled: true
+name: GuardianRunCapture
+outputs:
+- contextPath: Guardian.RunCapture.status
+  description: stored, skipped or error.
+  type: String
+- contextPath: Guardian.RunCapture.detail
+  description: The memory key that was written, or why nothing was.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

@@ -1,0 +1,22 @@
+args: []
+comment: >-
+  Dashboard widget of the GuardianObservability dashboard. Shows the cost per day and per model from
+  `guardian_cost_ledger` as a line chart, in USD. It is read-only and never creates or writes
+  `guardian_cost_ledger`.
+commonfields:
+  id: GuardianWidgetCost
+  version: -1
+enabled: true
+name: GuardianWidgetCost
+outputs: []
+script: '-'
+system: false
+tags:
+- widget
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

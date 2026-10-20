@@ -1,0 +1,21 @@
+{
+  "id": "Guardian Event Feed",
+  "version": -1,
+  "fromVersion": "6.10.0",
+  "name": "Guardian Event Feed",
+  "dataType": "scripts",
+  "widgetType": "table",
+  "query": "GuardianWidgetEventFeed",
+  "params": {
+    "tableColumns": [
+      {"displayed": true, "isDefault": true, "key": "Time"},
+      {"displayed": true, "isDefault": true, "key": "Actor"},
+      {"displayed": true, "isDefault": true, "key": "Action"},
+      {"displayed": true, "isDefault": true, "key": "Target"},
+      {"displayed": true, "isDefault": true, "key": "Status"},
+      {"displayed": true, "isDefault": true, "key": "Note"}
+    ]
+  },
+  "isPredefined": false,
+  "description": "Recent high-signal guardian_audit events: denials, failures, kill-switch toggles, job-disables."
+}

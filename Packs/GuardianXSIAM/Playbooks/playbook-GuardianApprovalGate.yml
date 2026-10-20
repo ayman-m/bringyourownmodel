@@ -1,0 +1,101 @@
+id: GuardianApprovalGate
+version: -1
+name: GuardianApprovalGate
+description: >-
+  On-demand snapshot of the pending approvals for this incident (the same data the Guardian layout's Recommended
+  Actions section shows). A playbook task does not resolve approvals: the agent loop parks a gated action in the
+  approvals ledger, and a person resolves it in the War Room with `!guardian-approve approval_id=<id>
+  [confirm=CONFIRM]` or `!guardian-deny approval_id=<id> reason="..."`. The agent can never call either command.
+  Running this playbook does not create, approve or deny anything.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 6f6a5f2d-2f2e-4f7b-8f8b-1a2b3c4d5e6f
+    type: start
+    task:
+      id: 6f6a5f2d-2f2e-4f7b-8f8b-1a2b3c4d5e6f
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 7a7b6f3e-3f3f-4a8c-9f9c-2b3c4d5e6f7a
+    type: regular
+    task:
+      id: 7a7b6f3e-3f3f-4a8c-9f9c-2b3c4d5e6f7a
+      version: -1
+      name: Show pending approvals for this incident
+      description: >-
+        Renders this incident's currently-pending guardian_approvals_ledger
+        rows (approval_id, gated action, risk tier, requested time) plus the
+        agent's most recent conclusion, exactly like GuardianAgentRunLayout's
+        own Recommended Actions section -- an on-demand snapshot for an
+        operator running this playbook manually. Resolve with
+        !guardian-approve / !guardian-deny in the War Room; this task itself
+        never approves, denies, or executes anything.
+      script: 'GuardianLayoutRecommendedActions'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 8b8c7a4f-4a4a-4b9d-8a8d-3c4d5e6f7a8b
+    type: title
+    task:
+      id: 8b8c7a4f-4a4a-4b9d-8a8d-3c4d5e6f7a8b
+      version: -1
+      name: Done
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 370
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 385,
+        "width": 380,
+        "x": 450,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []
+adopted: true
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

@@ -1,0 +1,22 @@
+args: []
+comment: >-
+  SOC Agent indicator layout section. Shows the active Guardian persona from `guardian_persona`, the same
+  configuration the agent reads on every tick, as HTML with its line breaks kept. Falls back to markdown if
+  the HTML cannot be built. It only displays information and changes no Lists, context or indicator data.
+commonfields:
+  id: GuardianLayoutSocAgentPersona
+  version: -1
+enabled: true
+name: GuardianLayoutSocAgentPersona
+outputs: []
+script: '-'
+system: false
+tags:
+- dynamic-indicator-section
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

@@ -1,0 +1,25 @@
+args: []
+comment: >-
+  Layout section for the Guardian tab of the Guardian Agent Run layout. Shows a readable turn-by-turn trace of
+  the agent's reasoning from `Guardian.Loop.messages`: a header with status, tick, cost and verdict, then one
+  card per assistant turn with its reasoning text and a table of the tool calls it requested with their
+  outcome. Returns HTML and falls back to markdown if the HTML cannot be built. It reads the incident and its
+  context, so it shows nothing in the Playground; run it on a real incident. It shows an empty state, not an
+  error, before the first turn. It never writes context, Lists or incident fields.
+commonfields:
+  id: GuardianLayoutTrace
+  version: -1
+enabled: true
+name: GuardianLayoutTrace
+outputs: []
+script: '-'
+system: false
+tags:
+- dynamic-section
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

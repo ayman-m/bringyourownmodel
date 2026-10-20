@@ -1,0 +1,61 @@
+args: []
+comment: >-
+  `!guardian-cost` shows how much the agent has spent. It renders the totals per day and per model from
+  `guardian_cost_ledger`, and this run's own cost, as markdown. It is read-only and does not call the model,
+  so it works even when no model is configured. An empty ledger is reported as nothing spent yet, not as an
+  error.
+commonfields:
+  id: guardian-cost
+  version: -1
+enabled: true
+name: guardian-cost
+outputs:
+- contextPath: Guardian.CostSummary.this_run.incident_id
+  description: The current incident's id.
+  type: String
+- contextPath: Guardian.CostSummary.this_run.field_cost_usd
+  description: "The incident's `guardiancostusd` field value, if set."
+  type: Number
+- contextPath: Guardian.CostSummary.this_run.loop_present
+  description: Whether a Guardian Agent Loop has ever run on this incident.
+  type: Boolean
+- contextPath: Guardian.CostSummary.this_run.loop_status
+  description: 'Guardian.Loop.status, if a loop has run (e.g. running, done, stopped, error).'
+  type: String
+- contextPath: Guardian.CostSummary.this_run.loop_tick
+  description: Guardian.Loop.tick, if a loop has run.
+  type: Number
+- contextPath: Guardian.CostSummary.this_run.loop_cost_usd
+  description: Guardian.Loop.cost_usd -- this run's own in-memory cost accumulator.
+  type: Number
+- contextPath: Guardian.CostSummary.this_run.loop_cost_tokens_total
+  description: Guardian.Loop.cost_tokens_total -- this run's own token accumulator.
+  type: Number
+- contextPath: Guardian.CostSummary.by_day
+  description: 'Per-day totals: {day: {calls, total_tokens, usd}}.'
+  type: Unknown
+- contextPath: Guardian.CostSummary.by_model
+  description: 'Per-model totals: {model: {calls, total_tokens, usd}}.'
+  type: Unknown
+- contextPath: Guardian.CostSummary.grand_total.calls
+  description: Total calls across the whole ledger.
+  type: Number
+- contextPath: Guardian.CostSummary.grand_total.total_tokens
+  description: Total tokens across the whole ledger.
+  type: Number
+- contextPath: Guardian.CostSummary.grand_total.usd
+  description: Total USD across the whole ledger.
+  type: Number
+- contextPath: Guardian.CostSummary.ledger_empty
+  description: Whether `guardian_cost_ledger` has no recorded spend yet.
+  type: Boolean
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

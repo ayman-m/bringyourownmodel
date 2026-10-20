@@ -1,0 +1,23 @@
+{
+    "id": "incident_guardianapprovalmode",
+    "version": -1,
+    "cliName": "guardianapprovalmode",
+    "name": "Guardian Approval Mode",
+    "type": "singleSelect",
+    "group": 0,
+    "hidden": false,
+    "associatedToAll": false,
+    "associatedTypes": [
+        "Guardian Agent Run"
+    ],
+    "systemAssociatedTypes": null,
+    "unmapped": false,
+    "content": true,
+    "system": false,
+    "fromVersion": "6.10.0",
+    "isReadOnly": false,
+    "selectValues": [
+        "manual",
+        "bypass"
+    ]
+}

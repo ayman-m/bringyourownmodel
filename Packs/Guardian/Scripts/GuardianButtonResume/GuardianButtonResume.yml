@@ -1,0 +1,29 @@
+args:
+- name: reason
+  description: >-
+    Why Guardian runs are being resumed. It is recorded in the kill-switch audit event.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Guardian Agent Run layout button. Resumes ALL Guardian runs by turning the global kill switch off through
+  the audited `guardian-killswitch` command, so runs continue and new runs may start. Operator-only: the agent
+  cannot call it.
+commonfields:
+  id: GuardianButtonResume
+  version: -1
+enabled: true
+name: GuardianButtonResume
+outputs: []
+script: '-'
+system: false
+tags:
+- incident-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

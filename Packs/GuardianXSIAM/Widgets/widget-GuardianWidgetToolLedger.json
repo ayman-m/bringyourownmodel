@@ -1,0 +1,12 @@
+{
+  "id": "Guardian Tool Call Activity",
+  "version": -1,
+  "fromVersion": "6.10.0",
+  "name": "Guardian Tool Call Activity",
+  "dataType": "scripts",
+  "widgetType": "pie",
+  "query": "GuardianWidgetToolLedger",
+  "params": {},
+  "isPredefined": false,
+  "description": "Fleet-wide tool-call activity from guardian_audit, bucketed by status (ok/pending_approval/denied/error/halted)."
+}

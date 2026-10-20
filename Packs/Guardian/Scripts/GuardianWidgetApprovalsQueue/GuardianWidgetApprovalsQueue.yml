@@ -1,0 +1,23 @@
+args: []
+comment: >-
+  Dashboard widget of the GuardianObservability dashboard. Shows the operator's queue of pending approvals
+  from `guardian_approvals_ledger`, oldest first, with the age in minutes of each. It is a table widget, and
+  its total is the number of pending approvals. It is read-only and never creates or writes
+  `guardian_approvals_ledger`.
+commonfields:
+  id: GuardianWidgetApprovalsQueue
+  version: -1
+enabled: true
+name: GuardianWidgetApprovalsQueue
+outputs: []
+script: '-'
+system: false
+tags:
+- widget
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

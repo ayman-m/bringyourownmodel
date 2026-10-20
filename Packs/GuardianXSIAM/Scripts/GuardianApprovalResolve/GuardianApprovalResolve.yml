@@ -1,0 +1,81 @@
+args:
+- name: approval_id
+  description: >-
+    The approval_id of the pending row in `guardian_approvals_ledger`, taken from the pending_approval War
+    Room note.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: action
+  description: "`approve` or `deny`. Defaults to `approve`. `!guardian-deny` always uses `deny`."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - approve
+  - deny
+- name: reason
+  description: >-
+    Optional reason, recorded on the ledger row. For a denial it is passed back to the model on the next tick.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: confirm
+  description: >-
+    Required to approve a credential-tier request, and must be exactly `CONFIRM` (case-sensitive). Ignored for
+    other risk tiers and for denials.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: actor
+  description: "Who is resolving the request. Defaults to `analyst`. The value `agent` is rejected."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  `!guardian-approve approval_id=<id> [confirm=CONFIRM]` resolves a pending approval in
+  `guardian_approvals_ledger` as approved. The next reasoning tick sees the approval and runs the action
+  through GuardianToolBridge with a single-use approval token, so it executes exactly once. A request that is
+  already resolved cannot be resolved again. This is an operator-only command: it is not on the agent's tool
+  allowlist or policy, so the agent cannot approve its own requests. `!guardian-deny` is the matching command
+  that denies a request.
+commonfields:
+  id: guardian-approve
+  version: -1
+enabled: true
+name: guardian-approve
+outputs:
+- contextPath: Guardian.ApprovalResolve.approval_id
+  description: The approval_id that was resolved.
+  type: String
+- contextPath: Guardian.ApprovalResolve.status
+  description: 'approved or denied.'
+  type: String
+- contextPath: Guardian.ApprovalResolve.resolved_by
+  description: The actor who resolved it.
+  type: String
+- contextPath: Guardian.ApprovalResolve.kind
+  description: 'tool or plan.'
+  type: String
+- contextPath: Guardian.ApprovalResolve.tool_name
+  description: The gated command name (kind=tool only; null for a plan).
+  type: String
+- contextPath: Guardian.ApprovalResolve.posted_to_war_room
+  description: Whether the resolution confirmation note posted successfully.
+  type: Boolean
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

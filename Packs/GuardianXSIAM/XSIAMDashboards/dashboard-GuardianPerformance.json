@@ -1,0 +1,1390 @@
+{
+  "dashboards_data": [
+    {
+      "id": "6f1c2d0a9b7e4c3d8a5e1f0b2c4d6e81",
+      "name": "Guardian Performance",
+      "description": "What the Guardian agent concluded, how confident it was, what it cost, which model ran and which tools it used.",
+      "status": "ENABLED",
+      "layout": [
+        {
+          "id": "row-1000",
+          "data": [
+            {
+              "key": "xql_1791300000000",
+              "data": {
+                "type": "Custom XQL",
+                "width": 20,
+                "height": 150,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp count() as runs\n| view graph type = single subtype = standard header = \"Guardian runs\" yaxis = runs",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "single",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "standard"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Guardian runs\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "runs"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000001",
+              "data": {
+                "type": "Custom XQL",
+                "width": 20,
+                "height": 150,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp avg(confidence) as avg_confidence\n| alter avg_confidence = round(avg_confidence)\n| view graph type = single subtype = standard header = \"Average confidence\" yaxis = avg_confidence",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "single",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "standard"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Average confidence\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "avg_confidence"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000002",
+              "data": {
+                "type": "Custom XQL",
+                "width": 20,
+                "height": 150,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp sum(cost) as total_cost\n| alter total_cost = divide(round(multiply(total_cost, 10000)), 10000)\n| view graph type = single subtype = standard header = \"Total cost (USD)\" yaxis = total_cost",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "single",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "standard"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Total cost (USD)\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "total_cost"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000003",
+              "data": {
+                "type": "Custom XQL",
+                "width": 20,
+                "height": 150,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp avg(ticks) as avg_ticks\n| alter avg_ticks = divide(round(multiply(avg_ticks, 10)), 10)\n| view graph type = single subtype = standard header = \"Average ticks per run\" yaxis = avg_ticks",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "single",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "standard"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Average ticks per run\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "avg_ticks"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000004",
+              "data": {
+                "type": "Custom XQL",
+                "width": 20,
+                "height": 150,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp sum(calls) as all_calls, sum(fails) as failed\n| alter failure_rate = if(all_calls > 0, round(divide(multiply(failed, 100), all_calls)), 0)\n| view graph type = single subtype = standard header = \"Tool failure rate (%)\" yaxis = failure_rate",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "single",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "standard"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Tool failure rate (%)\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "failure_rate"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "row-1001",
+          "data": [
+            {
+              "key": "xql_1791300000005",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.3,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp count() as runs by verdict\n| view graph type = pie header = \"Verdicts\" xaxis = verdict yaxis = runs",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "pie",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Verdicts\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "verdict"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "runs"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000006",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.4,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter is_malicious = if(verdict = \"Malicious\", 1, 0), is_suspicious = if(verdict = \"Suspicious\", 1, 0),\n        is_benign = if(verdict = \"Benign\", 1, 0), is_inconclusive = if(verdict = \"Inconclusive\", 1, 0)\n| bin _time span = 1d\n| comp sum(is_malicious) as malicious, sum(is_suspicious) as suspicious, sum(is_benign) as benign, sum(is_inconclusive) as inconclusive by _time\n| sort asc _time\n| view graph type = column subtype = stacked header = \"Runs per day by verdict\" xaxis = _time yaxis = malicious,suspicious,benign,inconclusive",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "column",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "stacked"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Runs per day by verdict\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "_time"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "malicious,suspicious,benign,inconclusive"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000007",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.3,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp avg(confidence) as avg_confidence by verdict\n| alter avg_confidence = round(avg_confidence)\n| view graph type = column subtype = grouped header = \"Average confidence by verdict\" xaxis = verdict yaxis = avg_confidence",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "column",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "grouped"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Average confidence by verdict\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "verdict"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "avg_confidence"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "row-1002",
+          "data": [
+            {
+              "key": "xql_1791300000008",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.3,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| bin _time span = 1d\n| comp sum(cost) as daily_cost by _time\n| sort asc _time\n| view graph type = line header = \"Cost per day (USD)\" xaxis = _time yaxis = daily_cost",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "line",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Cost per day (USD)\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "_time"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "daily_cost"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000009",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.4,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter model = if(model = null or model = \"\", \"unknown\", model)\n| comp sum(cost) as total_cost by model\n| sort desc total_cost\n| view graph type = column subtype = grouped header = \"Cost by model (USD)\" xaxis = model yaxis = total_cost",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "column",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "grouped"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Cost by model (USD)\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "model"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "total_cost"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000010",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.3,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp count() as runs by ticks\n| sort asc ticks\n| view graph type = column subtype = grouped header = \"Ticks per run\" xaxis = ticks yaxis = runs",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "column",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "grouped"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Ticks per run\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "ticks"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "runs"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "row-1003",
+          "data": [
+            {
+              "key": "xql_1791300000011",
+              "data": {
+                "type": "Custom XQL",
+                "width": 50,
+                "height": 340,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| filter tools != null and tools != \"\"\n| alter tool = split(tools, \",\")\n| arrayexpand tool\n| comp count() as uses by tool\n| sort desc uses\n| limit 15\n| view graph type = column subtype = grouped layout = horizontal header = \"Tools the agent used\" xaxis = tool yaxis = uses",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "column",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "grouped"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "layout",
+                        "value": "horizontal"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Tools the agent used\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "tool"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "uses"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000012",
+              "data": {
+                "type": "Custom XQL",
+                "width": 50,
+                "height": 340,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| filter calls != null\n| bin _time span = 1d\n| comp sum(calls) as tool_calls, sum(fails) as failures, sum(approvals) as approvals by _time\n| sort asc _time\n| view graph type = line header = \"Tool calls and failures per day\" xaxis = _time yaxis = tool_calls,failures,approvals",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "line",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Tool calls and failures per day\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "_time"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "tool_calls,failures,approvals"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "row-1004",
+          "data": [
+            {
+              "key": "xql_1791300000013",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.3,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter gate = if(gate = null or gate = \"\", \"passed\", gate)\n| comp count() as runs by gate\n| view graph type = pie header = \"Calibration gate\" xaxis = gate yaxis = runs",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "pie",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Calibration gate\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "gate"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "runs"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000014",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.4,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter is_malicious = if(verdict = \"Malicious\", 1, 0), is_suspicious = if(verdict = \"Suspicious\", 1, 0),\n        is_benign = if(verdict = \"Benign\", 1, 0), is_inconclusive = if(verdict = \"Inconclusive\", 1, 0)\n| alter alert = xdm.issue.name\n| comp count() as runs, sum(is_malicious) as malicious, sum(is_suspicious) as suspicious, sum(is_benign) as benign, sum(is_inconclusive) as inconclusive by alert\n| sort desc runs\n| limit 10\n| view graph type = column subtype = stacked layout = horizontal header = \"Verdicts by alert type\" xaxis = alert yaxis = malicious,suspicious,benign,inconclusive",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "column",
+                  "commands": [
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "subtype",
+                        "value": "stacked"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "layout",
+                        "value": "horizontal"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "header",
+                        "value": "\"Verdicts by alert type\""
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "xaxis",
+                        "value": "alert"
+                      }
+                    },
+                    {
+                      "command": {
+                        "op": "=",
+                        "name": "yaxis",
+                        "value": "malicious,suspicious,benign,inconclusive"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "xql_1791300000015",
+              "data": {
+                "type": "Custom XQL",
+                "width": 33.3,
+                "height": 320,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter model = if(model = null or model = \"\", \"unknown\", model)\n| comp count() as runs, avg(confidence) as avg_confidence, avg(ticks) as avg_ticks, sum(cost) as total_cost, sum(calls) as tool_calls, sum(fails) as tool_failures by model\n| alter avg_confidence = round(avg_confidence), avg_ticks = divide(round(multiply(avg_ticks, 10)), 10)\n| sort desc runs",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "table",
+                  "commands": []
+                },
+                "gridRawStorageInfo": {
+                  "sort": null,
+                  "coldefs": {},
+                  "columnWidth": null,
+                  "rowHeight": "{\"rowHeight\":\"regular\",\"gridRowsHeight\":\"medium-row\"}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "row-1005",
+          "data": [
+            {
+              "key": "xql_1791300000016",
+              "data": {
+                "type": "Custom XQL",
+                "width": 100,
+                "height": 520,
+                "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter blast = xdm.issue.custom_fields -> guardianblastradius\n| fields _time, xdm.issue.id as issue_id, xdm.issue.name as alert, verdict, confidence, ticks, cost, calls, fails, approvals, gate, model, blast\n| sort desc _time\n| limit 100",
+                "time_frame": {
+                  "relativeTime": 604800000
+                },
+                "viewOptions": {
+                  "type": "table",
+                  "commands": []
+                },
+                "gridRawStorageInfo": {
+                  "sort": null,
+                  "coldefs": {},
+                  "columnWidth": null,
+                  "rowHeight": "{\"rowHeight\":\"regular\",\"gridRowsHeight\":\"medium-row\"}"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "default_dashboard_id": 1,
+      "global_id": "6f1c2d0a9b7e4c3d8a5e1f0b2c4d6e81"
+    }
+  ],
+  "widgets_data": [
+    {
+      "widget_key": "xql_1791300000000",
+      "title": "Guardian runs",
+      "creation_time": 1791300000000,
+      "description": "Runs that ended with a recorded verdict.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp count() as runs\n| view graph type = single subtype = standard header = \"Guardian runs\" yaxis = runs",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "single",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "standard"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Guardian runs\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "runs"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000001",
+      "title": "Average confidence",
+      "creation_time": 1791300000001,
+      "description": "Average confidence the model reported.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp avg(confidence) as avg_confidence\n| alter avg_confidence = round(avg_confidence)\n| view graph type = single subtype = standard header = \"Average confidence\" yaxis = avg_confidence",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "single",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "standard"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Average confidence\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "avg_confidence"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000002",
+      "title": "Total cost (USD)",
+      "creation_time": 1791300000002,
+      "description": "Model spend recorded on the runs.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp sum(cost) as total_cost\n| alter total_cost = divide(round(multiply(total_cost, 10000)), 10000)\n| view graph type = single subtype = standard header = \"Total cost (USD)\" yaxis = total_cost",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "single",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "standard"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Total cost (USD)\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "total_cost"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000003",
+      "title": "Average ticks per run",
+      "creation_time": 1791300000003,
+      "description": "Reasoning turns a run took to conclude.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp avg(ticks) as avg_ticks\n| alter avg_ticks = divide(round(multiply(avg_ticks, 10)), 10)\n| view graph type = single subtype = standard header = \"Average ticks per run\" yaxis = avg_ticks",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "single",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "standard"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Average ticks per run\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "avg_ticks"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000004",
+      "title": "Tool failure rate (%)",
+      "creation_time": 1791300000004,
+      "description": "Tool calls that errored, were denied or were blocked, as a share of all tool calls.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp sum(calls) as all_calls, sum(fails) as failed\n| alter failure_rate = if(all_calls > 0, round(divide(multiply(failed, 100), all_calls)), 0)\n| view graph type = single subtype = standard header = \"Tool failure rate (%)\" yaxis = failure_rate",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "single",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "standard"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Tool failure rate (%)\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "failure_rate"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000005",
+      "title": "Verdicts",
+      "creation_time": 1791300000005,
+      "description": "How the runs concluded.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp count() as runs by verdict\n| view graph type = pie header = \"Verdicts\" xaxis = verdict yaxis = runs",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "pie",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Verdicts\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "verdict"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "runs"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000006",
+      "title": "Runs per day by verdict",
+      "creation_time": 1791300000006,
+      "description": "Daily run count, split by verdict.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter is_malicious = if(verdict = \"Malicious\", 1, 0), is_suspicious = if(verdict = \"Suspicious\", 1, 0),\n        is_benign = if(verdict = \"Benign\", 1, 0), is_inconclusive = if(verdict = \"Inconclusive\", 1, 0)\n| bin _time span = 1d\n| comp sum(is_malicious) as malicious, sum(is_suspicious) as suspicious, sum(is_benign) as benign, sum(is_inconclusive) as inconclusive by _time\n| sort asc _time\n| view graph type = column subtype = stacked header = \"Runs per day by verdict\" xaxis = _time yaxis = malicious,suspicious,benign,inconclusive",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "column",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "stacked"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Runs per day by verdict\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "_time"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "malicious,suspicious,benign,inconclusive"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000007",
+      "title": "Average confidence by verdict",
+      "creation_time": 1791300000007,
+      "description": "Confidence the model reported for each verdict.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp avg(confidence) as avg_confidence by verdict\n| alter avg_confidence = round(avg_confidence)\n| view graph type = column subtype = grouped header = \"Average confidence by verdict\" xaxis = verdict yaxis = avg_confidence",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "column",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "grouped"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Average confidence by verdict\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "verdict"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "avg_confidence"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000008",
+      "title": "Cost per day (USD)",
+      "creation_time": 1791300000008,
+      "description": "Daily spend.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| bin _time span = 1d\n| comp sum(cost) as daily_cost by _time\n| sort asc _time\n| view graph type = line header = \"Cost per day (USD)\" xaxis = _time yaxis = daily_cost",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "line",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Cost per day (USD)\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "_time"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "daily_cost"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000009",
+      "title": "Cost by model (USD)",
+      "creation_time": 1791300000009,
+      "description": "Total spend per model.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter model = if(model = null or model = \"\", \"unknown\", model)\n| comp sum(cost) as total_cost by model\n| sort desc total_cost\n| view graph type = column subtype = grouped header = \"Cost by model (USD)\" xaxis = model yaxis = total_cost",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "column",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "grouped"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Cost by model (USD)\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "model"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "total_cost"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000010",
+      "title": "Ticks per run",
+      "creation_time": 1791300000010,
+      "description": "How many runs took each number of ticks.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| comp count() as runs by ticks\n| sort asc ticks\n| view graph type = column subtype = grouped header = \"Ticks per run\" xaxis = ticks yaxis = runs",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "column",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "grouped"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Ticks per run\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "ticks"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "runs"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000011",
+      "title": "Tools the agent used",
+      "creation_time": 1791300000011,
+      "description": "Tool calls by tool name (runs recorded since the activity fields were added).",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| filter tools != null and tools != \"\"\n| alter tool = split(tools, \",\")\n| arrayexpand tool\n| comp count() as uses by tool\n| sort desc uses\n| limit 15\n| view graph type = column subtype = grouped layout = horizontal header = \"Tools the agent used\" xaxis = tool yaxis = uses",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "column",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "grouped"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "layout",
+                "value": "horizontal"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Tools the agent used\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "tool"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "uses"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000012",
+      "title": "Tool calls and failures per day",
+      "creation_time": 1791300000012,
+      "description": "Tool calls, and how many of them failed, per day.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| filter calls != null\n| bin _time span = 1d\n| comp sum(calls) as tool_calls, sum(fails) as failures, sum(approvals) as approvals by _time\n| sort asc _time\n| view graph type = line header = \"Tool calls and failures per day\" xaxis = _time yaxis = tool_calls,failures,approvals",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "line",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Tool calls and failures per day\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "_time"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "tool_calls,failures,approvals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000013",
+      "title": "Calibration gate",
+      "creation_time": 1791300000013,
+      "description": "Runs the conclusion check nudged, or whose verdict it downgraded.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter gate = if(gate = null or gate = \"\", \"passed\", gate)\n| comp count() as runs by gate\n| view graph type = pie header = \"Calibration gate\" xaxis = gate yaxis = runs",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "pie",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Calibration gate\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "gate"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "runs"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000014",
+      "title": "Verdicts by alert type",
+      "creation_time": 1791300000014,
+      "description": "The ten alert types with most runs, split by verdict.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter is_malicious = if(verdict = \"Malicious\", 1, 0), is_suspicious = if(verdict = \"Suspicious\", 1, 0),\n        is_benign = if(verdict = \"Benign\", 1, 0), is_inconclusive = if(verdict = \"Inconclusive\", 1, 0)\n| alter alert = xdm.issue.name\n| comp count() as runs, sum(is_malicious) as malicious, sum(is_suspicious) as suspicious, sum(is_benign) as benign, sum(is_inconclusive) as inconclusive by alert\n| sort desc runs\n| limit 10\n| view graph type = column subtype = stacked layout = horizontal header = \"Verdicts by alert type\" xaxis = alert yaxis = malicious,suspicious,benign,inconclusive",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "column",
+          "commands": [
+            {
+              "command": {
+                "op": "=",
+                "name": "subtype",
+                "value": "stacked"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "layout",
+                "value": "horizontal"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "header",
+                "value": "\"Verdicts by alert type\""
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "xaxis",
+                "value": "alert"
+              }
+            },
+            {
+              "command": {
+                "op": "=",
+                "name": "yaxis",
+                "value": "malicious,suspicious,benign,inconclusive"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000015",
+      "title": "Performance by model",
+      "creation_time": 1791300000015,
+      "description": "One line per model: runs, confidence, effort, cost and tool failures.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter model = if(model = null or model = \"\", \"unknown\", model)\n| comp count() as runs, avg(confidence) as avg_confidence, avg(ticks) as avg_ticks, sum(cost) as total_cost, sum(calls) as tool_calls, sum(fails) as tool_failures by model\n| alter avg_confidence = round(avg_confidence), avg_ticks = divide(round(multiply(avg_ticks, 10)), 10)\n| sort desc runs",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "table",
+          "commands": []
+        },
+        "gridRawStorageInfo": {
+          "sort": null,
+          "coldefs": {},
+          "columnWidth": null,
+          "rowHeight": "{\"rowHeight\":\"regular\",\"gridRowsHeight\":\"medium-row\"}"
+        }
+      }
+    },
+    {
+      "widget_key": "xql_1791300000016",
+      "title": "Recent Guardian runs",
+      "creation_time": 1791300000016,
+      "description": "Latest runs with what each concluded and what it did.",
+      "data": {
+        "phrase": "dataset = issues\n| alter verdict = xdm.issue.custom_fields -> guardianverdict,\n        confidence = to_integer(xdm.issue.custom_fields -> guardianconfidence),\n        cost = to_float(xdm.issue.custom_fields -> guardiancostusd),\n        ticks = to_integer(xdm.issue.custom_fields -> guardiantickcount),\n        calls = to_integer(xdm.issue.custom_fields -> guardiantoolcalls),\n        fails = to_integer(xdm.issue.custom_fields -> guardiantoolfailures),\n        approvals = to_integer(xdm.issue.custom_fields -> guardianapprovalsrequested),\n        model = xdm.issue.custom_fields -> guardianmodel,\n        gate = xdm.issue.custom_fields -> guardiangateaction,\n        tools = xdm.issue.custom_fields -> guardiantoolsused\n| filter verdict != null and verdict != \"\"\n| alter blast = xdm.issue.custom_fields -> guardianblastradius\n| fields _time, xdm.issue.id as issue_id, xdm.issue.name as alert, verdict, confidence, ticks, cost, calls, fails, approvals, gate, model, blast\n| sort desc _time\n| limit 100",
+        "time_frame": {
+          "relativeTime": 604800000
+        },
+        "viewOptions": {
+          "type": "table",
+          "commands": []
+        },
+        "gridRawStorageInfo": {
+          "sort": null,
+          "coldefs": {},
+          "columnWidth": null,
+          "rowHeight": "{\"rowHeight\":\"regular\",\"gridRowsHeight\":\"medium-row\"}"
+        }
+      }
+    }
+  ],
+  "fromVersion": "6.10.0",
+  "supportedModules": [
+    "xsiam"
+  ]
+}

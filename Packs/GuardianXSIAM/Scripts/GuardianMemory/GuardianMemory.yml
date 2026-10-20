@@ -1,0 +1,133 @@
+args:
+- name: op
+  description: >-
+    `store` saves one durable memory row by key. `search` finds rows by keyword, ranked by relevance, how
+    recently they were updated and how often they were returned, and drops rows past their time to live.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - store
+  - search
+- name: key
+  description: >-
+    Required for `store`. The key to save under. Storing the same key again updates that row. Prefer a
+    namespaced key: `tech_stack:<x>` for the products the organization runs, `case:<incident_id>:<date>` for a
+    case summary, `pattern:<x>` for a recurring pattern, `ioc:<value>` for notes about an indicator. Verdicts
+    and reputation of an indicator belong in the indicator store, not here.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: value
+  description: >-
+    Required for `store`. The fact or text to remember. Secrets such as API keys, tokens and passwords are
+    redacted before writing. Use it for facts that are not about one entity (tech-stack notes, patterns, case
+    summaries, standing preferences). A verdict about an IP, host or hash belongs in the indicator store.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: scope
+  description: >-
+    Optional grouping value, for example an incident id, a team name or "global". For `store` it replaces the
+    row's scope only when given. For `search` it filters to rows with exactly this scope.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: ttl
+  description: >-
+    Optional, `store` only. Seconds until the row expires, for example 3600. Omit it or pass 0 for a permanent
+    row. An expired row is removed the next time `guardian_memory` is searched. When updating an existing key,
+    omitting it keeps the previous value.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: tags
+  description: >-
+    Optional. Comma-separated list (for example "ioc,network") or JSON array of tags. For `store` it replaces
+    the row's tags only when given. For `search` it keeps rows that have at least one of these tags.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: query
+  description: >-
+    Required for `search`. Text to look for in every row's key, value, tags and scope. A row matches if it
+    contains any of the words, and ranks higher the more words match or when the exact phrase matches.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: limit
+  description: >-
+    Optional, `search` only. Maximum number of results, most relevant first. Defaults to 10, maximum 50.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  The agent's durable memory across incidents. It saves a fact that is not about a single entity (a tech-stack
+  note, a learned investigative pattern, a case summary or a standing SOC preference) and recalls it in a
+  later investigation. Search ranks by keyword relevance, how recently a fact was updated and how often it was
+  recalled, and drops rows past their time to live. For a verdict about a specific IP, host or hash, use the
+  indicator store (`findIndicators` to read, `createNewIndicator` and `setIndicator` to write).
+commonfields:
+  id: GuardianMemory
+  version: -1
+enabled: true
+name: GuardianMemory
+outputs:
+- contextPath: Guardian.Memory.op
+  description: The operation that ran (store/search).
+  type: String
+- contextPath: Guardian.Memory.key
+  description: The key that was stored/updated (op=store only).
+  type: String
+- contextPath: Guardian.Memory.row
+  description: >-
+    The stored row after the save: key, value, scope, tags, ttl, created_at, updated_at and hits (`store`
+    only).
+  type: Unknown
+- contextPath: Guardian.Memory.created
+  description: 'True if this call created a brand-new row; False if it updated an
+    existing one (op=store only).'
+  type: Boolean
+- contextPath: Guardian.Memory.list_row_count
+  description: Total row count in guardian_memory after this store (op=store only).
+  type: Number
+- contextPath: Guardian.Memory.query
+  description: The search query that ran (op=search only).
+  type: String
+- contextPath: Guardian.Memory.results
+  description: Matching rows, ranked by relevance + recency + hit count, most relevant
+    first (op=search only).
+  type: Unknown
+- contextPath: Guardian.Memory.count
+  description: Number of rows returned (op=search only).
+  type: Number
+- contextPath: Guardian.Memory.reaped_count
+  description: Number of TTL-expired rows dropped during this search (op=search only).
+  type: Number
+- contextPath: Guardian.Memory.ts_warning
+  description: "Present when server time was unavailable for this call."
+  type: String
+- contextPath: Guardian.Memory.list_warning
+  description: >-
+    Present when saving the cleanup or hit-count update to `guardian_memory` failed. The search results are
+    still returned.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

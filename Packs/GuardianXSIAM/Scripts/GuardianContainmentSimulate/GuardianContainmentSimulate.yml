@@ -1,0 +1,47 @@
+args:
+- name: endpoint_id
+  required: true
+  description: >-
+    Endpoint identifier to simulate isolating. The value is sanitized (single line, control characters
+    removed, length capped) before use.
+- name: reason
+  required: false
+  description: "Free-text reason for the simulated containment. It is sanitized in the same way."
+comment: >-
+  A safe stand-in for "isolate endpoint". It performs no containment and changes nothing: it only sanitizes
+  its inputs and writes one War Room note and one context entry that describe what a real isolation would do.
+  Use it to test the approval flow without touching an endpoint.
+commonfields:
+  id: GuardianContainmentSimulate
+  version: -1
+enabled: true
+name: GuardianContainmentSimulate
+outputs:
+- contextPath: Guardian.SimulatedContainment.endpoint_id
+  description: Sanitized endpoint identifier that was (simulate-)isolated.
+  type: String
+- contextPath: Guardian.SimulatedContainment.reason
+  description: Sanitized, untrusted, model-supplied reason for the simulated containment.
+  type: String
+- contextPath: Guardian.SimulatedContainment.action
+  description: Static "simulate-isolate" marker.
+  type: String
+- contextPath: Guardian.SimulatedContainment.simulated
+  description: "Always true. Confirms that no real containment action was taken."
+  type: Boolean
+- contextPath: Guardian.SimulatedContainment.ts
+  description: UTC ISO-8601 timestamp of the simulated containment.
+  type: String
+- contextPath: Guardian.SimulatedContainment.error
+  description: Present only when endpoint_id was missing (e.g. "missing endpoint_id").
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

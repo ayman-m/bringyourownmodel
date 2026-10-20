@@ -1,0 +1,31 @@
+args: []
+comment: >-
+  Operator-only indicator action. Writes a redacted snapshot of the Guardian SOC Agent configuration to the
+  War Room. It reads only the control Lists and exports hashes, counts, timestamps and state, never secrets,
+  persona text or memory values.
+commonfields:
+  id: GuardianSocAgentExportConfiguration
+  version: -1
+enabled: true
+name: GuardianSocAgentExportConfiguration
+outputs:
+- contextPath: Guardian.SocAgent.ConfigurationSnapshot.allowlist_fingerprint
+  description: Stable, non-secret fingerprint of the effective allowlist payload.
+  type: String
+- contextPath: Guardian.SocAgent.ConfigurationSnapshot.persona_fingerprint
+  description: Stable, non-secret fingerprint of the configured persona payload.
+  type: String
+- contextPath: Guardian.SocAgent.ConfigurationSnapshot.agent_halted
+  description: Current state read from the Guardian kill switch.
+  type: Boolean
+script: '-'
+system: false
+tags:
+- indicator-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

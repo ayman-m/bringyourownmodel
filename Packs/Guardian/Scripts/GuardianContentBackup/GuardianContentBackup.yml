@@ -1,0 +1,42 @@
+args: []
+comment: >-
+  Exports all custom content on this server as a tar.gz bundle, attaches the bundle to the War Room as a
+  downloadable file, and returns a summary with the item count and the counts by content type. Use it for
+  backup or to compare the server against the pack files. The bundle content is not shown inline. It is an
+  operator-only command and is not on the agent's tool allowlist.
+commonfields:
+  id: GuardianContentBackup
+  version: -1
+enabled: true
+name: GuardianContentBackup
+outputs:
+- contextPath: Guardian.ContentBackup.file_id
+  description: The War Room file entry id of the raw tar.gz bundle attachment.
+  type: String
+- contextPath: Guardian.ContentBackup.file_name
+  description: The attached bundle's filename.
+  type: String
+- contextPath: Guardian.ContentBackup.size_bytes
+  description: The bundle's size in bytes, as reported by the server.
+  type: Number
+- contextPath: Guardian.ContentBackup.total_items
+  description: Total number of custom-content file items in the bundle
+    (directory entries excluded).
+  type: Number
+- contextPath: Guardian.ContentBackup.by_type
+  description: >-
+    Item counts by content type, for example playbook, incidentfield, automation, list and layoutscontainer.
+  type: Unknown
+- contextPath: Guardian.ContentBackup.generated_at
+  description: UTC timestamp this backup/summary was generated.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

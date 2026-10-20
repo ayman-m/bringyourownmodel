@@ -1,0 +1,94 @@
+args:
+- name: usage
+  description: >-
+    The `usage` object of the model turn, as a JSON string or object: `{prompt_tokens, completion_tokens,
+    total_tokens, cached_tokens}`.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: model
+  description: >-
+    The model that served the turn, for example "gemini-2.5-flash". Its price is looked up in
+    `guardian_pricing`. An unpriced or missing model is costed at $0 with a warning.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: run_id
+  description: >-
+    Optional run identifier, normally the incident id. Defaults to the current incident's id. It is recorded
+    for correlation only.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: trigger
+  description: >-
+    Optional label for what caused the call, for example a skill name or "job:intake-sweep". Defaults to
+    "unspecified".
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Accounts for the cost of one model turn. It looks up the model in `guardian_pricing`, computes the cost in
+  USD (cached prompt tokens are priced at the cached rate), and adds the tokens and cost to the day, model and
+  trigger totals in `guardian_cost_ledger`. It returns this call's cost and tokens in `Guardian.Cost`, which
+  the reasoning loop adds up into the run's total. An unpriced model is costed at $0 with a warning and never
+  fails the call.
+commonfields:
+  id: GuardianCostLedger
+  version: -1
+enabled: true
+name: GuardianCostLedger
+outputs:
+- contextPath: Guardian.Cost.usd
+  description: This call's own computed USD cost.
+  type: Number
+- contextPath: Guardian.Cost.tokens.prompt_tokens
+  description: Normalized prompt token count used in the cost computation.
+  type: Number
+- contextPath: Guardian.Cost.tokens.completion_tokens
+  description: Normalized completion token count used in the cost computation.
+  type: Number
+- contextPath: Guardian.Cost.tokens.cached_tokens
+  description: Normalized cached prompt token count (subset of prompt_tokens)
+    used in the cost computation.
+  type: Number
+- contextPath: Guardian.Cost.tokens.total_tokens
+  description: Normalized total token count.
+  type: Number
+- contextPath: Guardian.Cost.model
+  description: The model name this call was priced against.
+  type: String
+- contextPath: Guardian.Cost.day
+  description: "The YYYY-MM-DD day the cost was recorded under, or null if server time could not be obtained."
+  type: String
+- contextPath: Guardian.Cost.trigger
+  description: "The trigger label used for the totals. Defaults to \"unspecified\"."
+  type: String
+- contextPath: Guardian.Cost.run_id
+  description: "The run identifier (incident id), if provided or defaulted."
+  type: String
+- contextPath: Guardian.Cost.rollup_updated
+  description: "Whether `guardian_cost_ledger` was updated by this call."
+  type: Boolean
+- contextPath: Guardian.Cost.rollup_bucket
+  description: "The running totals of the updated day, model and trigger entry, when the update succeeded."
+  type: Unknown
+- contextPath: Guardian.Cost.warning
+  description: >-
+    Warnings such as an unpriced model, an unreadable List or an unavailable server day. Null when there are
+    none.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

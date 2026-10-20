@@ -1,0 +1,129 @@
+id: GuardianEvalHarvest
+version: -1
+name: GuardianEvalHarvest
+description: >-
+  Runs !GuardianEvalHarvest, the sweep that turns real, closed, verdicted incidents into evaluation cases in
+  guardian_eval_cases_runtime (once per incident). It exists to give the scheduled Job a playbook to run; the
+  automation is self-contained and can also be run by hand.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 9a806023-afa8-4f63-a7be-77f9f8b343fe
+    type: start
+    task:
+      id: 9a806023-afa8-4f63-a7be-77f9f8b343fe
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 8f93b805-7a87-444a-aad4-ac8533a6bce7
+    type: regular
+    task:
+      id: 8f93b805-7a87-444a-aad4-ac8533a6bce7
+      version: -1
+      name: Run the Guardian eval-corpus harvest sweep
+      description: >-
+        Scans status:closed and guardianverdict:* incidents closed within
+        the sweep window, excluding synthetic/self-referential trigger
+        sources, and writes one guardian_eval_cases_runtime row per real
+        case. Idempotent per incident -- reprocessing the same closed
+        incident across two overlapping sweeps is a no-op.
+      script: 'GuardianEvalHarvest'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "3"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "3":
+    id: "3"
+    taskid: 4eb46cac-6bf6-41ea-93f3-437d87d6eab3
+    type: regular
+    task:
+      id: 4eb46cac-6bf6-41ea-93f3-437d87d6eab3
+      version: -1
+      name: Close this job run
+      description: >-
+        Fire-and-forget maintenance run: close this recurring job's own investigation so each
+        scheduled run finishes clean instead of accumulating open forever. (closePrevRun on the
+        Job only closes the PREVIOUS run when the NEXT fires; this closes THIS run as soon as its
+        work is done.) Nothing here needs analyst review.
+      script: closeInvestigation
+      type: regular
+      iscommand: true
+      brand: ""
+    scriptarguments:
+      closeReason:
+        simple: Resolved
+      closeNotes:
+        simple: Guardian recurring maintenance run completed.
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 285
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 8c64999a-534d-4546-89e9-e53e1ad19292
+    type: title
+    task:
+      id: 8c64999a-534d-4546-89e9-e53e1ad19292
+      version: -1
+      name: Done
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 370
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 385,
+        "width": 380,
+        "x": 450,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []
+fromversion: 6.10.0
+marketplaces:
+- xsoar

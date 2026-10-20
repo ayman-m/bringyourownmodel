@@ -1,0 +1,60 @@
+args:
+- name: approval_id
+  description: "The approval_id of the pending row in `guardian_approvals_ledger` to deny."
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: reason
+  description: >-
+    Optional reason. It is passed to the model on the next reasoning tick as a note that the action was
+    denied.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: actor
+  description: "Who is denying the request. Defaults to `analyst`. The value `agent` is rejected."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  `!guardian-deny approval_id=<id> [reason="..."]` denies a pending approval in `guardian_approvals_ledger`.
+  It works like `!guardian-approve` with the action fixed to deny. The next reasoning tick tells the model
+  that the action was denied, and nothing is executed. This is an operator-only command and is not on the
+  agent's tool allowlist.
+commonfields:
+  id: guardian-deny
+  version: -1
+enabled: true
+name: guardian-deny
+outputs:
+- contextPath: Guardian.ApprovalResolve.approval_id
+  description: The approval_id that was resolved.
+  type: String
+- contextPath: Guardian.ApprovalResolve.status
+  description: Always "denied" on success.
+  type: String
+- contextPath: Guardian.ApprovalResolve.resolved_by
+  description: The actor who denied it.
+  type: String
+- contextPath: Guardian.ApprovalResolve.kind
+  description: 'tool or plan.'
+  type: String
+- contextPath: Guardian.ApprovalResolve.tool_name
+  description: The gated command name (kind=tool only; null for a plan).
+  type: String
+- contextPath: Guardian.ApprovalResolve.posted_to_war_room
+  description: Whether the resolution confirmation note posted successfully.
+  type: Boolean
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

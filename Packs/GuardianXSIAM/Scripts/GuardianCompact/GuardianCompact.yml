@@ -1,0 +1,75 @@
+args:
+- name: messages
+  description: >-
+    The message list to consider, oldest first, as a JSON array. It does not include the system prompt. It can
+    start with a checkpoint from an earlier compaction, which is folded into the new summary.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: keep_recent
+  description: >-
+    How many of the newest messages to keep verbatim instead of summarizing. The cut never leaves a tool reply
+    without its call. Defaults to 10.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: max_input_tokens
+  description: >-
+    Optional. The model's input budget, in Guardian's token estimate. The summarization request is held to it
+    (long tool results are shown shorter, then the middle of the transcript is cut). The agent loop passes it;
+    without it the run's own budget is read from context, and with none the request is not limited.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: tool_render_chars
+  description: >-
+    Optional. How many characters of each tool result the summarizer is shown. The agent loop passes a value
+    derived from its per-result limit; defaults to 2000.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Summarizes the older part of an investigation transcript into a single checkpoint message so the
+  conversation fits the model's context. Identifiers such as incident IDs, IPs, hostnames, hashes and ATT&CK
+  IDs are copied exactly. It returns the checkpoint, the recent messages that were kept verbatim, and the
+  usage and model of the summarization call, which the caller charges to the cost ledger. It never raises an
+  error: on any failure it returns ok=false with an error message, and the caller decides whether to retry.
+commonfields:
+  id: GuardianCompact
+  version: -1
+enabled: true
+name: GuardianCompact
+outputs:
+- contextPath: Guardian.Compact.checkpoint
+  description: "The new checkpoint message (role system) that replaces the summarized part of the transcript."
+  type: Unknown
+- contextPath: Guardian.Compact.kept_messages
+  description: "The recent messages that were kept verbatim."
+  type: Unknown
+- contextPath: Guardian.Compact.messages_summarized
+  description: How many messages were folded into this checkpoint's summary.
+  type: Number
+- contextPath: Guardian.Compact.had_prior_checkpoint
+  description: Whether an earlier checkpoint was found leading `messages` and
+    folded (superseded) into this new summary.
+  type: Boolean
+- contextPath: Guardian.Compact.usage
+  description: "The usage reported by the summarization call, to be charged through GuardianCostLedger."
+  type: Unknown
+- contextPath: Guardian.Compact.model
+  description: The model that served the summarization call.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

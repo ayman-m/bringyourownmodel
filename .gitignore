@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+*.zip
+build/
+dist/
+release/
+.demisto_sdk_env
+.pre-commit/
+report_pytest.xml
+.hypothesis/
+Packs/*/Scripts/*/conftest.py
+Packs/*/Integrations/*/conftest.py
+.DS_Store
+*.local.txt

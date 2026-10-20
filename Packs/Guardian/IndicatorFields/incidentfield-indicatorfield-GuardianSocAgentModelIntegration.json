@@ -1,0 +1,17 @@
+{
+    "id": "indicator_socagentmodelintegration",
+    "name": "Guardian Model Integration",
+    "cliName": "socagentmodelintegration",
+    "type": "shortText",
+    "placeholder": "Configured provider/instance name; do not enter credentials.",
+    "associatedTypes": ["SOC Agent"],
+    "associatedToAll": false,
+    "content": true,
+    "system": false,
+    "group": 2,
+    "unsearchable": true,
+    "required": false,
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "marketplaces": ["xsoar"]
+}

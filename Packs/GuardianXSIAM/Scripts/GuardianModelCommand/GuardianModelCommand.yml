@@ -1,0 +1,53 @@
+args: []
+comment: >-
+  `!guardian-model` shows the model in use. It is read-only and lists every configured `GuardianLLM`
+  integration instance with its provider and model, which is what every reasoning turn uses, together with the
+  size and budgets an investigation started now would use, each with its source (documented from the model
+  catalogue, confirmed, measured, quota or override) and, for a measured figure, the gap from the documented
+  limit. To change the model, edit the integration
+  instance's configuration. It is an operator command and is not on the agent's tool allowlist.
+commonfields:
+  id: guardian-model
+  version: -1
+enabled: true
+name: guardian-model
+outputs:
+- contextPath: Guardian.Model.effective.tier
+  description: The model size an investigation started now would use (small, medium or large).
+  type: String
+- contextPath: Guardian.Model.effective.max_input_tokens
+  description: The input budget an investigation started now would use (null when there is no ceiling).
+  type: Number
+- contextPath: Guardian.Model.effective.max_tool_def_tokens
+  description: The tool-list token budget an investigation started now would use.
+  type: Number
+- contextPath: Guardian.Model.effective.max_input_tokens_source
+  description: >-
+    Where the input budget comes from: override, documented (with the catalogue date), confirmed by a probe,
+    documented with a quota-limited probe, measured, guardian_settings or none.
+  type: String
+- contextPath: Guardian.Model.effective.profile_record.source
+  description: The source of the active profile record (documented, confirmed, measured or quota).
+  type: String
+- contextPath: Guardian.Model.instances.instance_name
+  description: Configured GuardianLLM instance name.
+  type: String
+- contextPath: Guardian.Model.instances.enabled
+  description: Whether that instance is enabled.
+  type: Boolean
+- contextPath: Guardian.Model.instances.provider
+  description: 'That instance''s configured provider (openai-compatible|azure|vertex).'
+  type: String
+- contextPath: Guardian.Model.instances.model
+  description: "The instance's configured model or deployment name."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

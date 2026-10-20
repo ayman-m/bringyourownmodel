@@ -1,0 +1,66 @@
+{
+    "id": "GuardianIntakeHygiene",
+    "name": "GuardianIntakeHygiene",
+    "version": -1,
+    "index": 0,
+    "action": "script",
+    "scriptName": "GuardianIntakeHygiene",
+    "enabled": true,
+    "linkTo": "oldest",
+    "locked": false,
+    "system": false,
+    "searchClosed": false,
+    "packID": "",
+    "itemVersion": "",
+    "toServerVersion": "",
+    "period": {
+        "by": "days",
+        "fromValue": 30
+    },
+    "newEventFilters": [
+        [
+            {
+                "operator": "isEqualString",
+                "left": {
+                    "value": {
+                        "simple": "type"
+                    },
+                    "isContext": true
+                },
+                "right": {
+                    "value": {
+                        "simple": "Guardian Agent Run"
+                    },
+                    "isContext": false
+                },
+                "type": "singleSelect"
+            }
+        ]
+    ],
+    "readyNewEventFilters": [
+        [
+            {
+                "operator": "isEqualString",
+                "left": {
+                    "value": {
+                        "simple": "type"
+                    },
+                    "isContext": true
+                },
+                "right": {
+                    "value": {
+                        "simple": "Guardian Agent Run"
+                    },
+                    "isContext": false
+                },
+                "type": "singleSelect"
+            }
+        ]
+    ],
+    "existingEventsFilters": [],
+    "readyExistingEventsFilters": [],
+    "fromVersion": "6.10.0",
+    "marketplaces": [
+        "xsoar"
+    ]
+}

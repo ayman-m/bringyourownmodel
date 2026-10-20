@@ -1,0 +1,126 @@
+args:
+- name: template
+  description: >-
+    Which ready-made query to run: identity_activity (what one identity did, needs `identity`),
+    resource_change_history (who changed one resource, needs `resource`), resource_access_activity (who read or
+    used one resource without changing it, needs `resource`), ip_activity (what one source IP did, needs `ip`),
+    identity_unused_permissions (permissions an identity holds and has not used, needs `identity`).
+    Use `list` to see every template and its parameters. Leave it out when you pass `query` or `execution_id`.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: identity
+  description: "The identity or compute resource name to look at, as it appears in the cloud audit log (for example a user principal name or a role name). An account written DOMAIN\\user (one backslash; letters, digits, dot, dash, underscore, and $ in the user part) is matched exactly by identity_unused_permissions; identity_activity matches it by the account name before the @ of the audit log's user principal names, across all domains (and says so). A user principal name or an object id is matched exactly. Plain text; no quotes or pipes."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: resource
+  description: "The cloud resource whose changes or access you want: its full resource id (for example the /subscriptions/... id an issue carries) or its short name (for example a storage account or route table name)."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: ip
+  description: "The source IP address (IPv4 or IPv6) to look at."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: hours
+  description: "Optional. How many hours back to look. Each template has a sensible default, and a raw query defaults to 24; a longer window scans more data and costs more compute units."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: anchor_time
+  description: >-
+    Optional. The moment the activity you are looking at happened (the issue's event time), ISO-8601 such as
+    2026-01-02T03:04:05Z, or epoch seconds or milliseconds. The window then runs from `hours` before it to one hour
+    after it (never past now), instead of counting back from now. Use it for a detection's lookups: an alert that is
+    a day old is not answered by the last few hours. Leave it empty for a posture finding or a question about
+    "recently". An unreadable value is an error and no query runs.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: query
+  description: >-
+    Optional. Your own XQL query, run as written (for example `dataset = cloud_audit_logs | filter ... | comp count()
+    by ...`). Use it when no template fits. Filter early and aggregate on the server; the cost is reported.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: execution_id
+  description: >-
+    Optional. The execution id of an earlier query that was still running. Fetches its results without running
+    it again, so it costs nothing.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: context_key
+  description: >-
+    Optional, for playbooks. Leaves the result at this context path instead of Guardian.XQL, so two queries in one
+    playbook do not overwrite or merge each other. Must look like Guardian.Enrich.<Name>.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Runs a telemetry query and waits for its rows: a ready-made template for a common investigation question (what
+  one identity did, who changed a resource, who only read it, what one IP did, which permissions an identity never used), or your
+  own XQL with `query`. Returns the rows with the compute units the query cost and what is left today. A query that
+  is still running after about a minute returns its execution id; fetch it later with `execution_id`, which costs
+  nothing. Read-only.
+commonfields:
+  id: GuardianXQL
+  version: -1
+enabled: true
+name: GuardianXQL
+outputs:
+- contextPath: Guardian.XQL.template
+  description: The template that ran.
+  type: String
+- contextPath: Guardian.XQL.query
+  description: The query text that ran.
+  type: String
+- contextPath: Guardian.XQL.rows
+  description: The result rows (at most 100).
+  type: Unknown
+- contextPath: Guardian.XQL.number_of_results
+  description: How many rows the query returned.
+  type: Number
+- contextPath: Guardian.XQL.query_cost
+  description: Compute units the query cost.
+  type: Number
+- contextPath: Guardian.XQL.remaining_quota
+  description: Compute units left in today's quota after the query.
+  type: Number
+- contextPath: Guardian.XQL.advisory
+  description: Notes on the query (a long window, a costly view).
+  type: Unknown
+- contextPath: Guardian.XQL.error
+  description: Why nothing ran or the query failed, in the platform's words.
+  type: String
+- contextPath: Guardian.XQL.templates
+  description: With template=list, each template with its parameters and windows.
+  type: Unknown
+- contextPath: Guardian.XQL.execution_id
+  description: The query's execution id, for fetching a query that was still running.
+  type: String
+- contextPath: Guardian.XQL.status
+  description: SUCCESS, PENDING (still running) or the platform's failure status.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

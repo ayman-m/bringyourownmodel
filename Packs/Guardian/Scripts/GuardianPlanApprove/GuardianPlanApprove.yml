@@ -1,0 +1,54 @@
+args:
+- name: steps
+  description: >-
+    A JSON array of `{tool_name, tool_args}` objects: the proposed multi-step plan, with at most `batch_cap`
+    steps (a `guardian_settings` value). Every step is checked against `guardian_tool_denylist` before an
+    approval request is created, and a plan with a denied step is rejected.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: summary
+  description: >-
+    Optional short description of the plan's purpose, shown on the approval request in the War Room.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  The agent's "propose a multi-step plan" tool. It creates one `guardian_approvals_ledger` row (kind=plan) and
+  one War Room approval request that covers every step, returns `status: "pending_approval"`, and the loop
+  pauses until an analyst decides. On `!guardian-approve`, each step runs through GuardianToolBridge with its
+  own single-use token. Every step is still audited, and the kill switch, denylist, allowlist and deny tier
+  are enforced for every step. On `!guardian-deny`, no step runs.
+commonfields:
+  id: GuardianPlanApprove
+  version: -1
+enabled: true
+name: GuardianPlanApprove
+outputs:
+- contextPath: Guardian.PlanApprove.status
+  description: Always "pending_approval" on success.
+  type: String
+- contextPath: Guardian.PlanApprove.approval_id
+  description: The plan's approval id.
+  type: String
+- contextPath: Guardian.PlanApprove.risk_tier
+  description: "The highest risk tier among the steps: soft, destructive or credential."
+  type: String
+- contextPath: Guardian.PlanApprove.step_count
+  description: Number of steps in the plan.
+  type: Number
+- contextPath: Guardian.PlanApprove.posted_to_war_room
+  description: Whether the plan's War Room card posted successfully.
+  type: Boolean
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

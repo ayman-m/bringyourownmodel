@@ -1,0 +1,16 @@
+{
+    "id": "indicator_socagentowner",
+    "name": "Guardian Agent Owner",
+    "cliName": "socagentowner",
+    "type": "role",
+    "associatedTypes": ["SOC Agent"],
+    "associatedToAll": false,
+    "content": true,
+    "system": false,
+    "group": 2,
+    "unsearchable": true,
+    "required": false,
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "marketplaces": ["marketplacev2"]
+}

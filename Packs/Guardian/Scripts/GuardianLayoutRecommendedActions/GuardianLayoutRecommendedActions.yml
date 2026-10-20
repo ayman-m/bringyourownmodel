@@ -1,0 +1,26 @@
+args: []
+comment: >-
+  Layout section for the Guardian tab of the Guardian Agent Run layout. Shows the agent's final conclusion
+  (from `Guardian.Loop.messages`) as a card, and the actions waiting for a person's approval on this incident
+  (from `guardian_approvals_ledger`) as a table with each request's risk tier, age, time left before it
+  expires, a short redacted summary of its arguments and how to approve or deny it. Returns HTML and falls
+  back to plain text if the HTML cannot be built. It only displays information. It reads the incident and its
+  context, so it shows nothing in the Playground; run it on a real incident. It shows an empty state, not an
+  error, when there is no conclusion or pending action yet.
+commonfields:
+  id: GuardianLayoutRecommendedActions
+  version: -1
+enabled: true
+name: GuardianLayoutRecommendedActions
+outputs: []
+script: '-'
+system: false
+tags:
+- dynamic-section
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

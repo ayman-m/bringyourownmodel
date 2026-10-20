@@ -1,0 +1,111 @@
+args:
+- name: action
+  description: The tool/command name being audited (e.g. "ip", "setIncident").
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: target
+  description: Optional target of the action (e.g. an indicator value, a list
+    name, an incident id).
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: status
+  description: 'Outcome of the audited call. One of: ok, error, denied,
+    halted, pending_approval, approved, skipped.'
+  required: true
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - ok
+  - error
+  - denied
+  - halted
+  - pending_approval
+  - skipped
+- name: duration_ms
+  description: Optional call duration in milliseconds.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: actor
+  description: Who/what performed the action.
+  required: false
+  isArray: false
+  default: true
+  defaultValue: agent
+  secret: false
+- name: tick_id
+  description: Optional reasoning-tick identifier.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: run_id
+  description: "Optional run identifier, normally the incident id. Defaults to the current incident's id."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: detail
+  description: >-
+    Optional extra context, as a JSON object or array string or as free text. It is redacted before it is
+    written.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Writes the Guardian audit trail for a tool call. Each call adds one structured row to the `guardian_audit`
+  List and one action-tagged War Room note, and redacts sensitive values (including `detail`) before anything
+  is written. Timestamps come from the server clock. Rows are append-only by convention; the hourly
+  GuardianHousekeeping job consolidates and rotates them.
+commonfields:
+  id: GuardianAuditWrite
+  version: -1
+enabled: true
+name: GuardianAuditWrite
+outputs:
+- contextPath: Guardian.AuditRow.ts
+  description: >-
+    Server-derived ISO-8601 timestamp of the audited call, or null if server time could not be obtained.
+  type: String
+- contextPath: Guardian.AuditRow.actor
+  description: Who/what performed the action.
+  type: String
+- contextPath: Guardian.AuditRow.action
+  description: The tool/command name that was audited.
+  type: String
+- contextPath: Guardian.AuditRow.target
+  description: The target of the action, if any.
+  type: String
+- contextPath: Guardian.AuditRow.status
+  description: 'One of: ok, error, denied, halted, pending_approval, approved, skipped.'
+  type: String
+- contextPath: Guardian.AuditRow.duration_ms
+  description: Call duration in milliseconds, if provided.
+  type: Number
+- contextPath: Guardian.AuditRow.tick_id
+  description: The reasoning-tick identifier, if provided.
+  type: String
+- contextPath: Guardian.AuditRow.run_id
+  description: The run identifier (incident id), if provided or defaulted.
+  type: String
+- contextPath: Guardian.AuditRow.detail
+  description: Extra structured context for the call, redacted at capture time.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

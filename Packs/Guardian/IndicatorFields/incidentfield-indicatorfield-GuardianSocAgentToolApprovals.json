@@ -1,0 +1,24 @@
+{
+    "id": "indicator_socagenttoolapprovals",
+    "name": "Guardian Tool Approvals",
+    "cliName": "socagenttoolapprovals",
+    "type": "grid",
+    "columns": [
+        {"displayName": "Command", "fieldCalcScript": "", "isDefault": true, "isReadOnly": false, "key": "command", "orgType": "shortText", "required": false, "script": "", "selectValues": null, "type": "shortText", "width": 180},
+        {"displayName": "Decision", "fieldCalcScript": "", "isDefault": true, "isReadOnly": false, "key": "decision", "orgType": "singleSelect", "required": false, "script": "", "selectValues": ["Allowed", "Denied", "Needs review"], "type": "singleSelect", "width": 140},
+        {"displayName": "Owner", "fieldCalcScript": "", "isDefault": true, "isReadOnly": false, "key": "owner", "orgType": "shortText", "required": false, "script": "", "selectValues": null, "type": "shortText", "width": 150},
+        {"displayName": "Rationale", "fieldCalcScript": "", "isDefault": true, "isReadOnly": false, "key": "rationale", "orgType": "shortText", "required": false, "script": "", "selectValues": null, "type": "shortText", "width": 300},
+        {"displayName": "Reviewed", "fieldCalcScript": "", "isDefault": true, "isReadOnly": false, "key": "reviewed", "orgType": "shortText", "required": false, "script": "", "selectValues": null, "type": "shortText", "width": 140}
+    ],
+    "defaultRows": [],
+    "associatedTypes": ["SOC Agent"],
+    "associatedToAll": false,
+    "content": true,
+    "system": false,
+    "group": 2,
+    "unsearchable": true,
+    "required": false,
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "marketplaces": ["xsoar"]
+}

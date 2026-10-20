@@ -1,0 +1,91 @@
+args:
+- name: max_assets
+  description: "Optional. The most asset ids to look up with core-get-asset-details. Defaults to 5."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: prior_limit
+  description: "Optional. How many earlier resolved issues of the same rule to read. Defaults to 5."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: mode
+  description: "Optional. issue (the default) gathers the evidence for this issue; digest also lists the open issues of its rule, grouped by asset, for one report per rule, and flags a rule already digested today; append adds sections to the packet that is already in context (needs paths) and fetches nothing."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - issue
+  - digest
+  - append
+- name: paths
+  description: "Only for mode=append. Comma-separated context paths whose values are added to the packet as extra sections, for example Core.RiskyUser,Guardian.Enrich.IdentityActivity. Each is rendered with the packet's compaction, cut and defanging and sits inside the untrusted-data wrapper, under a heading naming the path. A path with nothing in context is listed as not available. A path appended before is replaced. Paths in the Guardian namespace other than Guardian.Enrich, Guardian.XQL and Guardian.Triage are refused."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Before the model session starts, fetches what the platform already knows about this issue (its status, the
+  platform's remediation text, the asset details, the parent case, how earlier issues of the same rule were
+  resolved, and Guardian's own memory for the rule and assets) and writes one bounded evidence packet to
+  Guardian.Evidence. The packet is pinned at the start of the model session. Every command is read-only and
+  fixed; none costs compute units, and each call is audited. A command that is missing or fails is noted in the
+  packet and never stops the run. Which steps run comes from Guardian.Route.evidence_plan. With mode=append it
+  instead adds the context values at `paths` (the results of earlier playbook tasks) to the packet already in
+  context as extra bounded sections, so the model session sees them without fetching anything again; the
+  packet's own sections and its untrusted-data wrapper are kept and its time stamp is refreshed. An added
+  section counts as an independent read (corroborated), and one from telemetry or the asset record also as a read of
+  the condition, except the triage record and the issue list; an empty one counts for neither.
+commonfields:
+  id: GuardianIssueEvidence
+  version: -1
+enabled: true
+name: GuardianIssueEvidence
+outputs:
+- contextPath: Guardian.Evidence.issue_id
+  description: The issue the packet is about.
+  type: String
+- contextPath: Guardian.Evidence.family
+  description: The route family the plan came from.
+  type: String
+- contextPath: Guardian.Evidence.generated
+  description: Epoch seconds when the packet was built.
+  type: Number
+- contextPath: Guardian.Evidence.calls
+  description: Number of commands the pre-fetch ran.
+  type: Number
+- contextPath: Guardian.Evidence.failures
+  description: How many of those commands failed or returned nothing.
+  type: Number
+- contextPath: Guardian.Evidence.corroborated
+  description: True when an independent read (asset details, prior resolutions, risky-user lookup) succeeded.
+  type: Boolean
+- contextPath: Guardian.Evidence.mode
+  description: issue or digest.
+  type: String
+- contextPath: Guardian.Evidence.digest_done
+  description: True in digest mode when a digest for this rule was already written today.
+  type: Boolean
+- contextPath: Guardian.Evidence.digest_key
+  description: In digest mode, the memory key that marks this rule as digested today.
+  type: String
+- contextPath: Guardian.Evidence.items
+  description: Each step's outcome (name, command, ok, corroborates, size, error), without the data.
+  type: Unknown
+- contextPath: Guardian.Evidence.rendered
+  description: The packet text the model session pins.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

@@ -1,0 +1,73 @@
+args:
+- name: scenario
+  description: >-
+    Scenario to create: phishing, brute_force, malware_beacon, benign_fp or generic. An unknown value falls
+    back to generic, with a note in the result.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  defaultValue: generic
+- name: count
+  description: "How many issues to create. Default 1, maximum 20."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  defaultValue: '1'
+- name: incidenttype
+  description: >-
+    The incident type label shown in the result. The issue is created from an alert, so this value does not
+    change it. Defaults to "Guardian Agent Run".
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  defaultValue: Guardian Agent Run
+- name: investigate
+  description: >-
+    If true, also starts the investigation of each issue, which starts its default playbook. Default false.
+    Investigating an issue uses model calls and costs money, so it is opt-in.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  defaultValue: 'false'
+comment: >-
+  Creates synthetic test issues for testing and demos. Each issue is created by inserting an alert through the
+  Core REST API integration and is then tagged `guardiantriggersource=simulate`, so it can always be filtered
+  out of real triage. Issues are created pending and are not investigated unless you pass `investigate=true`.
+  It is an operator and test command and is not on the agent's tool allowlist.
+commonfields:
+  id: GuardianSimulateIncidents
+  version: -1
+enabled: true
+name: GuardianSimulateIncidents
+outputs:
+- contextPath: Guardian.SimulateIncidents.scenario
+  description: "The scenario used, after any fallback to generic."
+  type: String
+- contextPath: Guardian.SimulateIncidents.requested_count
+  description: "The number of issues attempted, after the maximum of 20 is applied."
+  type: Number
+- contextPath: Guardian.SimulateIncidents.created
+  description: "`{id, name, scenario, investigated}` for each issue created."
+  type: Unknown
+- contextPath: Guardian.SimulateIncidents.errors
+  description: "`{index, error}` for each issue that could not be created."
+  type: Unknown
+- contextPath: Guardian.SimulateIncidents.note
+  description: "Any note, for example about an unknown scenario or a reduced count."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2
+skipprepare:
+- script-name-incident-to-alert

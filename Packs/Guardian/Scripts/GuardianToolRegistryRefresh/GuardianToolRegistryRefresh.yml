@@ -1,0 +1,46 @@
+args: []
+comment: >-
+  SOC Agent indicator layout action button. Discovers the commands that are currently available from the
+  configured instances and automations (`demisto.getAllSupportedCommands()`) and saves a compact snapshot to
+  the `guardian_tool_available` List. On first use it creates the editable `guardian_tool_allowlist_runtime`
+  List from the pack's allowlist, and it never overwrites later operator changes. It is operator-only and is
+  not a tool the model can call.
+commonfields:
+  id: GuardianToolRegistryRefresh
+  version: -1
+enabled: true
+name: GuardianToolRegistryRefresh
+outputs:
+- contextPath: Guardian.ToolRegistry.available_action
+  description: "Whether `guardian_tool_available` was created or updated."
+  type: String
+- contextPath: Guardian.ToolRegistry.allowlist_action
+  description: >-
+    Whether `guardian_tool_allowlist_runtime` was created from the pack's allowlist or already existed.
+  type: String
+- contextPath: Guardian.ToolRegistry.available_commands
+  description: Number of distinct currently available commands discovered.
+  type: Number
+- contextPath: Guardian.ToolRegistry.available_instances
+  description: "Number of configured instances that provide commands."
+  type: Number
+- contextPath: Guardian.ToolRegistry.refreshed_at
+  description: UTC timestamp of the saved availability snapshot.
+  type: Date
+- contextPath: Guardian.ToolRegistry.runtime_allowlist
+  description: "Name of the editable effective allowlist List."
+  type: String
+- contextPath: Guardian.ToolRegistry.available_snapshot
+  description: "Name of the List that holds the snapshot of available commands."
+  type: String
+script: '-'
+system: false
+tags:
+- indicator-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

@@ -1,0 +1,22 @@
+args: []
+comment: >-
+  Liveness check. It always returns "pong". Use it to confirm that Guardian automations run on this server.
+commonfields:
+  id: GuardianPing
+  version: -1
+enabled: true
+name: GuardianPing
+outputs:
+- contextPath: Guardian.Ping
+  description: "The static \"pong\" value."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

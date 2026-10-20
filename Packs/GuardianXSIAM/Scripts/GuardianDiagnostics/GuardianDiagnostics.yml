@@ -1,0 +1,76 @@
+args:
+- name: name
+  description: >-
+    Optional integration, brand or instance name (or part of one) to diagnose, for example "splunk" or
+    "Whois". Omit it for a health summary of every enabled instance. If the text matches several instances,
+    the error lists their exact names.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: limit
+  description: >-
+    Maximum number of fetch-history rows to return for a named target, newest first. Default 5, range 1 to 50.
+    Ignored for the summary.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  The agent's "why is this integration or fetch failing?" tool. Without an argument it summarizes the health
+  of every enabled integration instance together with the command catalogue. With an integration, brand or
+  instance name it re-runs that instance's Test and reads its recent fetch history. It recognizes the
+  responses that return HTTP 200 but still report a failure, so a logical failure is not mistaken for a
+  success. An unknown name or an unreachable instance returns a clear result instead of an error. It only
+  reads and tests, and changes no configuration.
+commonfields:
+  id: GuardianDiagnostics
+  version: -1
+enabled: true
+name: GuardianDiagnostics
+outputs:
+- contextPath: Guardian.Diagnostics.target
+  description: The requested integration/brand/instance name, or null for
+    the summary.
+  type: String
+- contextPath: Guardian.Diagnostics.total_instances
+  description: Total configured instances found (summary mode only).
+  type: Number
+- contextPath: Guardian.Diagnostics.enabled_count
+  description: Count of enabled instances (summary mode only).
+  type: Number
+- contextPath: Guardian.Diagnostics.disabled_count
+  description: Count of disabled instances (summary mode only).
+  type: Number
+- contextPath: Guardian.Diagnostics.unhealthy_count
+  description: Count of enabled instances with a non-empty last_error
+    (summary mode only).
+  type: Number
+- contextPath: Guardian.Diagnostics.instances
+  description: 'Per-instance summary (summary mode only): {brand,
+    instance_name, enabled, healthy, last_error, modified, command_count}.'
+  type: Unknown
+- contextPath: Guardian.Diagnostics.command_catalog_brands
+  description: >-
+    Number of top-level groups in the command catalogue, which is keyed by configured instance name (summary
+    mode only).
+  type: Number
+- contextPath: Guardian.Diagnostics.command_catalog_total_commands
+  description: Total commands across every brand (summary mode only).
+  type: Number
+- contextPath: Guardian.Diagnostics.instance
+  description: 'Full diagnosis of the resolved target instance (named-target
+    mode only): {brand, instance_name, enabled, healthy, last_error,
+    modified, command_count, test: {success, message}, fetch_history:
+    {available, total, runs, note}}.'
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

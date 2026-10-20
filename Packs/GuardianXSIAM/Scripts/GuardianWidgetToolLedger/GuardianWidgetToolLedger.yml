@@ -1,0 +1,22 @@
+args: []
+comment: >-
+  Dashboard widget of the GuardianObservability dashboard. Shows the tool-call activity from `guardian_audit`
+  across all runs, grouped by status (ok, pending_approval, denied, error, halted), as a pie chart. It is
+  read-only and never creates or writes `guardian_audit`.
+commonfields:
+  id: GuardianWidgetToolLedger
+  version: -1
+enabled: true
+name: GuardianWidgetToolLedger
+outputs: []
+script: '-'
+system: false
+tags:
+- widget
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

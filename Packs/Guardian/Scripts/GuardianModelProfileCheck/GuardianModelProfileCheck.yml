@@ -1,0 +1,62 @@
+args: []
+comment: >-
+  Playbook task "Resolve model profile". Works out the model size, input budget and tool-list budget this run
+  will use, in this order of precedence: operator override, `guardian_model_profile`, `guardian_settings`,
+  default; the model size is the operator's pin, else the model's size in the model catalogue, else
+  `guardian_settings.model_tier`, else small. It also derives the limits that scale with the input budget
+  (per-result limit, incident details, history). It shows each value with its source (documented, confirmed,
+  measured or override) and saves a
+  per-run snapshot in `Guardian.ModelProfile`. Before it resolves, it looks the enabled model up in the model
+  catalogue (`guardian_model_catalog`): for a model whose limits are published (a closed frontier model, or
+  a model with a cloud provider cap) and with no better record on file, it writes a `documented` profile, so
+  a known model needs no probe. It never replaces a confirmed or measured record for the same model, never
+  touches `overrides`, and never writes a profile for a self-hosted open-weight model (only a probe can
+  say what window it is served with). It warns when the model size differs from the provider instance's
+  "Model size" setting, when a probed profile is old, or when the model does not honor tools. It never
+  blocks the run: any failure is a warning.
+commonfields:
+  id: GuardianModelProfileCheck
+  version: -1
+dockerimage: demisto/python3:3.11.10.116949
+enabled: true
+fromversion: 6.10.0
+marketplaces:
+- xsoar
+name: GuardianModelProfileCheck
+outputs:
+- contextPath: Guardian.Preflight.ModelProfile.tier
+  description: The model size this run uses (small, medium or large).
+  type: String
+- contextPath: Guardian.Preflight.ModelProfile.tier_source
+  description: Where the model size comes from (override, catalogue (<model id>), guardian_settings or default).
+  type: String
+- contextPath: Guardian.Preflight.ModelProfile.max_input_tokens
+  description: The input budget this run uses (null when there is no ceiling).
+  type: Number
+- contextPath: Guardian.Preflight.ModelProfile.max_tool_def_tokens
+  description: The tool-list token budget this run uses.
+  type: Number
+- contextPath: Guardian.Preflight.ModelProfile.mismatch
+  description: True when an enabled provider instance declares a different Model size.
+  type: Boolean
+- contextPath: Guardian.Preflight.ModelProfile.warning
+  description: The model-size mismatch warning text, or empty.
+  type: String
+- contextPath: Guardian.Preflight.ModelProfile.profile_age_days
+  description: Age in days of the probed profile (null when there is none, or when it is a documented one).
+  type: Number
+- contextPath: Guardian.Preflight.ModelProfile.profile_source
+  description: Where the profile record comes from (documented, confirmed, measured or quota); empty when there is none.
+  type: String
+- contextPath: Guardian.Preflight.ModelProfile.catalog_action
+  description: What the model catalogue step did (written, none or failed).
+  type: String
+- contextPath: Guardian.Preflight.ModelProfile.catalog_model
+  description: The model catalogue entry the enabled model matched (empty when it is not listed).
+  type: String
+script: '-'
+subtype: python3
+system: false
+tags: []
+timeout: '0'
+type: python

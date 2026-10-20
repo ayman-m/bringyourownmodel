@@ -1,0 +1,24 @@
+args: []
+comment: >-
+  `!guardian-help` shows the command reference card: every `!guardian-*` operator command (chat, ask, cost,
+  tools, plan, compact, model, help), and a note that native commands can be run directly with `!<command>`.
+  It needs no Lists or context, so it works right after installation.
+commonfields:
+  id: guardian-help
+  version: -1
+enabled: true
+name: guardian-help
+outputs:
+- contextPath: Guardian.Help.text
+  description: "The help card as markdown (same text as the readable output)."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

@@ -1,0 +1,73 @@
+args: []
+comment: >-
+  `!guardian-tools` shows which tools the model can actually call. It builds the callable catalogue after live
+  command discovery, denylist filtering and the token-budget trim, and shows the number of commands on the
+  allowlist and any commands that were dropped or are missing. It is read-only and does not call the model, so
+  it works even when no model is configured. It is an operator command and is not on the agent's tool
+  allowlist; the agent already receives the same catalogue on every turn.
+commonfields:
+  id: guardian-tools
+  version: -1
+enabled: true
+name: guardian-tools
+outputs:
+- contextPath: Guardian.Tools.list_name
+  description: >-
+    The List the catalogue was built from: `guardian_tool_allowlist_runtime` once an operator has populated
+    it, otherwise `guardian_tool_allowlist` (the pack's baseline).
+  type: String
+- contextPath: Guardian.Tools.allowlist_source
+  description: >-
+    `runtime` when the editable `guardian_tool_allowlist_runtime` List is in use, otherwise
+    `baseline_fallback`.
+  type: String
+- contextPath: Guardian.Tools.commands
+  description: "Names of the commands in the catalogue the model receives."
+  type: Unknown
+- contextPath: Guardian.Tools.count
+  description: Number of commands actually callable by the model.
+  type: Number
+- contextPath: Guardian.Tools.configured_commands
+  description: >-
+    Command names on the effective allowlist, without duplicates, before live filtering and budget trim.
+  type: Unknown
+- contextPath: Guardian.Tools.configured_count
+  description: "Number of commands on the effective allowlist before live filtering and budget trim."
+  type: Number
+- contextPath: Guardian.Tools.curation_note
+  description: "Always null. Kept so the output shape stays the same."
+  type: String
+- contextPath: Guardian.Tools.warning
+  description: >-
+    Warning from building the catalogue, including a warning that the token budget forced a truncation.
+  type: String
+- contextPath: Guardian.Tools.dropped_by_budget
+  description: Allowlisted commands trimmed from the callable catalogue to fit the configured token budget.
+  type: Unknown
+- contextPath: Guardian.Tools.missing_on_box
+  description: "Allowlisted commands that are not available on this server."
+  type: Unknown
+- contextPath: Guardian.Tools.excluded_by_denylist
+  description: >-
+    Allowlisted command names that were left out because they are also in `guardian_tool_denylist`.
+  type: Unknown
+- contextPath: Guardian.Tools.excluded_by_operator_boundary
+  description: >-
+    Allowlisted Guardian operator-control commands that were left out because the agent may not manage itself.
+  type: Unknown
+- contextPath: Guardian.Tools.description_truncated
+  description: "Callable commands whose descriptions were shortened to fit the per-command size limit."
+  type: Unknown
+- contextPath: Guardian.Tools.max_tool_def_tokens
+  description: "The token ceiling for all tool definitions together, used for the budget trim."
+  type: Number
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

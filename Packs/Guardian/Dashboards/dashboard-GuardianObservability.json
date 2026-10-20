@@ -1,0 +1,275 @@
+{
+    "id": "guardian-observability",
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "description": "Observability for Guardian: cost rollups, tool-call activity, agent loop health (including the kill switch state), the pending-approvals queue and a feed of recent high-signal events, drawn from guardian_audit, guardian_cost_ledger, guardian_approvals_ledger and Guardian Agent Run incidents.",
+    "period": {
+        "byTo": "",
+        "byFrom": "days",
+        "toValue": null,
+        "fromValue": 7,
+        "field": ""
+    },
+    "fromDateLicense": "0001-01-01T00:00:00Z",
+    "name": "Guardian Observability",
+    "layout": [
+        {
+            "id": "e6d2e115-3ed4-4973-8bd9-e1b3c799f054",
+            "forceRange": false,
+            "x": 0,
+            "y": 0,
+            "i": "e6d2e115-3ed4-4973-8bd9-e1b3c799f054",
+            "w": 6,
+            "h": 3,
+            "widget": {
+                "id": "Guardian Cost Ledger",
+                "version": -1,
+                "modified": "2026-07-06T00:00:00.000000+00:00",
+                "name": "Guardian Cost Ledger (USD x1000)",
+                "dataType": "scripts",
+                "widgetType": "line",
+                "query": "GuardianWidgetCost",
+                "sort": null,
+                "isPredefined": false,
+                "dateRange": {
+                    "fromDate": "0001-01-01T00:00:00Z",
+                    "toDate": "0001-01-01T00:00:00Z",
+                    "period": {
+                        "byTo": "",
+                        "byFrom": "days",
+                        "toValue": null,
+                        "fromValue": null,
+                        "field": ""
+                    },
+                    "fromDateLicense": "0001-01-01T00:00:00Z"
+                },
+                "params": {},
+                "size": 10,
+                "category": ""
+            }
+        },
+        {
+            "id": "a48d22a5-a5c9-430a-aff5-26fd9e83e28a",
+            "forceRange": false,
+            "x": 6,
+            "y": 0,
+            "i": "a48d22a5-a5c9-430a-aff5-26fd9e83e28a",
+            "w": 6,
+            "h": 3,
+            "widget": {
+                "id": "Guardian Tool Call Activity",
+                "version": -1,
+                "modified": "2026-07-06T00:00:00.000000+00:00",
+                "name": "Guardian Tool Call Activity",
+                "dataType": "scripts",
+                "widgetType": "pie",
+                "query": "GuardianWidgetToolLedger",
+                "sort": null,
+                "isPredefined": false,
+                "dateRange": {
+                    "fromDate": "0001-01-01T00:00:00Z",
+                    "toDate": "0001-01-01T00:00:00Z",
+                    "period": {
+                        "byTo": "",
+                        "byFrom": "days",
+                        "toValue": null,
+                        "fromValue": null,
+                        "field": ""
+                    },
+                    "fromDateLicense": "0001-01-01T00:00:00Z"
+                },
+                "params": {},
+                "size": 10,
+                "category": ""
+            }
+        },
+        {
+            "id": "73f3c441-bd9e-4466-8fe7-86f387b11032",
+            "forceRange": false,
+            "x": 0,
+            "y": 3,
+            "i": "73f3c441-bd9e-4466-8fe7-86f387b11032",
+            "w": 4,
+            "h": 4,
+            "widget": {
+                "id": "Guardian Loop Health",
+                "version": -1,
+                "modified": "2026-07-06T00:00:00.000000+00:00",
+                "name": "Guardian Loop Health",
+                "dataType": "scripts",
+                "widgetType": "table",
+                "query": "GuardianWidgetLoopHealth",
+                "sort": null,
+                "isPredefined": false,
+                "dateRange": {
+                    "fromDate": "0001-01-01T00:00:00Z",
+                    "toDate": "0001-01-01T00:00:00Z",
+                    "period": {
+                        "byTo": "",
+                        "byFrom": "days",
+                        "toValue": null,
+                        "fromValue": null,
+                        "field": ""
+                    },
+                    "fromDateLicense": "0001-01-01T00:00:00Z"
+                },
+                "params": {
+                    "tableColumns": [
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Metric"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Value"
+                        }
+                    ]
+                },
+                "size": 20,
+                "category": ""
+            }
+        },
+        {
+            "id": "23056d8c-51ab-40d9-8e68-509cd72d36e4",
+            "forceRange": false,
+            "x": 4,
+            "y": 3,
+            "i": "23056d8c-51ab-40d9-8e68-509cd72d36e4",
+            "w": 4,
+            "h": 4,
+            "widget": {
+                "id": "Guardian Approvals Queue",
+                "version": -1,
+                "modified": "2026-07-06T00:00:00.000000+00:00",
+                "name": "Guardian Approvals Queue",
+                "dataType": "scripts",
+                "widgetType": "table",
+                "query": "GuardianWidgetApprovalsQueue",
+                "sort": null,
+                "isPredefined": false,
+                "dateRange": {
+                    "fromDate": "0001-01-01T00:00:00Z",
+                    "toDate": "0001-01-01T00:00:00Z",
+                    "period": {
+                        "byTo": "",
+                        "byFrom": "days",
+                        "toValue": null,
+                        "fromValue": null,
+                        "field": ""
+                    },
+                    "fromDateLicense": "0001-01-01T00:00:00Z"
+                },
+                "params": {
+                    "tableColumns": [
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Approval ID"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Kind"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Tool / Plan"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Incident"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Risk"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Age (min)"
+                        }
+                    ]
+                },
+                "size": 50,
+                "category": ""
+            }
+        },
+        {
+            "id": "b3f14c9f-119f-4d42-a728-123eccb7e523",
+            "forceRange": false,
+            "x": 8,
+            "y": 3,
+            "i": "b3f14c9f-119f-4d42-a728-123eccb7e523",
+            "w": 4,
+            "h": 4,
+            "widget": {
+                "id": "Guardian Event Feed",
+                "version": -1,
+                "modified": "2026-07-06T00:00:00.000000+00:00",
+                "name": "Guardian Event Feed",
+                "dataType": "scripts",
+                "widgetType": "table",
+                "query": "GuardianWidgetEventFeed",
+                "sort": null,
+                "isPredefined": false,
+                "dateRange": {
+                    "fromDate": "0001-01-01T00:00:00Z",
+                    "toDate": "0001-01-01T00:00:00Z",
+                    "period": {
+                        "byTo": "",
+                        "byFrom": "days",
+                        "toValue": null,
+                        "fromValue": null,
+                        "field": ""
+                    },
+                    "fromDateLicense": "0001-01-01T00:00:00Z"
+                },
+                "params": {
+                    "tableColumns": [
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Time"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Actor"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Action"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Target"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Status"
+                        },
+                        {
+                            "displayed": true,
+                            "isDefault": true,
+                            "key": "Note"
+                        }
+                    ]
+                },
+                "size": 50,
+                "category": ""
+            }
+        }
+    ],
+    "isPredefined": false,
+    "marketplaces": [
+        "xsoar"
+    ]
+}

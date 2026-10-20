@@ -1,0 +1,9 @@
+{
+    "id": "guardian_pricing",
+    "version": -1,
+    "name": "guardian_pricing",
+    "description": "Price per million tokens for each model, used by the cost ledger. A model with no row is priced at USD 0 and a warning is shown. A row matches a dated or tagged model name by its leading part (gpt-5-mini covers gpt-5-mini-2025-08-07). gpt-5-mini is the Azure Global Standard list price; cohere-command-a is the Cohere list price (Azure Foundry, Global); command-r:35b is an estimate of a self-hosted GPU (one NVIDIA L4 at about USD 0.71 per hour, fully busy), not a vendor price: replace it with your own internal rate. To add or change a model, edit this list's JSON and install the pack again.",
+    "data": "{\"gemini-2.5-flash\": {\"input_per_1m\": 0.3, \"output_per_1m\": 2.5, \"cached_input_per_1m\": 0.075}, \"gpt-5-mini\": {\"input_per_1m\": 0.25, \"output_per_1m\": 2.0, \"cached_input_per_1m\": 0.025}, \"command-r:35b\": {\"input_per_1m\": 1.0, \"output_per_1m\": 10.0, \"cached_input_per_1m\": 1.0}, \"cohere-command-a\": {\"input_per_1m\": 2.5, \"output_per_1m\": 10.0, \"cached_input_per_1m\": 2.5}, \"gpt-oss-120b\": {\"input_per_1m\": 0.15, \"output_per_1m\": 0.6, \"cached_input_per_1m\": 0.15}}",
+    "type": "json",
+    "fromVersion": "6.10.0"
+}

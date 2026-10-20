@@ -1,0 +1,333 @@
+<title>Guardian for XSOAR 6 — Operator Guide & Smoke-Test Report</title>
+<style>
+  :root{
+    --bg:#0a0e13; --panel:#111823; --panel-2:#0d141d; --edge:#1d2836; --edge-2:#26364a;
+    --ink:#e7eef6; --muted:#8797a9; --faint:#5c6b7e;
+    --accent:#37e0a0; --accent-dim:#1f6f52;
+    --ok:#37e0a0; --err:#ff5d6c; --pend:#f6b73c; --deny:#b98cff; --appr:#5aa9ff; --halt:#7d8ba0;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --r:10px; --maxw:960px;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#eef2f6; --panel:#ffffff; --panel-2:#f4f7fa; --edge:#dbe2ea; --edge-2:#c6d1dd;
+      --ink:#131a24; --muted:#54626f; --faint:#8695a4;
+      --accent:#0e9d68; --accent-dim:#bdecd7;
+      --ok:#0e9d68; --err:#d63a49; --pend:#b9791b; --deny:#7b4fd0; --appr:#2f74d0; --halt:#6b7888;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0a0e13; --panel:#111823; --panel-2:#0d141d; --edge:#1d2836; --edge-2:#26364a;
+    --ink:#e7eef6; --muted:#8797a9; --faint:#5c6b7e;
+    --accent:#37e0a0; --accent-dim:#1f6f52;
+    --ok:#37e0a0; --err:#ff5d6c; --pend:#f6b73c; --deny:#b98cff; --appr:#5aa9ff; --halt:#7d8ba0;
+  }
+  :root[data-theme="light"]{
+    --bg:#eef2f6; --panel:#ffffff; --panel-2:#f4f7fa; --edge:#dbe2ea; --edge-2:#c6d1dd;
+    --ink:#131a24; --muted:#54626f; --faint:#8695a4;
+    --accent:#0e9d68; --accent-dim:#bdecd7;
+    --ok:#0e9d68; --err:#d63a49; --pend:#b9791b; --deny:#7b4fd0; --appr:#2f74d0; --halt:#6b7888;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;
+    -webkit-font-smoothing:antialiased;font-size:15px}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px 80px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,.mono{font-family:var(--mono);font-size:.86em}
+  code{background:var(--panel-2);border:1px solid var(--edge);border-radius:5px;padding:.05em .4em;color:var(--ink)}
+  h2,h3{text-wrap:balance;line-height:1.25}
+  section{scroll-margin-top:20px}
+
+  /* ---- hero ---- */
+  header{border-bottom:1px solid var(--edge);background:
+    radial-gradient(120% 80% at 85% -10%, color-mix(in srgb,var(--accent) 12%, transparent), transparent 60%);
+    position:relative;overflow:hidden}
+  header::before{content:"";position:absolute;inset:0;opacity:.5;pointer-events:none;
+    background-image:linear-gradient(var(--edge) 1px,transparent 1px),linear-gradient(90deg,var(--edge) 1px,transparent 1px);
+    background-size:34px 34px;-webkit-mask-image:radial-gradient(120% 90% at 80% 0%,#000,transparent 70%);
+    mask-image:radial-gradient(120% 90% at 80% 0%,#000,transparent 70%)}
+  .hero{max-width:var(--maxw);margin:0 auto;padding:42px 20px 30px;position:relative}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);
+    display:flex;align-items:center;gap:9px;margin-bottom:16px}
+  .shield{width:18px;height:22px;flex:none}
+  h1{font-family:var(--mono);font-weight:700;font-size:clamp(26px,4.6vw,40px);letter-spacing:-.01em;margin:0 0 8px;line-height:1.08}
+  .sub{color:var(--muted);max-width:60ch;margin:0 0 22px;font-size:15.5px}
+  .verdict{display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-weight:600;font-size:14px;
+    color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 45%,transparent);
+    background:color-mix(in srgb,var(--ok) 12%,transparent);padding:8px 14px;border-radius:100px}
+  .verdict .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 22%,transparent)}
+  .meta{display:flex;flex-wrap:wrap;gap:7px 8px;margin-top:20px;font-family:var(--mono);font-size:12px}
+  .meta span{border:1px solid var(--edge);background:var(--panel);border-radius:6px;padding:4px 9px;color:var(--muted)}
+  .meta b{color:var(--ink);font-weight:600}
+
+  /* ---- status board ---- */
+  .board{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:28px 0 8px}
+  .stat{background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);padding:15px 16px;position:relative;overflow:hidden}
+  .stat .n{font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .stat .l{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .stat .bar{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+  .stat.ok .n{color:var(--ok)} .stat.ok .bar{background:var(--ok)}
+
+  h2{font-family:var(--mono);font-size:13px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);
+    margin:52px 0 6px;padding-bottom:9px;border-bottom:1px solid var(--edge);display:flex;gap:10px;align-items:baseline}
+  h2 .num{color:var(--faint);font-weight:400}
+  .lead{font-size:16px;color:var(--ink);margin:14px 0 18px}
+  .lead b{color:var(--accent)}
+  h3{font-size:15px;margin:26px 0 8px;color:var(--ink);font-weight:650}
+  p{margin:12px 0}
+  .muted{color:var(--muted)}
+
+  /* ---- panels & tables ---- */
+  .panel{background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);padding:2px 18px;margin:16px 0}
+  .scroll{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:14px 0}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--edge);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+  .num-c{font-variant-numeric:tabular-nums;font-family:var(--mono)}
+
+  /* ---- pills ---- */
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;font-weight:600;
+    padding:2px 9px;border-radius:100px;border:1px solid;white-space:nowrap}
+  .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .p-ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent);background:color-mix(in srgb,var(--ok) 12%,transparent)}
+  .p-deny{color:var(--err);border-color:color-mix(in srgb,var(--err) 40%,transparent);background:color-mix(in srgb,var(--err) 12%,transparent)}
+  .p-pend{color:var(--pend);border-color:color-mix(in srgb,var(--pend) 40%,transparent);background:color-mix(in srgb,var(--pend) 12%,transparent)}
+
+  /* ---- security flow ---- */
+  .gates{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
+  .gate{background:var(--panel-2);border:1px solid var(--edge);border-radius:9px;padding:13px 14px;position:relative}
+  .gate .g-n{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700}
+  .gate .g-t{font-weight:650;font-size:14px;margin:3px 0 2px}
+  .gate .g-d{font-size:12.5px;color:var(--muted)}
+
+  /* ---- dashboard recreations ---- */
+  .dash{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+  @media(max-width:640px){.dash{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);padding:16px}
+  .card h4{margin:0 0 12px;font-size:12px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .donut-wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .donut{--sz:130px;width:var(--sz);height:var(--sz);border-radius:50%;flex:none;position:relative;
+    background:conic-gradient(var(--ok) 0 77.0%,var(--err) 77.0% 89.78%,var(--pend) 89.78% 93.45%,var(--deny) 93.45% 96.64%,var(--appr) 96.64% 98.56%,var(--halt) 98.56% 100%)}
+  .donut::after{content:"";position:absolute;inset:24px;border-radius:50%;background:var(--panel);
+    display:grid;place-items:center}
+  .donut b{position:absolute;inset:0;display:grid;place-content:center;text-align:center;z-index:1;font-family:var(--mono)}
+  .donut b i{font-style:normal;font-size:22px;font-weight:700;display:block;line-height:1}
+  .donut b s{text-decoration:none;font-size:10px;color:var(--muted)}
+  .legend{display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-family:var(--mono);flex:1;min-width:120px}
+  .legend div{display:flex;align-items:center;gap:8px;justify-content:space-between}
+  .legend .k{display:flex;align-items:center;gap:7px;color:var(--muted)}
+  .legend .sw{width:9px;height:9px;border-radius:2px;flex:none}
+  .legend .v{color:var(--ink);font-variant-numeric:tabular-nums}
+  .spark{width:100%;height:96px;display:block}
+
+  ul.tight{margin:10px 0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+  ul.tight li{padding-left:20px;position:relative;font-size:14px}
+  ul.tight li::before{content:"▸";position:absolute;left:0;color:var(--accent)}
+  .foot{margin-top:56px;padding-top:18px;border-top:1px solid var(--edge);color:var(--faint);font-size:12.5px;font-family:var(--mono)}
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 6px}
+  .toc a{font-family:var(--mono);font-size:12px;border:1px solid var(--edge);background:var(--panel);border-radius:6px;padding:6px 11px;color:var(--muted)}
+  .toc a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+  .note{border-left:3px solid var(--accent);background:var(--panel-2);padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0;font-size:13.5px;color:var(--muted)}
+</style>
+
+<header>
+  <div class="hero">
+    <div class="kicker">
+      <svg class="shield" viewBox="0 0 24 28" fill="none"><path d="M12 1 22 5v9c0 7-4.6 11-10 13C6.6 25 2 21 2 14V5l10-4Z" stroke="currentColor" stroke-width="1.6" fill="color-mix(in srgb,var(--accent) 14%,transparent)"/><path d="M7.5 14l3 3 6-6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Guardian · Cortex XSOAR 6 · Native SOC Agent
+    </div>
+    <h1>Operator Guide &amp; Live Smoke-Test Report</h1>
+    <p class="sub">An LLM tool-calling reasoning loop that runs <em>inside</em> XSOAR 6 — no external orchestrator — and forces every action through a default-DENY tool chokepoint. Verified live on the box, with evidence.</p>
+    <div class="verdict"><span class="dot"></span>30 / 30 static &nbsp;·&nbsp; full dynamic suite &nbsp;·&nbsp; ALL PASS</div>
+    <div class="meta">
+      <span>box <b>the lab tenant</b></span><span>XSOAR <b>6.14.0</b> · 3036535</span><span>pack <b>v0.0.1</b></span>
+      <span>provider <b>Vertex / gemini-2.5-flash</b></span><span>kill switch <b>OFF</b></span><span>tested <b>2026-07-14</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="board">
+    <div class="stat ok"><span class="bar"></span><div class="n">30/30</div><div class="l">Static / script checks</div></div>
+    <div class="stat ok"><span class="bar"></span><div class="n">5/5</div><div class="l">Playbooks + subagent + approval</div></div>
+    <div class="stat ok"><span class="bar"></span><div class="n">4/4</div><div class="l">Security chokepoint dispatches</div></div>
+    <div class="stat"><span class="bar"></span><div class="n">45</div><div class="l">Automations · 3 jobs · 27 lists</div></div>
+    <div class="stat"><span class="bar"></span><div class="n">926</div><div class="l">Box commands · 16/18 healthy</div></div>
+  </div>
+
+  <div class="toc">
+    <a href="#what">01 · What it is</a><a href="#sec">02 · Security</a><a href="#ops">03 · Operating</a>
+    <a href="#cmd">04 · Commands</a><a href="#obs">05 · Observability</a><a href="#res">06 · Results</a>
+  </div>
+
+  <!-- ============ WHAT ============ -->
+  <section id="what">
+    <h2><span class="num">01</span> What Guardian Is &amp; The Agent Loop</h2>
+    <p class="lead">Guardian runs <b>on an incident</b>. The pack ships one incident type — <b>Guardian Agent Run</b> — wired to the <code>GuardianAgentLoop</code> playbook and the <code>GuardianAgentRunLayout</code> layout.</p>
+    <p>The playbook fires the automation <code>GuardianReasoningTick</code> <b>exactly once</b>; from there the <em>script</em> owns all re-entry. <code>GuardianReasoningTick</code> has <code>polling:true</code> and self-reschedules via a <code>ScheduledCommand</code> with its own bare name — each re-invocation is one model turn plus its tool calls. All evolving state (transcript, tick counter, cost) round-trips through the incident's <code>Guardian.Loop.*</code> Context, never through args.</p>
+    <div class="panel scroll"><table>
+      <tr><th>Per-tick sequence</th><th>Stops the loop when…</th></tr>
+      <tr><td>1 · kill-switch check → 2 · (tick 0) build prompt + tool catalogue → 3 · one <code>guardian-llm-chat</code> turn → 4 · charge cost → 5 · dispatch new tool calls through the bridge → 6 · persist <code>Guardian.Loop</code> &amp; reschedule</td>
+      <td>kill switch on · model concludes (no tool calls) · <code>MAX_TICKS 25</code> ceiling · a loop-defense guard trips</td></tr>
+    </table></div>
+    <ul class="tight">
+      <li><b>Autonomously:</b> the <code>GuardianIntakeSweep</code> job opens a Guardian Agent Run incident every 6h and runs a read-only triage sweep — the autonomy heartbeat.</li>
+      <li><b>Manually:</b> create a Guardian Agent Run incident and move it to investigating; <code>GuardianAgentLoop</code> attaches and runs. <span class="muted">Live proof: incident <b>#29605</b> ran 3 ticks → completed, cost $0.008491.</span></li>
+    </ul>
+  </section>
+
+  <!-- ============ SECURITY ============ -->
+  <section id="sec">
+    <h2><span class="num">02</span> The Security Model — Default-Deny Chokepoint</h2>
+    <p class="lead">The single most important fact: <b>the tool list shown to the model is not a security boundary.</b> The model can emit <code>tool_calls</code> for commands it was never offered. The real boundary is one automation — <code>GuardianToolBridge</code> — the only place a model-proposed command reaches <code>executeCommand</code>.</p>
+    <div class="gates">
+      <div class="gate"><div class="g-n">GATE 1</div><div class="g-t">Kill switch</div><div class="g-d"><code>guardian_kill_switch</code> — halts all dispatch.</div></div>
+      <div class="gate"><div class="g-n">GATE 2</div><div class="g-t">Denylist</div><div class="g-d">generic REST verbs + destructive commands, fail-closed.</div></div>
+      <div class="gate"><div class="g-n">GATE 3</div><div class="g-t">Default-deny</div><div class="g-d">on the 33-cmd allowlist <em>or</em> classified in policy — else denied + audited.</div></div>
+      <div class="gate"><div class="g-n">GATE 4</div><div class="g-t">Policy tier</div><div class="g-d"><code>allow</code> / <code>require_approval</code> / <code>deny</code>.</div></div>
+    </div>
+    <h3>Live dispatch evidence — 4 / 4 through the real bridge</h3>
+    <div class="panel scroll"><table>
+      <tr><th>Tool call attempted</th><th>Classification</th><th>Result</th></tr>
+      <tr><td><code>getList</code></td><td>allowlisted read</td><td><span class="pill p-ok">ok — dispatched</span></td></tr>
+      <tr><td><code>demisto-api-get</code></td><td>generic REST verb</td><td><span class="pill p-deny">denied — on denylist</span></td></tr>
+      <tr><td><code>totally-not-a-real-tool</code></td><td>off-catalogue</td><td><span class="pill p-deny">denied — default-deny gate</span></td></tr>
+      <tr><td><code>setList</code></td><td>policy <code>require_approval</code></td><td><span class="pill p-pend">pending_approval — parked</span></td></tr>
+    </table></div>
+    <p class="muted">Approval risk tiers are <b>soft / destructive / credential</b>; a credential-tier approval also needs <code>confirm=CONFIRM</code>. The agent can <b>never resolve its own</b> requests — <code>guardian-approve</code>/<code>guardian-deny</code> are off the allowlist and policy (structural self-resolve-prevention) and reject <code>actor=agent</code> in-script. The parked <code>setList</code> approval <code>603210f1</code> was later cleared with <code>!guardian-deny</code> → "Approval 603210f1 DENIED. Resolved by: analyst."</p>
+  </section>
+
+  <!-- ============ OPERATING ============ -->
+  <section id="ops">
+    <h2><span class="num">03</span> Operating — Jobs, Model, Budgets, Modes</h2>
+    <p class="lead">Once installed, Guardian runs itself. Three Time-Triggered jobs — all <b>Enabled / Running</b> (0 error, 0 disabled) — drive autonomy and upkeep; each sets <code>closePrevRun:true</code> so runs never pile up.</p>
+    <div class="panel scroll"><table>
+      <tr><th>Job</th><th>Cadence</th><th>What it does</th></tr>
+      <tr><td><code>GuardianIntakeSweep</code></td><td class="num-c">6h</td><td>Autonomy heartbeat — opens a Guardian Agent Run incident &amp; runs a read-only triage sweep (recommend-only).</td></tr>
+      <tr><td><code>GuardianHousekeeping</code></td><td class="num-c">1h</td><td>Consolidates/shards audit, reaps stale approvals + expired memory, watchdogs stalled loops.</td></tr>
+      <tr><td><code>GuardianEvalScore</code></td><td class="num-c">1h</td><td>Scores newly-concluded eval incidents into <code>guardian_eval_results</code>.</td></tr>
+    </table></div>
+    <div class="dash">
+      <div class="card">
+        <h4>Model plane · enable exactly one</h4>
+        <p style="margin:0;font-size:13.5px">Two provider integrations expose the same command <code>guardian-llm-chat</code>; discover by command, not brand.</p>
+        <div class="panel" style="margin:12px 0 0;padding:2px 12px;background:var(--panel-2)"><table style="margin:6px 0;font-size:12.5px">
+          <tr><td><span class="pill p-ok">enabled</span></td><td>Guardian Vertex</td><td class="mono">gemini-2.5-flash</td></tr>
+          <tr><td><span class="pill p-deny" style="color:var(--halt);border-color:var(--edge-2);background:transparent">disabled</span></td><td>Guardian Cohere</td><td class="mono">qwen2.5:7b-lab</td></tr>
+        </table></div>
+        <p class="muted" style="font-size:12px;margin:10px 0 0"><code>!guardian-probe-model</code> measured <b>~4.739 chars/tok</b> — the <code>chars/4</code> estimate undercounts ~18%, so probing (not assuming) is what keeps the transcript under the ≥131072 window → recommends <code>max_input_tokens 127878</code>.</p>
+      </div>
+      <div class="card">
+        <h4>Budgets · <code>guardian_settings</code> (system, redeploy to change)</h4>
+        <table style="margin:2px 0;font-size:12.5px">
+          <tr><td>MAX_TICKS</td><td class="num-c">25</td></tr>
+          <tr><td>tick_cadence_seconds</td><td class="num-c">15</td></tr>
+          <tr><td>output_reserve_tokens</td><td class="num-c">65536</td></tr>
+          <tr><td>max_input_tokens</td><td class="num-c muted">null (large-model)</td></tr>
+          <tr><td>parallel_tool_calls</td><td class="num-c">false</td></tr>
+        </table>
+        <p class="muted" style="font-size:12px;margin:10px 0 0"><b>Approval mode</b> (per-incident <code>guardianapprovalmode</code>, read fresh each tick): <code>manual</code> (default, safer — every require_approval waits for a human) or <code>bypass</code> (only pre-vetted classes auto-execute; today just <code>xdr-endpoint-tag-add</code>).</p>
+      </div>
+    </div>
+    <div class="note"><b>Kill switch.</b> <code>guardian_kill_switch</code> reads <code>{"enabled": false}</code> — OFF, agent not halted. It's a runtime-mutable list, so <code>!guardian-killswitch state=on</code> halts all tool dispatch live, no redeploy.</div>
+  </section>
+
+  <!-- ============ COMMANDS ============ -->
+  <section id="cmd">
+    <h2><span class="num">04</span> Analyst War-Room Commands</h2>
+    <p class="lead">Operator affordances over the loop's state — none are on the agent's allowlist, so the agent can never invoke them. <code>!guardian-help</code> renders this card live, even on a cold box.</p>
+    <div class="panel scroll"><table>
+      <tr><th>Command</th><th>Does</th><th>Kind</th></tr>
+      <tr><td><code>!guardian-help</code></td><td>The command card. Zero I/O.</td><td><span class="pill p-ok">read</span></td></tr>
+      <tr><td><code>!guardian-tools</code></td><td>The 33-command agent allowlist.</td><td><span class="pill p-ok">read</span></td></tr>
+      <tr><td><code>!guardian-cost</code></td><td>Per-day / per-model spend rollup.</td><td><span class="pill p-ok">read</span></td></tr>
+      <tr><td><code>!guardian-model</code></td><td>Live provider / model in use.</td><td><span class="pill p-ok">read</span></td></tr>
+      <tr><td><code>!guardian-probe-model</code></td><td>Calibrate a model (billable).</td><td><span class="pill p-ok">read</span></td></tr>
+      <tr><td><code>!guardian-plan</code></td><td>One plan-only LLM turn → War Room note.</td><td><span class="pill p-ok">read*</span></td></tr>
+      <tr><td><code>!guardian-chat message=…</code></td><td>Analyst → agent; answers ask-analyst, re-opens a run.</td><td><span class="pill p-pend">write</span></td></tr>
+      <tr><td><code>!guardian-approve approval_id=…</code></td><td>Approve a parked action (credential tier: <code>confirm=CONFIRM</code>).</td><td><span class="pill p-pend">operator-only</span></td></tr>
+      <tr><td><code>!guardian-deny approval_id=…</code></td><td>Deny a parked action — nothing executes.</td><td><span class="pill p-pend">operator-only</span></td></tr>
+      <tr><td><code>!guardian-killswitch state=on|off</code></td><td>Halt/resume all tool dispatch. Rejects <code>actor=agent</code>.</td><td><span class="pill p-deny">operator-only</span></td></tr>
+    </table></div>
+  </section>
+
+  <!-- ============ OBSERVABILITY ============ -->
+  <section id="obs">
+    <h2><span class="num">05</span> Observability — The Guardian Dashboard</h2>
+    <p class="lead">Every tool call writes one <code>guardian_audit</code> row; every LLM turn writes cost. The <b>Guardian Observability</b> dashboard renders it fleet-wide. Below: the two headline widgets, recreated from the live smoke-run data.</p>
+    <div class="dash">
+      <div class="card">
+        <h4>Tool Call Activity — by status</h4>
+        <div class="donut-wrap">
+          <div class="donut"><b><i>626</i><s>calls</s></b></div>
+          <div class="legend">
+            <div><span class="k"><span class="sw" style="background:var(--ok)"></span>ok</span><span class="v">482</span></div>
+            <div><span class="k"><span class="sw" style="background:var(--err)"></span>error</span><span class="v">80</span></div>
+            <div><span class="k"><span class="sw" style="background:var(--pend)"></span>pending_approval</span><span class="v">23</span></div>
+            <div><span class="k"><span class="sw" style="background:var(--deny)"></span>denied</span><span class="v">20</span></div>
+            <div><span class="k"><span class="sw" style="background:var(--appr)"></span>approved</span><span class="v">12</span></div>
+            <div><span class="k"><span class="sw" style="background:var(--halt)"></span>halted</span><span class="v">9</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Cost Ledger — USD ×1000 / day</h4>
+        <svg class="spark" viewBox="0 0 260 96" preserveAspectRatio="none" aria-label="cost per day">
+          <defs><linearGradient id="cg" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="var(--accent)" stop-opacity=".35"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+          </linearGradient></defs>
+          <line x1="0" y1="78" x2="260" y2="78" stroke="var(--edge)" stroke-width="1"/>
+          <polygon points="24,20 130,54 236,78 236,78 24,78" fill="url(#cg)"/>
+          <polyline points="24,20 130,54 236,78" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="24" cy="20" r="3.5" fill="var(--accent)"/><circle cx="130" cy="54" r="3.5" fill="var(--accent)"/><circle cx="236" cy="78" r="3.5" fill="var(--accent)"/>
+        </svg>
+        <div class="legend" style="flex-direction:row;justify-content:space-between;margin-top:4px">
+          <span class="muted">07-05 · 243</span><span class="muted">07-06 · 104</span><span class="muted">07-07 · 0</span>
+        </div>
+      </div>
+    </div>
+    <p class="muted">Also live: <b>Loop Health</b> (11 runs, kill_switch OFF, 0 stalled), <b>Approvals Queue</b>, <b>Event Feed</b> (top rows were the two deny-tests, captured in real time), plus the per-incident layout — Run Summary, Reasoning Trace, Tool-Call Ledger, Recommended Actions. Durable <code>GuardianMemory</code> (store/search, temporal decay + TTL) and MITRE-scored <code>GuardianKBSearch</code> both round-tripped. Historical spend: <b>$0.347449 across 504 calls / 10.2M tokens</b>.</p>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="res">
+    <h2><span class="num">06</span> Smoke-Test Coverage &amp; Verdicts</h2>
+    <div class="dash">
+      <div class="card">
+        <h4>Static / script suite — 30/30</h4>
+        <table style="font-size:13px;margin:2px 0">
+          <tr><td>Config lists</td><td class="num-c">9</td><td><span class="pill p-ok">pass</span></td></tr>
+          <tr><td>Health</td><td class="num-c">2</td><td><span class="pill p-ok">pass</span></td></tr>
+          <tr><td>Model plane</td><td class="num-c">2</td><td><span class="pill p-ok">pass</span></td></tr>
+          <tr><td>Operator commands</td><td class="num-c">3</td><td><span class="pill p-ok">pass</span></td></tr>
+          <tr><td>Security chokepoint</td><td class="num-c">4</td><td><span class="pill p-ok">pass</span></td></tr>
+          <tr><td>Memory / KB</td><td class="num-c">3</td><td><span class="pill p-ok">pass</span></td></tr>
+          <tr><td>Widgets</td><td class="num-c">5</td><td><span class="pill p-ok">pass</span></td></tr>
+          <tr><td>Catalog + Prompt</td><td class="num-c">2</td><td><span class="pill p-ok">pass</span></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h4>Dynamic suite — live incidents</h4>
+        <table style="font-size:13px;margin:2px 0">
+          <tr><td>GuardianAgentLoop</td><td class="mono">#29605</td><td><span class="pill p-ok">3 ticks → done</span></td></tr>
+          <tr><td>GuardianHousekeeping</td><td class="mono">#29606</td><td><span class="pill p-ok">completed</span></td></tr>
+          <tr><td>GuardianEvalScore</td><td class="mono">#29607</td><td><span class="pill p-ok">completed</span></td></tr>
+          <tr><td>Subagent (phishing)</td><td class="mono">2/2 iter</td><td><span class="pill p-ok">T1566 verdict</span></td></tr>
+          <tr><td>Approval path</td><td class="mono">603210f1</td><td><span class="pill p-ok">denied</span></td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="note">The subagent dispatch used <b>live threat-intel enrichment</b>: the <code>phishing-analyst</code> specialist cited the Unit 42 "Unknown" verdict on <code>45.83.220.14</code>, resolved its owner to "31173 Services AB, Sweden", and returned a High-confidence malicious-consent-phishing verdict (T1566 + T1114) with a 6-step containment plan.</div>
+    <p class="muted"><b>Known caveat (not a Guardian defect):</b> 2 of 18 box instances are unhealthy — <code>Unit 42 Feed</code> and <code>Unit42IntelObjectsFeed</code>, both pre-existing non-Guardian threat feeds failing on <code>fetch-indicators</code>. They don't affect any result above.</p>
+  </section>
+
+  <div class="foot">
+    Generated 2026-07-14 from a live smoke-test run against the lab tenant · full write-up in docs/user-guide/README.md<br>
+    Section drafts reconciled against Guardian source — where source and summary disagreed, source won (risk tiers verified <code>soft/destructive/credential</code>).
+  </div>
+</div>

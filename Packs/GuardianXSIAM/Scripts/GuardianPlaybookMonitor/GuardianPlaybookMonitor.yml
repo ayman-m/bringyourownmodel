@@ -1,0 +1,73 @@
+args:
+- name: incident_id
+  description: "The incident id whose playbook run to inspect. It can be given as text or a number."
+  required: true
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  The agent's playbook-run observability tool. Reports whether the playbook on an incident ran to success and,
+  if not, which tasks failed and why, with each failed task's War Room error text. It looks at every task,
+  including those in sub-playbooks. A playbook counts as successful only when its overall state is Completed
+  and no task errored. An unknown incident id, or an incident with no playbook run, returns a clear result
+  instead of an error. It is read-only.
+commonfields:
+  id: GuardianPlaybookMonitor
+  version: -1
+enabled: true
+name: GuardianPlaybookMonitor
+outputs:
+- contextPath: Guardian.PlaybookMonitor.incident_id
+  description: The incident id that was inspected.
+  type: String
+- contextPath: Guardian.PlaybookMonitor.has_playbook
+  description: False if no playbook has ever been assigned/run on this incident.
+  type: Boolean
+- contextPath: Guardian.PlaybookMonitor.playbook_id
+  description: The id of the playbook that ran on this incident.
+  type: String
+- contextPath: Guardian.PlaybookMonitor.playbook_name
+  description: The playbook's friendly display name, resolved via playbook/search
+    when possible.
+  type: String
+- contextPath: Guardian.PlaybookMonitor.overall_state
+  description: "The raw playbook state, for example \"completed\", \"inprogress\" or \"failed\"."
+  type: String
+- contextPath: Guardian.PlaybookMonitor.ran_to_success
+  description: True only when overall_state is Completed AND no task is in
+    Error/LoopError.
+  type: Boolean
+- contextPath: Guardian.PlaybookMonitor.counts
+  description: Task counts by normalized state bucket (new, inprogress, completed,
+    waiting, error, skipped, blocked, other), across every task including
+    nested sub-playbooks.
+  type: Unknown
+- contextPath: Guardian.PlaybookMonitor.task_total
+  description: Total task count across the whole plan (uncapped, even when
+    `tasks` itself is truncated).
+  type: Number
+- contextPath: Guardian.PlaybookMonitor.tasks
+  description: 'Per-task summary list: {id, name, state, type}, capped at 200
+    entries.'
+  type: Unknown
+- contextPath: Guardian.PlaybookMonitor.tasks_truncated
+  description: True if the plan had more tasks than the 200-entry cap on `tasks`.
+  type: Boolean
+- contextPath: Guardian.PlaybookMonitor.failed_tasks
+  description: >-
+    Tasks currently in Error or LoopError: `{id, name, scriptId, state, errorMessage?}`. `errorMessage` is
+    taken from the matching War Room error entry when one exists.
+  type: Unknown
+- contextPath: Guardian.PlaybookMonitor.detail
+  description: Human-readable note, present only when has_playbook is False.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

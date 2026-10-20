@@ -1,0 +1,174 @@
+args:
+- name: prompt
+  description: >-
+    The investigation task for this run, for example "Investigate whether IP 8.8.8.8 is malicious -- enrich
+    it, then give a verdict.". Required on the first tick. Ignored on later ticks, because the run's state is
+    kept in the incident context.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: skill
+  description: "Optional skill name to bind this run to. It is read and stored on the first tick."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: scope_to_incident
+  description: >-
+    Set by the investigation playbook. When true the run may read only its own incident: `getIncidents` and
+    `getEntries` calls for any other incident are refused with an explanation. Leave it unset for a triage sweep,
+    which has to read the queue.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: use_prebuilt
+  description: >-
+    Set by the playbook. When true, the first tick uses the system prompt (`Guardian.SystemPrompt`) and tool
+    catalogue (`Guardian.ToolCatalog`) that earlier playbook tasks built, instead of building them itself.
+    Ignored after the first tick. Leave it unset when you run the command by hand.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+- name: assessment_mode
+  description: >-
+    Optional. Overrides `Guardian.Route.assessment_mode` for this run. `triage` makes it a short triage run: it
+    ends with the triage block (see the `xsoar_triage` skill), the conclusion-quality gate and every verdict field
+    write are skipped, and the final text and parsed block are stored in `Guardian.Loop.conclusion` and
+    `Guardian.Loop.triage_block`. Read on the first tick only. The other value is `verdict`.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - verdict
+  - triage
+- name: continue_run_totals
+  description: >-
+    Optional, default false. Read on the first tick only. When true, the run continues the totals already on the
+    incident (`guardiantickcount`, `guardiancostusd` and the tool-activity fields) instead of starting them at zero,
+    so the incident shows the whole playbook run when a second model session follows the first. The turn limit
+    still counts this session's own turns. Every other first-tick reset (stale verdict fields, dispatch counts)
+    still happens.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+- name: max_ticks
+  description: >-
+    Optional. A turn limit for this run. It can only LOWER the limit the model's size or `guardian_settings` gives;
+    a larger or invalid value is ignored. The triage playbook passes its `triage_max_ticks` input (default 6).
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  One step of the agent's reasoning loop. Each tick checks the kill switch, makes one model turn, charges its
+  cost, runs any tool calls the model requested through GuardianToolBridge, saves the whole `Guardian.Loop`
+  state, and schedules the next tick. The loop ends, without scheduling another tick, when the kill switch is
+  on, the model gives its conclusion, the tick limit is reached (the model is then asked for a final summary),
+  or a safety check trips. Run it as a playbook task (the GuardianAgentLoop playbook does): called by hand in
+  the War Room it runs once and does not reschedule itself.
+commonfields:
+  id: GuardianReasoningTick
+  version: -1
+enabled: true
+name: GuardianReasoningTick
+polling: true
+outputs:
+- contextPath: Guardian.Loop.messages
+  description: >-
+    The conversation transcript (system, user, assistant and tool messages), compacted to
+    `guardian_settings.batch_cap` with a note about any dropped turns.
+  type: Unknown
+- contextPath: Guardian.Loop.tick
+  description: "The tick counter, starting at 0 and increased after each completed model turn."
+  type: Number
+- contextPath: Guardian.Loop.run_id
+  description: "The stable id of this run (the incident id)."
+  type: String
+- contextPath: Guardian.Loop.status
+  description: 'One of: running, done, stopped, error.'
+  type: String
+- contextPath: Guardian.Loop.last_assistant_fingerprint
+  description: Hash of the most recent assistant turn (content + requested
+    tool calls), used by the identical-fail short-circuit.
+  type: String
+- contextPath: Guardian.Loop.consec_fails
+  description: >-
+    Number of consecutive ticks that repeated the same failing step or failed in the model call. The loop
+    stops when it reaches 2.
+  type: Number
+- contextPath: Guardian.Loop.empty_turns
+  description: "Number of empty model turns (no content and no tool calls) seen in this run."
+  type: Number
+- contextPath: Guardian.Loop.pending
+  description: "Marker that the loop is waiting for an approval."
+  type: Unknown
+- contextPath: Guardian.Loop.dropped_count
+  description: "Number of transcript turns dropped by compaction in this run."
+  type: Number
+- contextPath: Guardian.Loop.skill
+  description: The skill name this run was bound to, if any.
+  type: String
+- contextPath: Guardian.Loop.cost_usd
+  description: >-
+    The run's total cost in USD, summed over every model turn. Also written to the incident's
+    `GuardianCostUSD` field.
+  type: Number
+- contextPath: Guardian.Loop.cost_tokens_total
+  description: "The run's total token count (prompt and completion) over every model turn."
+  type: Number
+- contextPath: Guardian.Loop.executed_calls
+  description: >-
+    Map from a tool call (tool name plus its arguments) to `{count, first_tick, last_result}` for each call
+    that has succeeded at least once in this run. A call seen again is reused instead of being run again.
+  type: Unknown
+- contextPath: Guardian.Loop.repeat_calls
+  description: >-
+    Number of tool calls skipped as repeats of an earlier successful call. The loop concludes once it reaches
+    `guardian_settings.max_repeats` (default 4).
+  type: Number
+- contextPath: Guardian.Loop.force_conclude
+  description: >-
+    Set when the repeated-call limits (`max_same_call` or `max_repeats`) are reached. The next tick asks the
+    model for a final summary and ends with status done.
+  type: Boolean
+- contextPath: Guardian.Loop.force_conclude_reason
+  description: "The reason `force_conclude` was set, shown when the loop ends."
+  type: String
+- contextPath: Guardian.Loop.assessment_mode
+  description: "The run's assessment mode: verdict or triage (the `assessment_mode` arg, else the route's)."
+  type: String
+- contextPath: Guardian.Loop.conclusion
+  description: >-
+    Triage runs only. The final conclusion text (the analysis held back at a corrective nudge, then the last reply),
+    cut to 12000 characters. Empty when the run ended without a final answer. GuardianTriageResult reads it.
+  type: String
+- contextPath: Guardian.Loop.triage_block
+  description: >-
+    Triage runs only. The validated triage block parsed from the conclusion (severity, investigation_type,
+    confidence, likely_benign, escalate, summary, key_entities, next_step), or null when the conclusion had no valid
+    block.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

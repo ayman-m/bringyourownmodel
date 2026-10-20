@@ -1,0 +1,22 @@
+{
+    "id": "Guardian Eval Case",
+    "version": -1,
+    "name": "Guardian Eval Case",
+    "prevName": "Guardian Agent Run",
+    "color": "#00CED1",
+    "playbookId": "GuardianEvalInvestigate",
+    "layout": "GuardianAgentRunLayout",
+    "hours": 0,
+    "days": 0,
+    "weeks": 0,
+    "hoursR": 0,
+    "daysR": 0,
+    "weeksR": 0,
+    "system": false,
+    "readonly": false,
+    "closureScript": "",
+    "disabled": false,
+    "reputationCalc": 0,
+    "fromVersion": "6.10.0",
+    "locked": false
+}

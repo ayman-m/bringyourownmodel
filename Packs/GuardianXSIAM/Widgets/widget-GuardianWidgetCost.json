@@ -1,0 +1,12 @@
+{
+    "id": "Guardian Cost Ledger",
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "name": "Guardian Cost Ledger (USD x1000)",
+    "dataType": "scripts",
+    "widgetType": "line",
+    "query": "GuardianWidgetCost",
+    "params": {},
+    "isPredefined": false,
+    "description": "Per-day, per-model cost from guardian_cost_ledger, in integer milli-USD (thousandths of a dollar), because widget data must be whole numbers."
+}

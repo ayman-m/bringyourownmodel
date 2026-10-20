@@ -1,0 +1,81 @@
+args:
+- name: action
+  description: >-
+    `check` (default) is a read-only gate. `report` records the outcome of a finished run and requires
+    `outcome`.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - check
+  - report
+- name: job_name
+  description: >-
+    The scheduled job's name, for example GuardianIntakeSweep. It is also the key in `guardian_jobs_registry`.
+    Required for `report`. For `check` it defaults to the incident's `guardiantriggersource` field.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: outcome
+  description: success or failure -- required when action=report.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - success
+  - failure
+comment: >-
+  The automatic safety stop for scheduled jobs. `action=check` is a read-only gate: it returns proceed=false
+  when the kill switch is on or the job is already disabled in `guardian_jobs_registry`. `action=report`
+  counts consecutive failures for the job and resets the count on success. When the count reaches
+  `job_guard_max_consecutive_failures` (default 10), it marks the job disabled in the registry, disables the
+  scheduled job through the server API on a best-effort basis, and writes an audit row and a War Room note.
+commonfields:
+  id: GuardianJobGuard
+  version: -1
+enabled: true
+name: GuardianJobGuard
+outputs:
+- contextPath: Guardian.JobGuard.job_name
+  description: The job name this call gated/reported against.
+  type: String
+- contextPath: Guardian.JobGuard.proceed
+  description: Whether a new/continuing run for this job should proceed.
+  type: Boolean
+- contextPath: Guardian.JobGuard.reason
+  description: 'Why proceed is false: kill_switch_engaged or job_disabled
+    (null when proceed is true).'
+  type: String
+- contextPath: Guardian.JobGuard.consecutive_failures
+  description: This job's current consecutive-failure count.
+  type: Number
+- contextPath: Guardian.JobGuard.enabled
+  description: "The registry entry's enabled flag after this call (`report` only)."
+  type: Boolean
+- contextPath: Guardian.JobGuard.disabled_now
+  description: Whether THIS call just crossed the threshold and disabled
+    the job (report only).
+  type: Boolean
+- contextPath: Guardian.JobGuard.disable_rest_ok
+  description: Whether the best-effort REST /jobs disable succeeded (only
+    meaningful when disabled_now is true).
+  type: Boolean
+- contextPath: Guardian.JobGuard.threshold
+  description: The job_guard_max_consecutive_failures value used for this
+    report call.
+  type: Number
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

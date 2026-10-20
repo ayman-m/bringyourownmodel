@@ -1,0 +1,17 @@
+{
+    "id": "indicator_socagentmemorypolicy",
+    "name": "Guardian Memory Policy",
+    "cliName": "socagentmemorypolicy",
+    "type": "markdown",
+    "placeholder": "Document approved retention, scope, redaction, and compaction rules. Do not store memory values here.",
+    "associatedTypes": ["SOC Agent"],
+    "associatedToAll": false,
+    "content": true,
+    "system": false,
+    "group": 2,
+    "unsearchable": true,
+    "required": false,
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "marketplaces": ["marketplacev2"]
+}

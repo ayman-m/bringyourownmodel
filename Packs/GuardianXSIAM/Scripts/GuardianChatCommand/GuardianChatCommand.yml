@@ -1,0 +1,61 @@
+args:
+- name: message
+  description: >-
+    The message for the Guardian Agent Loop on this incident, for example an answer to a question the agent
+    asked. It is added to the transcript as "[Analyst]: ..." on the loop's next tick.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: incident_id
+  description: >-
+    Optional incident id. Defaults to, and must match, the incident the command runs in. Another incident's id
+    returns an error.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  `!guardian-chat message="..."` is the analyst's turn in the conversation with the agent. The message is
+  queued in `Guardian.Loop.pending_user_input` and added to the transcript at the start of the next tick,
+  before the model is called, which changes the agent's course. It also answers a question the agent paused on
+  through `GuardianAskAnalyst`. If the loop has already finished (done, stopped or error), the command
+  re-opens it, but to resume ticking you must then re-run the `GuardianAgentLoop` playbook on the incident.
+  The command says so when that applies.
+commonfields:
+  id: guardian-chat
+  version: -1
+enabled: true
+name: guardian-chat
+outputs:
+- contextPath: Guardian.Chat.queued
+  description: "Always true on success: the message was added to the queue."
+  type: Boolean
+- contextPath: Guardian.Chat.incident_id
+  description: The incident id the message was queued against.
+  type: String
+- contextPath: Guardian.Chat.pending_count
+  description: Total messages now queued in Guardian.Loop.pending_user_input
+    (including this one), not yet drained by a tick.
+  type: Number
+- contextPath: Guardian.Chat.ever_started
+  description: "Whether a Guardian Agent Loop has ever run on this incident."
+  type: Boolean
+- contextPath: Guardian.Chat.reopened
+  description: Whether this call re-opened a concluded (done/stopped/error)
+    loop back to status=running.
+  type: Boolean
+- contextPath: Guardian.Chat.previous_status
+  description: Guardian.Loop.status as it was before this call (null if the
+    loop never started).
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

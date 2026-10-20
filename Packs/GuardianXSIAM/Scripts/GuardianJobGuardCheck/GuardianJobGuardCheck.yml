@@ -1,0 +1,34 @@
+args: []
+comment: >-
+  Playbook preflight task. For a run started by a scheduled job, it asks GuardianJobGuard whether the job was
+  automatically disabled after repeated failures. A run without a job (manual, evaluation or SOC Agent
+  follow-up) has nothing to check and proceeds. If the check fails for any reason, the run proceeds. The
+  reasoning loop checks again on every tick.
+commonfields:
+  id: GuardianJobGuardCheck
+  version: -1
+enabled: true
+name: GuardianJobGuardCheck
+outputs:
+- contextPath: Guardian.Preflight.JobGuard.job_name
+  description: The scheduled Job that spawned this run, or empty when there is none.
+  type: String
+- contextPath: Guardian.Preflight.JobGuard.proceed
+  description: '"true" when the run may proceed, "false" when its Job is auto-disabled (a lowercase string, for playbook conditions).'
+  type: String
+- contextPath: Guardian.Preflight.JobGuard.halted
+  description: True when the Job is auto-disabled.
+  type: Boolean
+- contextPath: Guardian.Preflight.JobGuard.reason
+  description: Plain-language reason for the result.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

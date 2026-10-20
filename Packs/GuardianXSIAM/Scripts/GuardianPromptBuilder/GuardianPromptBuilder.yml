@@ -1,0 +1,64 @@
+args:
+- name: summary_only
+  description: >-
+    When true, prints only a one-line summary and warnings instead of the whole prompt. The prompt is still
+    written to context. Used by the playbook task.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+comment: >-
+  Builds the agent's system prompt once, when a run starts. The parts are `guardian_prompt_head`, an action policy
+  block (from `guardian_policy`), an operator-defined persona block (from `guardian_persona`, if set), an
+  available-skills block (from `guardian_skills_index`), an approval-mode block (from the incident's
+  `guardianapprovalmode` field, default manual) and `guardian_prompt_tail`, always in the same order. It
+  writes the prompt to `Guardian.SystemPrompt` and metadata to `Guardian.SystemPromptMeta`.
+commonfields:
+  id: GuardianPromptBuilder
+  version: -1
+enabled: true
+name: GuardianPromptBuilder
+outputs:
+- contextPath: Guardian.SystemPrompt
+  description: >-
+    The assembled system prompt for this tick, ready to pass to `!guardian-llm-chat` as the system message.
+  type: String
+- contextPath: Guardian.SystemPromptMeta.CharLen
+  description: Character length of the assembled prompt.
+  type: Number
+- contextPath: Guardian.SystemPromptMeta.TokenEstimate
+  description: "Estimated token count of the prompt. The estimate errs on the low side."
+  type: Number
+- contextPath: Guardian.SystemPromptMeta.ApprovalMode
+  description: 'The approval mode used to render the approval-mode block: manual
+    or bypass.'
+  type: String
+- contextPath: Guardian.SystemPromptMeta.PolicyReadable
+  description: >-
+    Whether `guardian_policy` could be read this tick. False means a restrictive placeholder policy block was
+    used instead.
+  type: Boolean
+- contextPath: Guardian.SystemPromptMeta.PersonaBlockPresent
+  description: "Whether a persona block was included."
+  type: Boolean
+- contextPath: Guardian.SystemPromptMeta.SkillsBlockPresent
+  description: "Whether a skills block was included."
+  type: Boolean
+- contextPath: Guardian.SystemPromptMeta.Warnings
+  description: >-
+    Non-fatal warnings from assembling the prompt, for example a List that could not be read and was left out.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

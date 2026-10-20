@@ -1,0 +1,466 @@
+{
+	"cacheVersn": 0,
+	"close": null,
+	"definitionId": "",
+	"description": "",
+	"detached": false,
+	"details": null,
+	"detailsV2": null,
+	"edit": null,
+	"fromServerVersion": "",
+	"fromVersion": "6.10.0",
+	"marketplaces": ["marketplacev2"],
+	"group": "indicator",
+	"id": "GuardianSocAgentLayout",
+	"indicatorsDetails": {
+		"TypeName": "",
+		"tabs": [
+			{
+				"id": "default-main",
+				"name": "Info",
+				"sections": [
+					{
+						"displayType": "ROW",
+						"h": 2,
+						"hideName": false,
+						"i": "default-main-actions",
+						"items": [
+							{
+								"args": {},
+								"buttonClass": "success",
+								"endCol": 1,
+								"fieldId": "",
+								"height": 44,
+								"id": "d09cff80-9b8d-11f1-b39d-65fe28e7aa93",
+								"index": 0,
+								"name": "Refresh Tools",
+								"scriptId": "GuardianToolRegistryRefresh",
+								"sectionItemType": "button",
+								"startCol": 0
+							},
+							{
+								"args": {},
+								"buttonClass": "primary",
+								"endCol": 1,
+								"fieldId": "",
+								"height": 44,
+								"id": "442d0700-9d42-11f1-95d3-2954dfa7bab6",
+								"index": 1,
+								"name": "Agent  Readiness",
+								"scriptId": "GuardianSocAgentReadinessCheck",
+								"sectionItemType": "button",
+								"startCol": 0
+							},
+							{
+								"args": {
+									"reason": {
+										"simple": "Manual"
+									},
+									"state": {
+										"simple": "pause"
+									}
+								},
+								"buttonClass": "error",
+								"endCol": 1,
+								"fieldId": "",
+								"height": 44,
+								"id": "b98e5030-9d42-11f1-95d3-2954dfa7bab6",
+								"index": 2,
+								"name": "Pause Agent",
+								"scriptId": "GuardianSocAgentSetState",
+								"sectionItemType": "button",
+								"startCol": 0
+							},
+							{
+								"args": {},
+								"buttonClass": "success",
+								"dropEffect": "move",
+								"endCol": 2,
+								"fieldId": "",
+								"height": 44,
+								"id": "2694b130-9d41-11f1-95d3-2954dfa7bab6",
+								"index": 0,
+								"listId": "default-main-actions",
+								"name": "Validate Tools",
+								"scriptId": "GuardianSocAgentValidateToolPolicy",
+								"sectionItemType": "button",
+								"startCol": 1
+							},
+							{
+								"args": {
+									"reason": {
+										"simple": "Manual"
+									}
+								},
+								"buttonClass": "warning",
+								"dropEffect": "move",
+								"endCol": 2,
+								"fieldId": "",
+								"height": 44,
+								"id": "f794a680-9d43-11f1-95d3-2954dfa7bab6",
+								"index": 1,
+								"listId": "default-main-actions",
+								"name": "Apply Policy",
+								"scriptId": "GuardianSocAgentApplyToolPolicy",
+								"sectionItemType": "button",
+								"startCol": 1
+							},
+							{
+								"args": {
+									"reason": {
+										"simple": "Manual"
+									},
+									"state": {
+										"simple": "resume"
+									}
+								},
+								"buttonClass": "success",
+								"dropEffect": "move",
+								"endCol": 2,
+								"fieldId": "",
+								"height": 44,
+								"id": "d11db230-9d43-11f1-95d3-2954dfa7bab6",
+								"index": 2,
+								"listId": "default-main-actions",
+								"name": "Resume Agent",
+								"scriptId": "GuardianSocAgentSetState",
+								"sectionItemType": "button",
+								"startCol": 1
+							},
+							{
+								"args": {},
+								"buttonClass": "primary",
+								"dropEffect": "move",
+								"endCol": 3,
+								"fieldId": "",
+								"height": 44,
+								"id": "45f9892a-01d2-4d59-8f1a-b2e3b45004a3",
+								"index": 0,
+								"listId": "default-main-actions",
+								"name": "Export Config",
+								"scriptId": "GuardianSocAgentExportConfiguration",
+								"sectionItemType": "button",
+								"startCol": 2
+							},
+							{
+								"args": {},
+								"buttonClass": "success",
+								"dropEffect": "move",
+								"endCol": 3,
+								"fieldId": "",
+								"height": 44,
+								"id": "23884d26-940c-48b0-961f-4e35644cc646",
+								"index": 1,
+								"listId": "default-main-actions",
+								"name": "New Investigation",
+								"scriptId": "GuardianSocAgentCreateInvestigation",
+								"sectionItemType": "button",
+								"startCol": 2
+							}
+						],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Actions",
+						"static": false,
+						"type": "actions",
+						"w": 1,
+						"x": 2,
+						"y": 0
+					},
+					{
+						"displayType": "ROW",
+						"h": 2,
+						"hideName": false,
+						"i": "default-main-cfc7d110-9d41-11f1-95d3-2954dfa7bab6",
+						"items": [
+							{
+								"endCol": 2,
+								"fieldId": "socagentstate",
+								"height": 22,
+								"id": "e9682e30-9d41-11f1-95d3-2954dfa7bab6",
+								"index": 0,
+								"sectionItemType": "field",
+								"startCol": 0
+							},
+							{
+								"endCol": 2,
+								"fieldId": "socagentmodelintegration",
+								"height": 22,
+								"id": "18434460-9d42-11f1-95d3-2954dfa7bab6",
+								"index": 1,
+								"sectionItemType": "field",
+								"startCol": 0
+							},
+							{
+								"endCol": 2,
+								"fieldId": "socagentpolicyrevision",
+								"height": 22,
+								"id": "23403990-9d42-11f1-95d3-2954dfa7bab6",
+								"index": 2,
+								"sectionItemType": "field",
+								"startCol": 0
+							},
+							{
+								"endCol": 4,
+								"fieldId": "socagentowner",
+								"height": 22,
+								"id": "12260540-9d42-11f1-95d3-2954dfa7bab6",
+								"index": 0,
+								"sectionItemType": "field",
+								"startCol": 2
+							},
+							{
+								"endCol": 4,
+								"fieldId": "socagentlasthealthcheck",
+								"height": 22,
+								"id": "1d825880-9d42-11f1-95d3-2954dfa7bab6",
+								"index": 1,
+								"sectionItemType": "field",
+								"startCol": 2
+							}
+						],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Agent Overview",
+						"static": false,
+						"w": 2,
+						"x": 0,
+						"y": 0
+					},
+					{
+						"description": "Read-only live evaluation of the kill switch, provider command surface, lists, discovery freshness, and policy consistency.",
+						"h": 5,
+						"i": "default-main-98c2b470-9d44-11f1-95d3-2954dfa7bab6",
+						"items": [],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Agent Readiness",
+						"query": "GuardianSocAgentReadiness",
+						"queryType": "script",
+						"static": false,
+						"type": "dynamicIndicator",
+						"w": 3,
+						"x": 0,
+						"y": 9
+					},
+					{
+						"description": "Live snapshot of configured Cortex platform commands and the effective Guardian allowlist.",
+						"h": 7,
+						"i": "default-main-afe651c0-9d44-11f1-95d3-2954dfa7bab6",
+						"items": [],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Available and Allowed Tools",
+						"query": "GuardianLayoutSocAgentTools",
+						"queryType": "script",
+						"static": false,
+						"type": "dynamicIndicator",
+						"w": 3,
+						"x": 0,
+						"y": 2
+					}
+				],
+				"type": "custom"
+			},
+			{
+				"hidden": false,
+				"id": "jyhgdxkj9m",
+				"name": "Memory",
+				"sections": [
+					{
+						"description": "Redacted metadata only. Stored values are intentionally never rendered in an indicator layout.",
+						"h": 7,
+						"i": "jyhgdxkj9m-ce822a50-9d44-11f1-95d3-2954dfa7bab6",
+						"items": [],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Memory Inventory",
+						"query": "GuardianLayoutSocAgentMemory",
+						"queryType": "script",
+						"static": false,
+						"type": "dynamicIndicator",
+						"w": 3,
+						"x": 0,
+						"y": 0
+					}
+				],
+				"type": "custom"
+			},
+			{
+				"hidden": false,
+				"id": "nywex9geyq",
+				"name": "Audit and  Relations",
+				"sections": [
+					{
+						"h": 5,
+						"i": "nywex9geyq-38370470-9d45-11f1-95d3-2954dfa7bab6",
+						"items": [],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Timeline",
+						"static": false,
+						"type": "indicatorTimeline",
+						"w": 1,
+						"x": 2,
+						"y": 0
+					},
+					{
+						"h": 5,
+						"i": "nywex9geyq-40911430-9d45-11f1-95d3-2954dfa7bab6",
+						"items": [],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Relationships",
+						"static": false,
+						"type": "relationshipsTable",
+						"w": 2,
+						"x": 0,
+						"y": 0
+					},
+					{
+						"h": 4,
+						"i": "nywex9geyq-4371ed00-9d45-11f1-95d3-2954dfa7bab6",
+						"items": [],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Related Incidents",
+						"static": false,
+						"type": "relatedIncidents",
+						"w": 2,
+						"x": 0,
+						"y": 5
+					},
+					{
+						"h": 4,
+						"i": "nywex9geyq-6a461c80-9d45-11f1-95d3-2954dfa7bab6",
+						"items": [],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Comments",
+						"static": false,
+						"type": "comments",
+						"w": 1,
+						"x": 2,
+						"y": 5
+					}
+				],
+				"type": "custom"
+			},
+			{
+				"hidden": false,
+				"id": "1yjggswjzv",
+				"name": "Governance",
+				"sections": [
+					{
+						"description": "Editable governance records. Applying the tool policy requires valid JSON and an explicit reason.",
+						"displayType": "ROW",
+						"h": 6,
+						"hideName": false,
+						"i": "1yjggswjzv-a64ceec0-9d45-11f1-95d3-2954dfa7bab6",
+						"items": [
+							{
+								"dropEffect": "move",
+								"endCol": 6,
+								"fieldId": "socagentpersona",
+								"height": 44,
+								"id": "b0b0ff50-9d45-11f1-95d3-2954dfa7bab6",
+								"index": 0,
+								"listId": "1yjggswjzv-a64ceec0-9d45-11f1-95d3-2954dfa7bab6",
+								"sectionItemType": "field",
+								"startCol": 0
+							},
+							{
+								"dropEffect": "move",
+								"endCol": 6,
+								"fieldId": "socagenttoolpolicy",
+								"height": 44,
+								"id": "b1be50a0-9d45-11f1-95d3-2954dfa7bab6",
+								"index": 1,
+								"listId": "1yjggswjzv-a64ceec0-9d45-11f1-95d3-2954dfa7bab6",
+								"sectionItemType": "field",
+								"startCol": 0
+							},
+							{
+								"endCol": 6,
+								"fieldId": "socagentmemorypolicy",
+								"height": 44,
+								"id": "d1de7f40-9d45-11f1-95d3-2954dfa7bab6",
+								"index": 2,
+								"sectionItemType": "field",
+								"startCol": 0
+							},
+							{
+								"endCol": 6,
+								"fieldId": "socagenttoolapprovals",
+								"height": 106,
+								"id": "e2102850-9d45-11f1-95d3-2954dfa7bab6",
+								"index": 3,
+								"sectionItemType": "field",
+								"startCol": 0
+							},
+							{
+								"endCol": 6,
+								"fieldId": "socagentoperatorguide",
+								"height": 44,
+								"id": "0b20da50-9d46-11f1-95d3-2954dfa7bab6",
+								"index": 4,
+								"sectionItemType": "field",
+								"startCol": 0
+							}
+						],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Approved Configurations",
+						"static": false,
+						"w": 3,
+						"x": 0,
+						"y": 0
+					},
+					{
+						"description": "Read-only persona actually read by GuardianPromptBuilder on each agent tick.",
+						"h": 6,
+						"i": "1yjggswjzv-275db440-9d46-11f1-95d3-2954dfa7bab6",
+						"items": [],
+						"maxW": 3,
+						"minH": 1,
+						"moved": false,
+						"name": "Effective Persona",
+						"query": "GuardianLayoutSocAgentPersona",
+						"queryType": "script",
+						"static": false,
+						"type": "dynamicIndicator",
+						"w": 3,
+						"x": 0,
+						"y": 6
+					}
+				],
+				"type": "custom"
+			}
+		]
+	},
+	"indicatorsQuickView": null,
+	"itemVersion": "",
+	"locked": false,
+	"mobile": null,
+	"name": "GuardianSocAgentLayout",
+	"packID": "",
+	"packName": "",
+	"propagationLabels": [
+		"all"
+	],
+	"quickView": null,
+	"quickViewV2": null,
+	"system": false,
+	"toServerVersion": "",
+	"version": -1
+}

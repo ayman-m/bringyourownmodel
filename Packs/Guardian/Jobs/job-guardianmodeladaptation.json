@@ -1,0 +1,33 @@
+{
+    "id": "GuardianModelAdaptation",
+    "version": -1,
+    "name": "GuardianModelAdaptation",
+    "details": "Guardian's daily model-adaptation run: probes the enabled model (a warm-up call, tokens per character, usable context window, tool-call and structured-output support) and saves a trustworthy result to the guardian_model_profile List, which every investigation reads for its input budget and tool-list budget. A probe that was not trustworthy leaves the previous profile in place. Makes a few dozen small billable model calls per run. Runs a playbook that calls !guardian-probe-model then !GuardianModelProfileUpdate -- no incident-scoped state is needed.",
+    "type": "Unclassified",
+    "playbookId": "GuardianModelAdaptation",
+    "labels": [
+        {
+            "type": "Instance",
+            "value": "GuardianModelAdaptation"
+        }
+    ],
+    "tags": [
+        "guardian",
+        "guardian-model-adaptation"
+    ],
+    "scheduled": true,
+    "recurrent": true,
+    "humanCron": {
+        "timePeriodType": "hours",
+        "timePeriod": 24
+    },
+    "cronView": false,
+    "timezone": "UTC",
+    "shouldTriggerNew": false,
+    "closePrevRun": true,
+    "notifyOwner": false,
+    "isFeed": false,
+    "selectedFeeds": [],
+    "isAllFeeds": false,
+    "fromVersion": "6.10.0"
+}

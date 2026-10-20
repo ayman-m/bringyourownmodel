@@ -1,0 +1,56 @@
+args:
+- name: name
+  description: >-
+    The skill name to load, for example "cortex_issue_reference", "cortex_case_investigation",
+    "cortex_posture_misconfiguration" or "build_cortex_playbook". It must be an enabled entry in
+    `guardian_skills_index`. Otherwise an error lists the skills that are available.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: summary_only
+  description: >-
+    When true, prints a one-line summary instead of the whole skill. The body is still written to context.
+    Used by the playbook task.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+comment: >-
+  Loads the full text of one Guardian skill on demand. It first checks `name` against `guardian_skills_index`,
+  and rejects any name that is not listed and enabled, then reads the skill's `guardian_skill_<name>` List and
+  returns its markdown. If the index cannot be read, it returns a clear error.
+commonfields:
+  id: GuardianSkillRead
+  version: -1
+enabled: true
+name: GuardianSkillRead
+outputs:
+- contextPath: Guardian.SkillBody
+  description: >-
+    The full markdown text of the skill (front matter and body), as stored in its `guardian_skill_<name>`
+    List.
+  type: String
+- contextPath: Guardian.SkillName
+  description: "The name of the skill that was loaded."
+  type: String
+- contextPath: Guardian.SkillDisplayName
+  description: "The skill's display name, from `guardian_skills_index`."
+  type: String
+- contextPath: Guardian.SkillCategory
+  description: "The skill's category, for example \"foundation\" or \"workflows\", from `guardian_skills_index`."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

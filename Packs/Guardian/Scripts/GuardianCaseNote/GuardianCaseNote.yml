@@ -1,0 +1,35 @@
+args:
+- name: content
+  required: true
+  description: >-
+    A concise, evidence-based note for the current incident's War Room, written as markdown. The note is
+    always added to the incident the command runs in.
+comment: >-
+  Lets the agent document its findings. Writes one bounded War Room note to the current incident with the
+  fixed `guardian-case-note` tag, after removing secrets. It cannot target another incident or run other
+  commands.
+commonfields:
+  id: GuardianCaseNote
+  version: -1
+enabled: true
+name: GuardianCaseNote
+outputs:
+- contextPath: Guardian.CaseNote.status
+  description: Always `documented` when the note write succeeds.
+  type: String
+- contextPath: Guardian.CaseNote.content_length
+  description: Number of sanitized note characters written.
+  type: Number
+- contextPath: Guardian.CaseNote.tag
+  description: Fixed War Room tag applied to the note.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

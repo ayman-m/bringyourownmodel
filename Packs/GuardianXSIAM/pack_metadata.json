@@ -1,0 +1,20 @@
+{
+    "name": "Guardian for Cortex Platform",
+    "description": "The autonomous AI SOC-analyst agent for the Cortex platform: a re-entrant reasoning loop that investigates issues with a bring-your-own LLM, with every action vetted by one security chokepoint.",
+    "support": "community",
+    "currentVersion": "1.0.2",
+    "author": "Bring Your Own Model community",
+    "url": "https://github.com/ayman-m/bringyourownmodel",
+    "email": "",
+    "created": "2026-07-04T00:00:00Z",
+    "categories": [
+        "Analytics & SIEM"
+    ],
+    "tags": [],
+    "useCases": [],
+    "keywords": [],
+    "marketplaces": [
+        "marketplacev2"
+    ],
+    "fromVersion": "6.10.0"
+}

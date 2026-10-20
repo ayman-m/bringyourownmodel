@@ -1,0 +1,327 @@
+{
+    "id": "GuardianAgentRunLayout",
+    "version": -1,
+    "name": "GuardianAgentRunLayout",
+    "group": "incident",
+    "fromVersion": "6.10.0",
+    "marketplaces": [
+        "marketplacev2"
+    ],
+    "description": "Guardian Agent Run -- the agent's recommended actions and pending approvals, reasoning trace and tool-call ledger, the run's summary fields (verdict/confidence/blast radius/cost/ticks/trigger/ATT&CK), and buttons to approve, deny, reply to the agent, compact its transcript, and pause or resume the agent.",
+    "detailsV2": {
+        "tabs": [
+            {
+                "id": "summary",
+                "name": "Classic Summary",
+                "type": "summary",
+                "hidden": false
+            },
+            {
+                "id": "guardian",
+                "name": "Guardian",
+                "type": "custom",
+                "hidden": false,
+                "sections": [
+                    {
+                        "i": "guardian-fields-section",
+                        "name": "Guardian Run Summary",
+                        "description": "The agent's verdict, confidence, blast radius, cost/tick accounting, trigger source, and any mapped ATT&CK techniques for this run.",
+                        "isVisible": true,
+                        "readOnly": true,
+                        "type": "",
+                        "displayType": "ROW",
+                        "hideName": false,
+                        "static": false,
+                        "moved": false,
+                        "x": 0,
+                        "y": 0,
+                        "w": 3,
+                        "h": 3,
+                        "maxW": 3,
+                        "minH": 1,
+                        "items": [
+                            {
+                                "id": "guardian-field-guardianverdict",
+                                "index": 0,
+                                "fieldId": "guardianverdict",
+                                "sectionItemType": "field",
+                                "startCol": 0,
+                                "endCol": 2,
+                                "height": 22
+                            },
+                            {
+                                "id": "guardian-field-guardianconfidence",
+                                "index": 1,
+                                "fieldId": "guardianconfidence",
+                                "sectionItemType": "field",
+                                "startCol": 0,
+                                "endCol": 2,
+                                "height": 22
+                            },
+                            {
+                                "id": "guardian-field-guardianblastradius",
+                                "index": 2,
+                                "fieldId": "guardianblastradius",
+                                "sectionItemType": "field",
+                                "startCol": 0,
+                                "endCol": 2,
+                                "height": 22
+                            },
+                            {
+                                "id": "guardian-field-guardiancostusd",
+                                "index": 3,
+                                "fieldId": "guardiancostusd",
+                                "sectionItemType": "field",
+                                "startCol": 0,
+                                "endCol": 2,
+                                "height": 22
+                            },
+                            {
+                                "id": "guardian-field-guardiantickcount",
+                                "index": 4,
+                                "fieldId": "guardiantickcount",
+                                "sectionItemType": "field",
+                                "startCol": 0,
+                                "endCol": 2,
+                                "height": 22
+                            },
+                            {
+                                "id": "guardian-field-guardiantriggersource",
+                                "index": 5,
+                                "fieldId": "guardiantriggersource",
+                                "sectionItemType": "field",
+                                "startCol": 0,
+                                "endCol": 2,
+                                "height": 22
+                            },
+                            {
+                                "id": "guardian-field-guardianattacktechniques",
+                                "index": 6,
+                                "fieldId": "guardianattacktechniques",
+                                "sectionItemType": "field",
+                                "startCol": 0,
+                                "endCol": 2,
+                                "height": 22
+                            }
+                        ]
+                    },
+                    {
+                        "i": "guardian-recommended-actions-section",
+                        "name": "Recommended Actions",
+                        "description": "The agent's conclusion and the actions waiting for a person's approval, with their risk tier, time left and how to resolve them. Display only: use the Approve and Deny buttons below.",
+                        "isVisible": true,
+                        "readOnly": true,
+                        "type": "dynamic",
+                        "query": "GuardianLayoutRecommendedActions",
+                        "queryType": "script",
+                        "hideName": false,
+                        "static": false,
+                        "moved": false,
+                        "x": 0,
+                        "y": 3,
+                        "w": 3,
+                        "h": 6,
+                        "maxW": 3,
+                        "minH": 1,
+                        "items": []
+                    },
+                    {
+                        "i": "guardian-approval-actions-section",
+                        "name": "Approve or Deny",
+                        "description": "Resolve a pending approval by its approval ID (copy it from the Recommended Actions table). A credential-tier request needs the credential-tier button, which also asks for CONFIRM.",
+                        "isVisible": true,
+                        "readOnly": false,
+                        "type": "",
+                        "displayType": "ROW",
+                        "hideName": false,
+                        "static": false,
+                        "moved": false,
+                        "x": 0,
+                        "y": 9,
+                        "w": 3,
+                        "h": 2,
+                        "maxW": 3,
+                        "minH": 1,
+                        "items": [
+                            {
+                                "id": "932a9ae8-5a16-53af-accc-b7eea94922b0",
+                                "index": 0,
+                                "name": "Approve",
+                                "scriptId": "GuardianButtonApprove",
+                                "sectionItemType": "button",
+                                "buttonClass": "success",
+                                "args": {},
+                                "fieldId": "",
+                                "startCol": 0,
+                                "endCol": 2,
+                                "height": 44,
+                                "dropEffect": "move",
+                                "listId": "guardian-approval-actions-section"
+                            },
+                            {
+                                "id": "3f9d3064-a7a6-5fde-8853-d884c669d754",
+                                "index": 0,
+                                "name": "Approve (credential tier)",
+                                "scriptId": "GuardianButtonApproveCredential",
+                                "sectionItemType": "button",
+                                "buttonClass": "warning",
+                                "args": {},
+                                "fieldId": "",
+                                "startCol": 2,
+                                "endCol": 4,
+                                "height": 44,
+                                "dropEffect": "move",
+                                "listId": "guardian-approval-actions-section"
+                            },
+                            {
+                                "id": "c7c2ca4d-25ce-5d5d-92db-197ba9c5242b",
+                                "index": 0,
+                                "name": "Deny",
+                                "scriptId": "GuardianButtonDeny",
+                                "sectionItemType": "button",
+                                "buttonClass": "error",
+                                "args": {},
+                                "fieldId": "",
+                                "startCol": 4,
+                                "endCol": 6,
+                                "height": 44,
+                                "dropEffect": "move",
+                                "listId": "guardian-approval-actions-section"
+                            }
+                        ]
+                    },
+                    {
+                        "i": "guardian-agent-actions-section",
+                        "name": "Talk to the agent and control runs",
+                        "description": "Reply to the agent, compact its transcript now, or pause or resume ALL Guardian runs (the kill switch is global, there is no per-run pause).",
+                        "isVisible": true,
+                        "readOnly": false,
+                        "type": "",
+                        "displayType": "ROW",
+                        "hideName": false,
+                        "static": false,
+                        "moved": false,
+                        "x": 0,
+                        "y": 11,
+                        "w": 3,
+                        "h": 3,
+                        "maxW": 3,
+                        "minH": 1,
+                        "items": [
+                            {
+                                "id": "a17674b9-9c94-589e-a6da-da92b351ad75",
+                                "index": 0,
+                                "name": "Reply to agent",
+                                "scriptId": "GuardianButtonReply",
+                                "sectionItemType": "button",
+                                "buttonClass": "primary",
+                                "args": {},
+                                "fieldId": "",
+                                "startCol": 0,
+                                "endCol": 3,
+                                "height": 44,
+                                "dropEffect": "move",
+                                "listId": "guardian-agent-actions-section"
+                            },
+                            {
+                                "id": "b387e2b8-2733-583c-ac86-58e01c889d08",
+                                "index": 0,
+                                "name": "Compact transcript",
+                                "scriptId": "GuardianButtonCompact",
+                                "sectionItemType": "button",
+                                "buttonClass": "primary",
+                                "args": {},
+                                "fieldId": "",
+                                "startCol": 3,
+                                "endCol": 6,
+                                "height": 44,
+                                "dropEffect": "move",
+                                "listId": "guardian-agent-actions-section"
+                            },
+                            {
+                                "id": "9e246ba6-4bff-5213-ab63-382299ac805e",
+                                "index": 1,
+                                "name": "Pause all runs",
+                                "scriptId": "GuardianButtonPause",
+                                "sectionItemType": "button",
+                                "buttonClass": "error",
+                                "args": {},
+                                "fieldId": "",
+                                "startCol": 0,
+                                "endCol": 3,
+                                "height": 44,
+                                "dropEffect": "move",
+                                "listId": "guardian-agent-actions-section"
+                            },
+                            {
+                                "id": "692309aa-a5ce-55ef-849a-cc27e3fbcee4",
+                                "index": 1,
+                                "name": "Resume all runs",
+                                "scriptId": "GuardianButtonResume",
+                                "sectionItemType": "button",
+                                "buttonClass": "success",
+                                "args": {},
+                                "fieldId": "",
+                                "startCol": 3,
+                                "endCol": 6,
+                                "height": 44,
+                                "dropEffect": "move",
+                                "listId": "guardian-agent-actions-section"
+                            }
+                        ]
+                    },
+                    {
+                        "i": "guardian-trace-section",
+                        "name": "Reasoning Trace",
+                        "description": "Turn-by-turn reasoning trace from Guardian.Loop.messages: the agent's reasoning text and the tool calls it requested each turn, with their outcome.",
+                        "isVisible": true,
+                        "readOnly": true,
+                        "type": "dynamic",
+                        "query": "GuardianLayoutTrace",
+                        "queryType": "script",
+                        "hideName": false,
+                        "static": false,
+                        "moved": false,
+                        "x": 0,
+                        "y": 14,
+                        "w": 3,
+                        "h": 8,
+                        "maxW": 3,
+                        "minH": 1,
+                        "items": []
+                    },
+                    {
+                        "i": "guardian-tool-ledger-section",
+                        "name": "Tool-Call Ledger",
+                        "description": "This incident's guardian_audit rows (ok / pending_approval / denied / error / halted) as a table with status badges.",
+                        "isVisible": true,
+                        "readOnly": true,
+                        "type": "dynamic",
+                        "query": "GuardianLayoutToolLedger",
+                        "queryType": "script",
+                        "hideName": false,
+                        "static": false,
+                        "moved": false,
+                        "x": 0,
+                        "y": 22,
+                        "w": 3,
+                        "h": 6,
+                        "maxW": 3,
+                        "minH": 1,
+                        "items": []
+                    }
+                ]
+            },
+            {
+                "id": "warRoom",
+                "name": "War Room",
+                "type": "warRoom"
+            },
+            {
+                "id": "workPlan",
+                "name": "Work Plan",
+                "type": "workPlan"
+            }
+        ]
+    }
+}

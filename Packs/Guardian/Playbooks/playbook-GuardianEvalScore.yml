@@ -1,0 +1,132 @@
+id: GuardianEvalScore
+version: -1
+name: GuardianEvalScore
+description: >-
+  Runs !GuardianEval action=score, the sweep that scores evaluation cases that have concluded into
+  guardian_eval_results and skips those already scored or still running. It exists to give the scheduled Job a
+  playbook to run; GuardianEval can also be run by hand, including action=run and action=score with an explicit
+  incident_ids argument.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 8f5b6f39-3f9f-4f8a-9b1a-1a2b3c4d5e6f
+    type: start
+    task:
+      id: 8f5b6f39-3f9f-4f8a-9b1a-1a2b3c4d5e6f
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a
+    type: regular
+    task:
+      id: 1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a
+      version: -1
+      name: Run the Guardian eval scoring sweep
+      description: >-
+        Scans every guardiantriggersource=eval incident and scores any
+        newly-concluded case into guardian_eval_results. Idempotent per
+        incident id -- already-scored incidents are skipped, still-running
+        ones are left for the next scheduled pass.
+      script: 'GuardianEval'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      action:
+        simple: score
+    nexttasks:
+      '#none#':
+      - "3"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "3":
+    id: "3"
+    taskid: c1a2b3d4-0002-4a5b-9c8d-0000cafe0002
+    type: regular
+    task:
+      id: c1a2b3d4-0002-4a5b-9c8d-0000cafe0002
+      version: -1
+      name: Close this job run
+      description: >-
+        Fire-and-forget maintenance run: close this recurring job's own investigation so each
+        scheduled run finishes clean instead of accumulating open forever. (closePrevRun on the
+        Job only closes the PREVIOUS run when the NEXT fires; this closes THIS run as soon as its
+        work is done.) Nothing here needs analyst review.
+      script: closeInvestigation
+      type: regular
+      iscommand: true
+      brand: ""
+    scriptarguments:
+      closeReason:
+        simple: Resolved
+      closeNotes:
+        simple: Guardian recurring maintenance run completed.
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 285
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 2e3f4a5b-6c7d-4e8f-9a0b-1c2d3e4f5a6b
+    type: title
+    task:
+      id: 2e3f4a5b-6c7d-4e8f-9a0b-1c2d3e4f5a6b
+      version: -1
+      name: Done
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 370
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 385,
+        "width": 380,
+        "x": 450,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []
+fromversion: 6.10.0
+marketplaces:
+- xsoar

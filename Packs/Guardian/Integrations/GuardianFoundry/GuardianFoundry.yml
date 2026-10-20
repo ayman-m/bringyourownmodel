@@ -1,0 +1,292 @@
+category: Utilities
+commonfields:
+  id: GuardianFoundry
+  version: -1
+name: GuardianFoundry
+display: Guardian Foundry
+description: >-
+  Microsoft Foundry (Azure AI Foundry) provider integration for the Guardian model plane. Implements the
+  same guardian-llm-chat command as every other Guardian provider and returns the canonical
+  Guardian.LLM.Completion shape, so the rest of the Guardian pack is unaffected by the model choice. Talks to
+  a Foundry resource through its OpenAI-compatible v1 chat-completions API, which serves OpenAI models
+  (gpt-4.x, gpt-5.x, o-series) and the other chat models deployed in the same resource (DeepSeek, Grok, Llama,
+  Mistral and others). Authenticates with a resource key or a Microsoft Entra ID service principal (client secret
+  or certificate).
+configuration:
+- display: Endpoint
+  name: endpoint
+  type: 0
+  required: true
+  additionalinfo: >-
+    The Foundry resource endpoint, e.g. https://<resource>.services.ai.azure.com (or
+    https://<resource>.openai.azure.com). The project endpoint (.../api/projects/<project>) is also
+    accepted; the project path is ignored. The integration appends /openai/v1/chat/completions. A URL
+    that already ends in /chat/completions is used exactly as given.
+- display: Model
+  name: model_choice
+  type: 15
+  required: false
+  defaultvalue: Custom (use the deployment name below)
+  options:
+  - Custom (use the deployment name below)
+  - cohere-command-a
+  - Mistral-large
+  - Mistral-Large-3
+  - gpt-oss-120b
+  - Llama-4-Maverick-17B-128E-Instruct-FP8
+  - DeepSeek-V3.2
+  - Kimi-K2.6
+  - gpt-5
+  - gpt-5-mini
+  - gpt-4.1
+  - gpt-4o
+  additionalinfo: >-
+    Pick the model this instance uses. The choice is sent as the request's model field, so deploy the model in
+    your Foundry resource under the SAME name (Foundry lets you choose the deployment name; use the model name).
+    To switch models, change this dropdown and save: nothing else changes. Choose "Custom" to use any other
+    deployment, named in the field below. The model size is taken from the model catalogue (a model over 40B
+    parameters, and every closed hosted model, is "large"); make sure its deployment quota (tokens per minute) is at least one full
+    Guardian request, about 25,000 tokens, or the provider answers HTTP 429.
+- display: Deployment name (used when Model is Custom)
+  name: model
+  type: 0
+  required: false
+  additionalinfo: >-
+    The deployment name shown under Models + endpoints in the Foundry portal (sent as the request's
+    model field). It is the name you chose at deploy time, not necessarily the model name. Only used when
+    Model above is Custom; any other choice overrides it.
+- display: Authentication
+  name: auth_type
+  type: 15
+  required: true
+  defaultvalue: api-key
+  options:
+  - api-key
+  - bearer-key
+  - entra-client-credentials
+  - entra-client-certificate
+  additionalinfo: >-
+    "api-key": the resource key sent in an api-key header (the default). "bearer-key": the same key sent
+    as Authorization: Bearer. "entra-client-credentials": a Microsoft Entra ID service principal that
+    authenticates with a client secret (use the Tenant ID, Client ID, Client secret and Scope fields below).
+    "entra-client-certificate": the same kind of service principal, authenticating with a certificate instead
+    of a secret (use the Tenant ID, Client ID, Certificate and private key, Passphrase, Thumbprint and Scope
+    fields below). For the certificate type, upload the PUBLIC certificate to the app registration
+    (Certificates & secrets) and give the service principal the Cognitive Services OpenAI User (or Foundry
+    User) role on the resource. For both Entra ID types the access token is requested and cached automatically.
+- display: API key
+  name: api_key
+  type: 4
+  required: false
+  additionalinfo: The Foundry resource key (Keys and Endpoint in the Azure portal). Required for the api-key and bearer-key authentication types. Stored encrypted.
+- display: Tenant ID (Entra ID only)
+  name: entra_tenant_id
+  type: 0
+  required: false
+  additionalinfo: Directory (tenant) ID of the Entra ID app registration. Only used when Authentication is entra-client-credentials or entra-client-certificate.
+- display: Client ID (Entra ID only)
+  name: entra_client_id
+  type: 0
+  required: false
+  additionalinfo: Application (client) ID of the app registration. Its service principal needs the Cognitive Services OpenAI User (or Foundry User) role on the resource. Only used when Authentication is entra-client-credentials or entra-client-certificate.
+- display: Client secret (Entra ID only)
+  name: entra_client_secret
+  type: 4
+  required: false
+  additionalinfo: A client secret of the app registration. Stored encrypted. Only used when Authentication is entra-client-credentials.
+- display: Certificate and private key, PEM (Entra ID certificate only)
+  name: entra_certificate_pem
+  type: 14
+  required: false
+  additionalinfo: >-
+    The certificate and its private key as PEM text, in one block (-----BEGIN CERTIFICATE----- ... followed by
+    -----BEGIN PRIVATE KEY----- ...). Upload the PUBLIC certificate to the app registration (Certificates &
+    secrets) and give its service principal the Cognitive Services OpenAI User (or Foundry User) role on the
+    resource. If you give only the private key, also fill in the Thumbprint field. Stored encrypted. Only used
+    when Authentication is entra-client-certificate.
+- display: Private key passphrase (Entra ID certificate only)
+  name: entra_certificate_passphrase
+  type: 4
+  required: false
+  additionalinfo: The passphrase of the private key, when the key is encrypted. Leave empty for an unencrypted key. Stored encrypted. Only used when Authentication is entra-client-certificate.
+- display: Certificate thumbprint (Entra ID certificate only)
+  name: entra_certificate_thumbprint
+  type: 0
+  required: false
+  additionalinfo: >-
+    The SHA-1 thumbprint of the certificate, as the Azure portal shows it (40 hexadecimal digits; colons and
+    spaces are ignored). Optional when the PEM above contains the certificate: the thumbprint is then computed
+    from it, and a value entered here overrides it. Required when the PEM holds only the private key. Only used
+    when Authentication is entra-client-certificate.
+- display: Token scope (Entra ID only)
+  name: entra_scope
+  type: 0
+  required: false
+  defaultvalue: https://ai.azure.com/.default
+  additionalinfo: OAuth scope requested for the access token. Change it to https://cognitiveservices.azure.com/.default only if the default is rejected for your resource.
+- display: Model family
+  name: model_family
+  type: 15
+  required: false
+  defaultvalue: auto
+  options:
+  - auto
+  - standard
+  - reasoning
+  additionalinfo: >-
+    Reasoning models (o-series, gpt-5 and later) only accept the default temperature and use
+    max_completion_tokens. "auto" decides from the deployment name (o1, o3, o4-mini, gpt-5...); set
+    "reasoning" or "standard" when the deployment is named something else.
+- display: Parameters to omit
+  name: omit_params
+  type: 0
+  required: false
+  additionalinfo: >-
+    Comma-separated request parameters to never send to this deployment, for models that reject them with
+    an HTTP 400 (for example: response_format,parallel_tool_calls). The HTTP 400 text names the offending
+    parameter.
+- display: Max output tokens
+  name: max_output_tokens
+  type: 0
+  required: false
+  additionalinfo: >-
+    Optional cap on tokens generated per call (sent as max_completion_tokens for reasoning models,
+    max_tokens otherwise). Leave empty for the deployment's default. Reasoning models spend part of this
+    on hidden reasoning, so give them a generous cap.
+- display: API version (optional)
+  name: api_version
+  type: 0
+  required: false
+  additionalinfo: Sent as the api-version query parameter when set. Leave empty for the v1 API (the default), which needs none; only needed for endpoints given as a full /chat/completions URL that still require one.
+- display: Trust any certificate (not secure)
+  name: insecure
+  type: 8
+  required: false
+- display: Use system proxy settings
+  name: proxy
+  type: 8
+  required: false
+script:
+  script: '-'
+  type: python
+  subtype: python3
+  dockerimage: demisto/crypto:1.0.0.13447173
+  isfetch: false
+  runonce: false
+  commands:
+  - name: guardian-llm-chat
+    description: >-
+      Provider-independent chat completion. Sends OpenAI-Chat-Completions-shaped messages
+      (and optional tool definitions / structured-output schema) through the configured
+      provider adapter, and returns a normalized completion under Guardian.LLM.Completion
+      regardless of which provider served the request.
+    arguments:
+    - name: messages
+      required: false
+      description: >-
+        JSON array of OpenAI Chat-Completions message objects, e.g.
+        [{"role":"system","content":"..."},{"role":"user","content":"..."}]. Supports the
+        full message shape including "name", "tool_call_id", and assistant "tool_calls".
+        Mutually exclusive with system_message/user_message -- provide this OR that pair,
+        never both. Required if user_message is not given.
+    - name: system_message
+      required: false
+      description: >-
+        Convenience alternative to messages, for a single interactive turn (e.g. testing from
+        the Playground) without hand-formatting a JSON array. Optional system-role text.
+        Ignored/rejected if messages is also provided.
+    - name: user_message
+      required: false
+      description: >-
+        Convenience alternative to messages: the user-role text for a single turn. Required
+        if messages is not given; combined with system_message (if set) into a two-message
+        array. Ignored/rejected if messages is also provided.
+    - name: tools
+      required: false
+      description: >-
+        JSON array of OpenAI "tools" (function) definitions to make available for tool/function
+        calling, e.g. [{"type":"function","function":{"name":"...","parameters":{...}}}].
+    - name: tool_choice
+      required: false
+      description: >-
+        Either a plain string ("auto" | "none" | "required") or a JSON object selecting one
+        specific tool, e.g. {"type":"function","function":{"name":"my_tool"}}.
+    - name: response_format
+      required: false
+      description: >-
+        JSON object requesting structured output, e.g. {"type":"json_object"} or
+        {"type":"json_schema","json_schema":{...}}. Only honored if the configured
+        model/provider supports structured outputs; unsupported providers will surface the
+        provider's own error.
+    - name: temperature
+      required: false
+      description: Sampling temperature (provider-dependent range, typically 0-2).
+    - name: reasoning_effort
+      required: false
+      description: 'Reasoning effort hint for reasoning-capable models: low | medium | high.'
+      auto: PREDEFINED
+      predefined:
+      - low
+      - medium
+      - high
+    - name: parallel_tool_calls
+      required: false
+      description: Whether the model may return multiple tool calls in one response (true/false).
+      auto: PREDEFINED
+      predefined:
+      - 'true'
+      - 'false'
+    - name: timeout
+      required: false
+      description: Per-call time limit in seconds. A hard bound for this one call (one attempt, no retries), never longer than the instance's request timeout. Leave empty for the default.
+    outputs:
+    - contextPath: Guardian.LLM.Completion.id
+      description: Provider-assigned completion id (null for a request blocked by a content filter before generation).
+      type: String
+    - contextPath: Guardian.LLM.Completion.model
+      description: Model (or deployment) that served the request.
+      type: String
+    - contextPath: Guardian.LLM.Completion.created
+      description: Unix timestamp of the completion, as reported by the provider.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.choices.index
+      description: Choice index.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.choices.message.role
+      description: Role of the returned message (normally "assistant").
+      type: String
+    - contextPath: Guardian.LLM.Completion.choices.message.content
+      description: Text content of the returned message (may be null when only tool_calls are returned).
+      type: String
+    - contextPath: Guardian.LLM.Completion.choices.message.tool_calls
+      description: Tool/function calls requested by the model, in OpenAI tool_calls shape.
+      type: Unknown
+    - contextPath: Guardian.LLM.Completion.choices.finish_reason
+      description: 'Per-choice normalized finish reason: stop | length | tool_calls | content_filter | other provider-reported values.'
+      type: String
+    - contextPath: Guardian.LLM.Completion.finish_reason
+      description: Normalized finish reason of the first choice, surfaced at the top level for convenience.
+      type: String
+    - contextPath: Guardian.LLM.Completion.content_filter
+      description: True if this request or response was blocked/flagged by the provider's content filter.
+      type: Boolean
+    - contextPath: Guardian.LLM.Completion.content_filter_detail
+      description: Structured detail (message, raw provider error) when content_filter is true and the block happened on the input (pre-generation) side.
+      type: Unknown
+    - contextPath: Guardian.LLM.Completion.usage.prompt_tokens
+      description: Prompt tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.completion_tokens
+      description: Completion tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.total_tokens
+      description: Total tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.cached_tokens
+      description: Cached prompt-token count, when the provider reports one (e.g. OpenAI prompt_tokens_details.cached_tokens); null otherwise.
+      type: Number
+fromversion: 6.10.0
+marketplaces:
+- xsoar
+tests:
+- No tests (auto formatted)

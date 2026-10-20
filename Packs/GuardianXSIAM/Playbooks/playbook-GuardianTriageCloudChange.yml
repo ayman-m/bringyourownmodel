@@ -1,0 +1,593 @@
+id: GuardianTriageCloudChange
+version: -1
+name: GuardianTriageCloudChange
+description: >-
+  Triage branch for a person or identity that changed cloud network, IAM or storage configuration. Collects
+  the resource's recent change history, the actor's recent activity, how common the source IP is and the
+  platform's asset record, adds them to the evidence packet, then runs one focused model session on the
+  detection skill. Everything it fetches is read-only; the model session proposes actions and takes none.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 59cd7cd5-1b33-51f0-aacc-3ec6beaf271f
+    type: start
+    task:
+      id: 59cd7cd5-1b33-51f0-aacc-3ec6beaf271f
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: bc7462d6-ebec-53af-9d08-9c8f34fabeb0
+    type: regular
+    task:
+      id: bc7462d6-ebec-53af-9d08-9c8f34fabeb0
+      version: -1
+      name: "Clear earlier enrichment"
+      description: >-
+        Deletes the context keys this playbook fills (Core.Asset, Core.AnalyticsPrevalence.Ip,
+        Guardian.Enrich), so a re-run starts clean and a result from an earlier run is never mistaken for a
+        new one.
+      script: 'DeleteContext'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    scriptarguments:
+      key:
+        simple: "Core.Asset,Core.AnalyticsPrevalence.Ip,Guardian.Enrich"
+      subplaybook:
+        simple: "no"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: a2fb4b73-66f7-5be0-8769-b2945e458fdd
+    type: condition
+    task:
+      id: a2fb4b73-66f7-5be0-8769-b2945e458fdd
+      version: -1
+      name: "Has a changed resource?"
+      description: >-
+        Runs the next lookups only when the triage input `resource` is not empty; an empty value skips them
+        quietly instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "3"
+      '#default#':
+      - "5"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: Guardian.Triage.inputs.resource
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 340
+        }
+      }
+  "3":
+    id: "3"
+    taskid: ca8a0bbd-bf4c-504a-8fee-b7fa329d91ed
+    type: regular
+    task:
+      id: ca8a0bbd-bf4c-504a-8fee-b7fa329d91ed
+      version: -1
+      name: "Who changed the resource, last 72 hours"
+      description: >-
+        Runs the GuardianXQL resource_change_history template for the 72 hours before the issue's event time (before now when it has none): state-changing operations
+        on this resource with the identity and source IP. Read-only.
+      script: 'GuardianXQL'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    scriptarguments:
+      template:
+        simple: "resource_change_history"
+      resource:
+        simple: "${Guardian.Triage.inputs.resource}"
+      hours:
+        simple: "72"
+      anchor_time:
+        simple: "${Guardian.Triage.inputs.anchor_time}"
+      context_key:
+        simple: "Guardian.Enrich.ResourceChanges"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 485
+        }
+      }
+  "4":
+    id: "4"
+    taskid: eebaba5a-e307-5ecc-ac3f-90a1836f8266
+    type: regular
+    task:
+      id: eebaba5a-e307-5ecc-ac3f-90a1836f8266
+      version: -1
+      name: "Find the changed resource in the asset inventory"
+      description: >-
+        Looks the resource up by name in the asset inventory (Core.Asset): type, tags, related issues and
+        cases. Read-only.
+      script: '|||core-search-assets'
+      type: regular
+      iscommand: true
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    scriptarguments:
+      asset_names:
+        simple: "${Guardian.Triage.inputs.resource}"
+      page_size:
+        simple: "5"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 630
+        }
+      }
+  "5":
+    id: "5"
+    taskid: 7d67cc9b-2eca-54a1-a6e8-91cf5e0efd85
+    type: condition
+    task:
+      id: 7d67cc9b-2eca-54a1-a6e8-91cf5e0efd85
+      version: -1
+      name: "Has an acting identity?"
+      description: >-
+        Runs the next lookups only when the triage input `identity` is not empty; an empty value skips them
+        quietly instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "6"
+      '#default#':
+      - "7"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: Guardian.Triage.inputs.identity
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 775
+        }
+      }
+  "6":
+    id: "6"
+    taskid: 90e12cbc-8fad-5103-b5a6-94392375dcea
+    type: regular
+    task:
+      id: 90e12cbc-8fad-5103-b5a6-94392375dcea
+      version: -1
+      name: "Actor activity, last 6 hours"
+      description: >-
+        Runs the GuardianXQL identity_activity template for the 6 hours before the issue's event time (before now when it has none): what the acting identity did
+        around the change. Read-only.
+      script: 'GuardianXQL'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "7"
+    scriptarguments:
+      template:
+        simple: "identity_activity"
+      identity:
+        simple: "${Guardian.Triage.inputs.identity}"
+      hours:
+        simple: "6"
+      anchor_time:
+        simple: "${Guardian.Triage.inputs.anchor_time}"
+      context_key:
+        simple: "Guardian.Enrich.ActorActivity"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 920
+        }
+      }
+  "7":
+    id: "7"
+    taskid: 12e80fd6-d0d7-568b-b014-f1963d7d1fbd
+    type: condition
+    task:
+      id: 12e80fd6-d0d7-568b-b014-f1963d7d1fbd
+      version: -1
+      name: "Has a source IP?"
+      description: >-
+        Runs the next lookups only when the triage input `ip` is not empty; an empty value skips them quietly
+        instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "8"
+      '#default#':
+      - "9"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: Guardian.Triage.inputs.ip
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1065
+        }
+      }
+  "8":
+    id: "8"
+    taskid: 6f33ca0e-c821-5309-acbf-07d7c3726397
+    type: regular
+    task:
+      id: 6f33ca0e-c821-5309-acbf-07d7c3726397
+      version: -1
+      name: "How common is the source IP"
+      description: >-
+        Reads how many endpoints and users across the tenant have seen this address
+        (Core.AnalyticsPrevalence.Ip). Read-only.
+      script: '|||core-get-IP-analytics-prevalence'
+      type: regular
+      iscommand: true
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "9"
+    scriptarguments:
+      ip_address:
+        simple: "${Guardian.Triage.inputs.ip}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 1210
+        }
+      }
+  "9":
+    id: "9"
+    taskid: c2b8cf6a-c995-5e60-937f-62bfa498cf7f
+    type: regular
+    task:
+      id: c2b8cf6a-c995-5e60-937f-62bfa498cf7f
+      version: -1
+      name: "Add enrichment to the evidence packet"
+      description: >-
+        Adds what the lookups above left in context (Guardian.Enrich.ResourceChanges, Core.Asset,
+        Guardian.Enrich.ActorActivity, Core.AnalyticsPrevalence.Ip) to the evidence packet as extra bounded
+        sections, so the model session sees them without fetching anything again. A lookup that returned
+        nothing is listed as not available in the packet. Fetches nothing and changes nothing on the issue.
+      script: 'GuardianIssueEvidence'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "10"
+    scriptarguments:
+      mode:
+        simple: "append"
+      paths:
+        simple: >-
+          Guardian.Enrich.ResourceChanges,Core.Asset,Guardian.Enrich.ActorActivity,Core.AnalyticsPrevalence.Ip
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1355
+        }
+      }
+  "10":
+    id: "10"
+    taskid: 814ba6cb-eb82-5ca9-87ee-9be16a27d23f
+    type: regular
+    task:
+      id: 814ba6cb-eb82-5ca9-87ee-9be16a27d23f
+      version: -1
+      name: "Clear the triage session state"
+      description: >-
+        Deletes Guardian.Loop, the triage session's state, so the focused model session below starts its own
+        loop instead of stopping at "loop already done". The triage outcome stays in Guardian.Triage.
+      script: 'DeleteContext'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "11"
+    scriptarguments:
+      key:
+        simple: "Guardian.Loop"
+      subplaybook:
+        simple: "no"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1500
+        }
+      }
+  "11":
+    id: "11"
+    taskid: d227d666-5074-571a-800b-397498aa2299
+    type: regular
+    task:
+      id: d227d666-5074-571a-800b-397498aa2299
+      version: -1
+      name: "Load the skill for this type"
+      description: >-
+        Loads the skill the triage chose for this type and domain (Guardian.Triage.skill) so the model session
+        can carry it in its system prompt. The skill loaded before triage was the triage skill. No model is
+        involved; a skill that cannot be loaded never stops the run.
+      script: 'GuardianSkillRead'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "12"
+    scriptarguments:
+      name:
+        simple: "${Guardian.Triage.skill}"
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1645
+        }
+      }
+  "12":
+    id: "12"
+    taskid: e9a304be-45ff-58f4-b299-12ab311dd841
+    type: regular
+    task:
+      id: e9a304be-45ff-58f4-b299-12ab311dd841
+      version: -1
+      name: "Run the focused model session"
+      description: >-
+        One autonomous model session on this type: it reads the evidence packet with the enrichment above,
+        follows the skill, checks only what is still open, writes one case note and ends with the verdict or
+        posture block. Every tool call goes through the security gate; containment and other state changes
+        wait for a human. Re-schedules itself for each turn until the model concludes, the kill switch is
+        thrown or the tick limit (input max_ticks) is hit. It continues the tick count, cost and tool activity
+        of the triage session on the issue instead of restarting them.
+      script: 'GuardianReasoningTick'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "13"
+    scriptarguments:
+      prompt:
+        simple: "${inputs.prompt}"
+      skill:
+        simple: "${Guardian.Triage.skill}"
+      use_prebuilt:
+        simple: "true"
+      scope_to_incident:
+        simple: "true"
+      assessment_mode:
+        simple: "${Guardian.Triage.assessment_mode}"
+      max_ticks:
+        simple: "${inputs.max_ticks}"
+      continue_run_totals:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1790
+        }
+      }
+  "13":
+    id: "13"
+    taskid: 9ec1dfa7-3d99-5b33-b0a7-47f6e00ac0d8
+    type: regular
+    task:
+      id: 9ec1dfa7-3d99-5b33-b0a7-47f6e00ac0d8
+      version: -1
+      name: "Remember the outcome"
+      description: >-
+        Stores one memory row for the finished run (key run:<issue id>) with the family, rule, assets, verdict
+        or posture assessment, priority and summary, so a later issue of the same rule or on the same asset
+        opens with this outcome in front of it. Writes nothing when the run ended without a verdict.
+      script: 'GuardianRunCapture'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "14"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1935
+        }
+      }
+  "14":
+    id: "14"
+    taskid: 35c9a408-450e-5250-b503-1c6a2fe62842
+    type: title
+    task:
+      id: 35c9a408-450e-5250-b503-1c6a2fe62842
+      version: -1
+      name: "Done"
+      description: >-
+        The playbook ends here.
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 2080
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 2195,
+        "width": 800,
+        "x": 0,
+        "y": 50
+      }
+    }
+  }
+inputs:
+- key: prompt
+  value:
+    simple: >-
+      Triage already classified THIS issue (number ${incident.id}) as `${Guardian.Triage.investigation_type}`
+      with severity `${Guardian.Triage.severity}` (it arrived as `${Guardian.Triage.original_severity}`),
+      confidence ${Guardian.Triage.confidence}, likely benign: ${Guardian.Triage.likely_benign}. You are
+      already assigned to this issue: do NOT search for or switch to another issue, never invent an id, and
+      never ask anyone for it. Triage is a first look: confirm it or correct it from evidence. Make exactly
+      ONE tool call per turn and read its result before choosing the next call.
+
+      1) READ THE EVIDENCE PACKET pinned above. Besides the issue's own sections it holds `enrichment:`
+      sections: read-only lookups the playbook already ran for this type. They hold who changed the resource
+      over the last 72 hours, what the acting identity did over the last 6 hours, how common the source IP is,
+      and the platform's asset record. Look for a person or automation that normally makes this kind of
+      change, a source network never seen before, failed sign-ins around the change, and whether the change
+      widened exposure. A lookup that is not listed was skipped, had nothing to return, or failed; that is
+      unknown, not clean. Do not repeat what is there.
+
+      The triage inputs this playbook used: identity=`${Guardian.Triage.inputs.identity}`,
+      resource=`${Guardian.Triage.inputs.resource}`, ip=`${Guardian.Triage.inputs.ip}`,
+      anchor_time=`${Guardian.Triage.inputs.anchor_time}`. A lookup whose input is empty was skipped, not
+      failed. Query windows are anchored on anchor_time when it is set (the hours before it and one hour
+      after); when it is empty they count back from now. Do not run it yourself with a different kind of
+      value: a VM, host or resource name is not an identity, and a subscription id is not an asset id. If the
+      missing input matters, say so in your report. If you re-run a templated query, keep the template's
+      default window and pass the same anchor_time unless you state why.
+
+      2) FOLLOW THE ACTIVE SKILL and gather only what your question still needs. Stop when another call would
+      not change your answer.
+
+      3) DOCUMENT: call GuardianCaseNote once, in the report format the skill gives. Keep the case note under 2500 characters. Notes over 4000 are
+      rejected and cost a retry. Cut repetition and raw lists before findings: name each item once, summarise
+      counts, and keep the verdict, key evidence and next steps. When you cite a cloud resource, copy its full
+      resource id exactly as it appears in the evidence. Never shorten it with '...'.
+
+      4) REMEMBER: if this run's evidence shows a durable pattern (a routine shown to be authorised, an
+      accepted risk, a new risk), call GuardianMemory with op=store, a key that names the rule or the asset
+      (for example rule:<rule id> or asset:<asset id>), a one-sentence value and tags. Store what you saw, not
+      a guess: later runs on this rule read it.
+
+      5) Do NOT change anything: no core-update-issue, no core-update-case, no containment. Propose the next
+      action in your report instead.
+
+      6) END with EXACTLY the final block for assessment mode `${Guardian.Triage.assessment_mode}` and nothing
+      after it, as the system prompt and the skill give it: in `verdict` mode the verdict block (Malicious,
+      Suspicious, Benign or Inconclusive, with confidence, techniques and summary); in `posture` mode the
+      posture block (assessment Confirmed, Not reproducible or Accepted risk candidate, with priority P1 to
+      P4, exposure, owner, fix and summary).
+  required: false
+  description: >-
+    Prompt for the focused model session on this type. It says what triage concluded (from Guardian.Triage)
+    and where the enrichment is.
+  playbookInputQuery: null
+- key: max_ticks
+  value:
+    simple: ""
+  required: false
+  description: >-
+    Optional cap on the model turns of the focused session. Empty (the default) uses the same limit
+    GuardianInvestigateIssue gets: the model size's limit, or the guardian_settings and model profile
+    override. A number can only lower that limit. The parent playbook passes its investigate_max_ticks input.
+  playbookInputQuery: null
+outputs: []
+adopted: true
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

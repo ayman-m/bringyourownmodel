@@ -1,0 +1,22 @@
+comment: >-
+  Pre-process script that drops an incoming "Guardian Agent Run" incident while `guardian_kill_switch` is
+  enabled, so a scheduled job cannot start a new agent run while the kill switch is on. If the kill switch
+  cannot be read, or any error occurs, the incident is kept. This edition does not install a pre-process rule
+  for it, because pre-process rules do not run on the Cortex platform. The reasoning loop and the tool bridge
+  check the kill switch on every cycle. It changes nothing.
+commonfields:
+  id: GuardianIntakeHygiene
+  version: -1
+enabled: true
+name: GuardianIntakeHygiene
+script: '-'
+system: false
+tags:
+- preProcessing
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

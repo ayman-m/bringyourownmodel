@@ -1,0 +1,36 @@
+{
+    "id": "GuardianIntakeSweep",
+    "version": -1,
+    "name": "GuardianIntakeSweep",
+    "details": "Every six hours, opens a Guardian Agent Run incident and starts GuardianAgentLoop on a read-only triage sweep: it finds the most urgent open work across the queue and writes a ranked, evidence-backed triage assessment in the War Room. It only recommends; it never changes or closes incidents.",
+    "type": "Guardian Agent Run",
+    "playbookId": "GuardianAgentLoop",
+    "CustomFields": {
+        "guardiantriggersource": "job:intake-sweep"
+    },
+    "labels": [
+        {
+            "type": "Instance",
+            "value": "GuardianIntakeSweep"
+        }
+    ],
+    "tags": [
+        "guardian",
+        "guardian-autonomy-heartbeat"
+    ],
+    "scheduled": true,
+    "recurrent": true,
+    "humanCron": {
+        "timePeriodType": "hours",
+        "timePeriod": 6
+    },
+    "cronView": false,
+    "timezone": "UTC",
+    "shouldTriggerNew": false,
+    "closePrevRun": true,
+    "notifyOwner": false,
+    "isFeed": false,
+    "selectedFeeds": [],
+    "isAllFeeds": false,
+    "fromVersion": "6.10.0"
+}

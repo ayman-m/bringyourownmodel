@@ -1,0 +1,80 @@
+args:
+- name: prior_limit
+  description: "Optional. How many earlier closed incidents with the same name to read. Defaults to 5."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: max_indicators
+  description: "Optional. The most linked indicators to read with findIndicators. Defaults to 25."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: mode
+  description: "Optional. incident (the default) gathers the evidence for this incident; append adds sections to the packet that is already in context (needs paths) and fetches nothing."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - incident
+  - append
+- name: paths
+  description: "Only for mode=append. Comma-separated context paths whose values are added to the packet as extra sections, for example Endpoint,UserData,Guardian.Enrich.RelatedByEntity. Each is rendered with the packet's compaction, cut and defanging and sits inside the untrusted-data wrapper, under a heading naming the path. A path with nothing in context is listed as not available. A path appended before is replaced. Paths in the Guardian namespace other than Guardian.Enrich and Guardian.Triage are refused."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Before the model session starts, fetches what XSOAR already knows about this incident (its own fields, the
+  indicators linked to it with their reputation, other open incidents with the same name, how earlier incidents with
+  the same name were closed, and Guardian's own memory for its rule and entities) and writes one bounded evidence
+  packet to Guardian.Evidence. The packet is pinned at the start of the model session. Every command is read-only
+  and fixed, and each call is audited. A command that is missing or fails is noted in the packet and never stops the
+  run. Which steps run comes from Guardian.Route.evidence_plan. With mode=append it instead adds the context values
+  at `paths` (the results of earlier playbook tasks) to the packet already in context as extra bounded sections, so
+  the model session sees them without fetching anything again; the packet's own sections and its untrusted-data
+  wrapper are kept and its time stamp is refreshed. An added section counts as an independent read (corroborated),
+  except the triage record and incident searches; an empty one does not count.
+commonfields:
+  id: GuardianIncidentEvidence
+  version: -1
+enabled: true
+name: GuardianIncidentEvidence
+outputs:
+- contextPath: Guardian.Evidence.incident_id
+  description: The incident the packet is about.
+  type: String
+- contextPath: Guardian.Evidence.family
+  description: The route family the plan came from.
+  type: String
+- contextPath: Guardian.Evidence.generated
+  description: Epoch seconds when the packet was built.
+  type: Number
+- contextPath: Guardian.Evidence.calls
+  description: Number of commands the pre-fetch ran.
+  type: Number
+- contextPath: Guardian.Evidence.failures
+  description: How many of those commands failed or returned nothing.
+  type: Number
+- contextPath: Guardian.Evidence.corroborated
+  description: True when an independent read (a scored linked indicator, earlier closed incidents with the same name, an appended lookup) succeeded.
+  type: Boolean
+- contextPath: Guardian.Evidence.items
+  description: Each step's outcome (name, command, ok, corroborates, size, error), without the data.
+  type: Unknown
+- contextPath: Guardian.Evidence.rendered
+  description: The packet text the model session pins.
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

@@ -1,0 +1,20 @@
+{
+    "id": "incident_guardianattacktechniques",
+    "version": -1,
+    "cliName": "guardianattacktechniques",
+    "name": "Guardian ATT&CK Techniques",
+    "type": "tagsSelect",
+    "group": 0,
+    "hidden": false,
+    "associatedToAll": false,
+    "associatedTypes": [
+        "Guardian Agent Run"
+    ],
+    "systemAssociatedTypes": null,
+    "unmapped": false,
+    "content": true,
+    "system": false,
+    "fromVersion": "6.10.0",
+    "isReadOnly": false,
+    "selectValues": []
+}

@@ -1,0 +1,24 @@
+args: []
+comment: >-
+  SOC Agent indicator layout section. Shows the effective tool allowlist chosen by the operator, whether each
+  allowed command is on the last snapshot of live commands (`guardian_tool_available`), and the available
+  commands by configured instance, as HTML. Falls back to markdown if the HTML cannot be built. It is read-
+  only. To refresh the snapshot, use the Refresh Tools button (GuardianToolRegistryRefresh), then edit
+  `guardian_tool_allowlist_runtime` in Lists.
+commonfields:
+  id: GuardianLayoutSocAgentTools
+  version: -1
+enabled: true
+name: GuardianLayoutSocAgentTools
+outputs: []
+script: '-'
+system: false
+tags:
+- dynamic-indicator-section
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

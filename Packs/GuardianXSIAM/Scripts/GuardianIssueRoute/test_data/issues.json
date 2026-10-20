@@ -1,0 +1,168 @@
+{
+ "detection": {
+  "id": "1001",
+  "name": "Example identity created a route table",
+  "severity": 3,
+  "type": "Unclassified",
+  "sourceBrand": "ANALYTICS_BIOC",
+  "CustomFields": {
+   "alert_domain": "DOMAIN_SECURITY",
+   "categoryname": "Lateral Movement",
+   "family_tags": [
+    "DS:PANW/Analytics BIOC",
+    "DOM:Security"
+   ],
+   "asset_ids": [
+    "asset-1-1",
+    "asset-1-2"
+   ],
+   "ruleid": "rule-1"
+  }
+ },
+ "misconfiguration": {
+  "id": "1002",
+  "name": "Example storage account allows public access",
+  "severity": 3,
+  "type": "Unclassified",
+  "sourceBrand": "CSPM_SCANNER",
+  "CustomFields": {
+   "alert_domain": "DOMAIN_POSTURE",
+   "categoryname": "CONFIGURATION",
+   "family_tags": [
+    "DS:PANW/CSPM Scanner",
+    "DOM:Posture"
+   ],
+   "asset_ids": [
+    "asset-2-1",
+    "asset-2-2"
+   ],
+   "ruleid": "rule-2"
+  }
+ },
+ "kubernetes_cis": {
+  "id": "1003",
+  "name": "Example cluster kubelet read-only port enabled",
+  "severity": 3,
+  "type": "Unclassified",
+  "sourceBrand": "COMPUTE_POLICY",
+  "CustomFields": {
+   "alert_domain": "DOMAIN_POSTURE",
+   "categoryname": "CONFIGURATION",
+   "family_tags": [
+    "DS:PANW/Compute Policy",
+    "DOM:Posture"
+   ],
+   "asset_ids": [
+    "asset-3-1",
+    "asset-3-2"
+   ],
+   "ruleid": "rule-3"
+  }
+ },
+ "identity": {
+  "id": "1004",
+  "name": "Example role grants unused admin permissions",
+  "severity": 3,
+  "type": "Unclassified",
+  "sourceBrand": "CIEM_SCANNER",
+  "CustomFields": {
+   "alert_domain": "DOMAIN_POSTURE",
+   "categoryname": "IDENTITY",
+   "family_tags": [
+    "DS:PANW/CIEM Scanner",
+    "DOM:Posture"
+   ],
+   "asset_ids": [
+    "asset-4-1",
+    "asset-4-2"
+   ],
+   "ruleid": "rule-4"
+  }
+ },
+ "vulnerability": {
+  "id": "1005",
+  "name": "Example package CVE-0000-0000",
+  "severity": 3,
+  "type": "Unclassified",
+  "sourceBrand": "CAS_CVE_SCANNER",
+  "CustomFields": {
+   "alert_domain": "DOMAIN_POSTURE",
+   "categoryname": "VULNERABILITY",
+   "family_tags": [
+    "DS:PANW/CAS CVE Scanner",
+    "DOM:Posture"
+   ],
+   "asset_ids": [
+    "asset-5-1",
+    "asset-5-2"
+   ],
+   "ruleid": "rule-5"
+  }
+ },
+ "code_risk": {
+  "id": "1006",
+  "name": "Example package has no recent releases",
+  "severity": 2,
+  "type": "Unclassified",
+  "sourceBrand": "CAS_OPERATIONAL_RISK_SCANNER",
+  "CustomFields": {
+   "alert_domain": "DOMAIN_POSTURE",
+   "categoryname": "CODE",
+   "family_tags": [
+    "DS:PANW/CAS Operational Risk Scanner",
+    "DOM:Posture"
+   ],
+   "asset_ids": [
+    "asset-6-1",
+    "asset-6-2"
+   ],
+   "ruleid": "rule-6"
+  }
+ },
+ "attack_path": {
+  "id": "1007",
+  "name": "Example internet-exposed host with a path to a database",
+  "severity": 3,
+  "type": "Unclassified",
+  "sourceBrand": "GRAPH_ENGINE",
+  "CustomFields": {
+   "alert_domain": "DOMAIN_POSTURE",
+   "categoryname": "ATTACK PATH",
+   "family_tags": [
+    "DS:PANW/Graph Engine",
+    "DOM:Posture"
+   ],
+   "asset_ids": [
+    "asset-7-1",
+    "asset-7-2"
+   ],
+   "ruleid": "rule-7"
+  }
+ },
+ "health": {
+  "id": "1008",
+  "name": "Example connector stopped reporting",
+  "severity": 1,
+  "type": "Unclassified",
+  "sourceBrand": "HEALTH",
+  "CustomFields": {
+   "alert_domain": "DOMAIN_HEALTH",
+   "categoryname": "HEALTH",
+   "family_tags": [
+    "DOM:Health"
+   ],
+   "asset_ids": [
+    "asset-8-1",
+    "asset-8-2"
+   ],
+   "ruleid": "rule-8"
+  }
+ },
+ "unknown": {
+  "id": "1099",
+  "name": "Example issue with no platform fields",
+  "severity": 2,
+  "type": "Unclassified",
+  "CustomFields": {}
+ }
+}

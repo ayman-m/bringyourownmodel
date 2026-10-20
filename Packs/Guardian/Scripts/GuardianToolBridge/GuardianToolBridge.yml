@@ -1,0 +1,127 @@
+args:
+- name: tool_name
+  description: "The command or automation the model wants to run, for example \"ip\" or \"setIncident\"."
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: tool_args
+  description: >-
+    The arguments, as a JSON object string, or as an object when called from another automation. Blank means
+    no arguments.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: tool_call_id
+  description: >-
+    Optional id that is returned unchanged in the result, so the model can match the result to its call.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: using
+  description: "Optional integration instance name to run the command on."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: tick_id
+  description: "Optional reasoning-tick identifier, written to the audit row."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: run_id
+  description: >-
+    Optional run identifier, normally the incident id, written to the audit row. Defaults to the current
+    incident's id.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: approval_id
+  description: >-
+    The single-use approval token for a request that was parked for approval in `guardian_approvals_ledger`.
+    Used only when the policy tier for the tool is require_approval. It must match the approved ledger row
+    (approval_id, tool name and arguments) and must not have been used yet, or the call is denied. Cannot be
+    combined with plan_approval_id.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: plan_approval_id
+  description: >-
+    The approval id of an approved GuardianPlanApprove plan (kind=plan) when this call is one step of that
+    plan. Requires plan_step_index.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: plan_step_index
+  description: >-
+    The 0-based index of this call among the plan's steps. Required with plan_approval_id, and used only with
+    it.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: evidence_truncate_bytes
+  description: >-
+    Optional. The size ceiling, in bytes, for the result returned to the model. The agent loop passes the
+    ceiling it derived from the model's input budget so both cut at the same number. Without it the bridge
+    works the number out itself. Clamped to 2048 - 8388608. It never affects any gate.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: evidence_head_tail_bytes
+  description: >-
+    Optional. How many bytes of the start and of the end of an oversized result are kept. Used with
+    evidence_truncate_bytes; defaults to about half of it, less the marker.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  The single security checkpoint that every agent tool call passes through. In order: kill-switch check,
+  denylist check, policy tier check (a require_approval tier creates or consumes a human approval in
+  `guardian_approvals_ledger`), then the command itself, then redaction and size limit of the result, then
+  exactly one audit row from GuardianAuditWrite. It returns a normalized `Guardian.ToolResult`. If
+  `guardian_kill_switch` cannot be read the call proceeds; if the denylist or policy cannot be read the call
+  is denied. The denylist also blocks `setList` and `addToList` on protected Lists. It never raises an error.
+commonfields:
+  id: GuardianToolBridge
+  version: -1
+enabled: true
+name: GuardianToolBridge
+outputs:
+- contextPath: Guardian.ToolResult.tool_call_id
+  description: "The `tool_call_id`, returned unchanged if one was given."
+  type: String
+- contextPath: Guardian.ToolResult.tool_name
+  description: The command that was requested.
+  type: String
+- contextPath: Guardian.ToolResult.status
+  description: 'One of: ok, error, denied, halted, pending_approval.'
+  type: String
+- contextPath: Guardian.ToolResult.ok
+  description: Whether the tool call itself succeeded (false for
+    denied/halted/pending_approval/error).
+  type: Boolean
+- contextPath: Guardian.ToolResult.result
+  description: "The tool's result data, redacted and size-limited, or null if the command did not run."
+  type: Unknown
+- contextPath: Guardian.ToolResult.error
+  description: "The error or refusal reason, or null on success."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

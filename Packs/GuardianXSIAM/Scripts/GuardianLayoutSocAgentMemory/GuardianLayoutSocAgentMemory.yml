@@ -1,0 +1,23 @@
+args: []
+comment: >-
+  SOC Agent indicator layout section. Shows limited, redacted metadata of the `guardian_memory` List as an
+  HTML table: key, scope, tags, retention, freshness and recall count. Stored values are not shown. Falls back
+  to markdown if the HTML cannot be built. It only displays information and never creates, changes, searches
+  or removes memory.
+commonfields:
+  id: GuardianLayoutSocAgentMemory
+  version: -1
+enabled: true
+name: GuardianLayoutSocAgentMemory
+outputs: []
+script: '-'
+system: false
+tags:
+- dynamic-indicator-section
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

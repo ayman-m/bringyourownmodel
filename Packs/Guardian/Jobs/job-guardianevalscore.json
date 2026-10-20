@@ -1,0 +1,33 @@
+{
+    "id": "GuardianEvalScore",
+    "version": -1,
+    "name": "GuardianEvalScore",
+    "details": "Every hour, scores evaluation cases that have concluded (completed or failed) into guardian_eval_results, skipping cases already scored or still running. Starting new evaluation cases (GuardianEval action=run) is a manual action. Runs a playbook that calls !GuardianEval action=score.",
+    "type": "Unclassified",
+    "playbookId": "GuardianEvalScore",
+    "labels": [
+        {
+            "type": "Instance",
+            "value": "GuardianEvalScore"
+        }
+    ],
+    "tags": [
+        "guardian",
+        "guardian-eval"
+    ],
+    "scheduled": true,
+    "recurrent": true,
+    "humanCron": {
+        "timePeriodType": "hours",
+        "timePeriod": 1
+    },
+    "cronView": false,
+    "timezone": "UTC",
+    "shouldTriggerNew": false,
+    "closePrevRun": true,
+    "notifyOwner": false,
+    "isFeed": false,
+    "selectedFeeds": [],
+    "isAllFeeds": false,
+    "fromVersion": "6.10.0"
+}

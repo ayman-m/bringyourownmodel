@@ -1,0 +1,44 @@
+args:
+- name: question
+  description: >-
+    A single, focused question for the analyst, for example "Should I contain host-42, or is this a known
+    maintenance window?". The loop pauses until an analyst replies with `!guardian-chat`.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  The agent's "ask a human" tool. Posts `question` to this incident's War Room as a tagged note and returns a
+  `{status:"awaiting_analyst", question, posted_to_war_room}` result. The reasoning loop then pauses until an
+  analyst replies with `!guardian-chat`, or until a bounded number of ticks pass without a reply, after which
+  the loop continues on its own judgement. It changes nothing on the incident or case other than posting the
+  note.
+commonfields:
+  id: GuardianAskAnalyst
+  version: -1
+enabled: true
+name: GuardianAskAnalyst
+outputs:
+- contextPath: Guardian.AskAnalyst.status
+  description: Always "awaiting_analyst" on success.
+  type: String
+- contextPath: Guardian.AskAnalyst.question
+  description: The question that was posted to the War Room.
+  type: String
+- contextPath: Guardian.AskAnalyst.posted_to_war_room
+  description: Whether the War Room note was posted successfully.
+  type: Boolean
+- contextPath: Guardian.AskAnalyst.warning
+  description: Set only when the War Room note failed to post (the question is
+    still recorded in the returned envelope either way).
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

@@ -1,0 +1,80 @@
+args: []
+comment: >-
+  Turns a triage session's answer into the deterministic `Guardian.Triage` record the triage playbook branches on.
+  It validates the session's triage block against the `guardian_triage_types` List; with no valid block it makes one
+  repair request (JSON mode, over the conclusion text only; sent once more without JSON mode only when the provider
+  rejects JSON mode, so at most two model calls) and otherwise falls back to the generic `other` branch. A
+  type that does not fit the incident's domain (detection or posture, from the route) goes to `other`. It merges the
+  inputs the sub-playbooks need (identity, IP, host, hash, SHA-256, CVE, domain, URL, email, rule) from the incident's
+  own fields first and the model's entities second, and shape-checks every one. It changes nothing on the incident and
+  the model can never call it.
+commonfields:
+  id: GuardianTriageResult
+  version: -1
+enabled: true
+name: GuardianTriageResult
+outputs:
+- contextPath: Guardian.Triage.status
+  description: "structured (the session's block was valid), repaired (one repair call produced a valid block) or fallback (no valid block; the branch is other and no severity is proposed)."
+  type: String
+- contextPath: Guardian.Triage.branch
+  description: "The sub-playbook branch: an investigation type name from guardian_triage_types, or other. Branch on this, not on investigation_type."
+  type: String
+- contextPath: Guardian.Triage.investigation_type
+  description: "The type the model gave (empty on fallback). It can differ from branch: a type that does not fit the route's domain is sent to other."
+  type: String
+- contextPath: Guardian.Triage.severity
+  description: "The model's severity: low, medium, high or critical (empty on fallback)."
+  type: String
+- contextPath: Guardian.Triage.original_severity
+  description: "The incident's own severity before triage: low, medium, high, critical, informational or unknown."
+  type: String
+- contextPath: Guardian.Triage.confidence
+  description: "The model's confidence, 0-100 (0 on fallback)."
+  type: Number
+- contextPath: Guardian.Triage.likely_benign
+  description: "The model's likely_benign flag."
+  type: Boolean
+- contextPath: Guardian.Triage.escalate
+  description: "The model's escalate flag."
+  type: Boolean
+- contextPath: Guardian.Triage.summary
+  description: "The model's one-line summary (a generated sentence on fallback)."
+  type: String
+- contextPath: Guardian.Triage.next_step
+  description: "The model's one-line next step."
+  type: String
+- contextPath: Guardian.Triage.domain
+  description: "detection, posture or unknown, decided from the incident's route."
+  type: String
+- contextPath: Guardian.Triage.assessment_mode
+  description: "verdict: the block the focused model session of the sub-playbook ends with (this edition has no posture assessment)."
+  type: String
+- contextPath: Guardian.Triage.sub_playbook
+  description: "The sub-playbook for the branch."
+  type: String
+- contextPath: Guardian.Triage.skill
+  description: "The skill the branch's focused model session loads (empty for other)."
+  type: String
+- contextPath: Guardian.Triage.reason
+  description: "Why this status and branch, including any repair or domain-mismatch note."
+  type: String
+- contextPath: Guardian.Triage.domain_mismatch
+  description: "True when the model's type did not fit the route's domain and was sent to other. GuardianTriageApply does not change severity then."
+  type: Boolean
+- contextPath: Guardian.Triage.inputs
+  description: "identity, ip, host, hash, sha256, cve, domain, url, email, rule_id: strings, empty when absent. From the incident's own fields first, then the model's key entities; each value is shape-checked. sha256 is the hash only when it has 64 hex characters, else empty. rule_id is the incident's rule id or alert name."
+  type: Unknown
+- contextPath: Guardian.Triage.input_sources
+  description: "For each input: incident, model, 'model UPN with the same account name (domain matched)' or '(domain not matched)' (the incident's DOMAIN\\account was replaced by the model's user principal name for the same account name; 'domain matched' means the UPN's domain contains the DOMAIN) or empty."
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

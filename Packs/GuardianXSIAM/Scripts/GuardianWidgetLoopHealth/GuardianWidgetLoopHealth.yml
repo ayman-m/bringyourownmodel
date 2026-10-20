@@ -1,0 +1,25 @@
+args: []
+comment: >-
+  Dashboard widget of the GuardianObservability dashboard. Shows the health of agent runs across all Guardian
+  Agent Run incidents as a table: the number of runs by `Guardian.Loop.status` (running, awaiting, done,
+  stopped, not_started, unknown), the average number of ticks, the number of stalled runs (using the same
+  threshold as the GuardianHousekeeping watchdog), and the current `guardian_kill_switch` state. It reads each
+  candidate incident's loop state through GuardianHousekeeping's `probe_key` mode, for a limited number of
+  incidents per refresh. It is read-only.
+commonfields:
+  id: GuardianWidgetLoopHealth
+  version: -1
+enabled: true
+name: GuardianWidgetLoopHealth
+outputs: []
+script: '-'
+system: false
+tags:
+- widget
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

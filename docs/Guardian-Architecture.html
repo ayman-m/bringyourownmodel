@@ -1,0 +1,490 @@
+<title>Guardian Architecture</title>
+<style>
+:root{
+  --font:"Inter var","Inter","SF Pro Display","SF Pro Text",-apple-system,BlinkMacSystemFont,
+         "Segoe UI Variable","Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"JetBrains Mono","IBM Plex Mono","SF Mono",ui-monospace,SFMono-Regular,
+         Menlo,Consolas,"Roboto Mono",monospace;
+}
+/* Elevation ladder, not flat fills. --wire is its own token, brighter than any border,
+   because connectors sit on the page rather than on a panel. */
+[data-theme="dark"]{
+  --bg:#070B10;
+  --surface:#141C26; --surface-2:#1D2836;
+  --line:rgba(255,255,255,.13); --line-hi:rgba(255,255,255,.24);
+  --wire:rgba(233,242,250,.82);
+  --panel:#0C131C; --panel-line:rgba(255,255,255,.20);
+  --ink:#EEF4FA; --ink-2:#BFCEDD; --ink-3:#8598AC;
+  --acc:#22D3C6; --acc2:#5B9CFF; --acc3:#B78BFF;
+  --good:#3FD68B; --warn:#E8A93C; --crit:#F2685C; --plan:#7A8CA0;
+  --sheen:rgba(255,255,255,.05);
+  --shadow:0 18px 44px -28px rgba(0,0,0,.92);
+  --grad-1:rgba(34,211,198,.10); --grad-1b:rgba(34,211,198,0);
+  --grad-2:rgba(91,156,255,.08); --grad-2b:rgba(91,156,255,0);
+}
+[data-theme="light"]{
+  --bg:#F5F8FB;
+  --surface:#FFFFFF; --surface-2:#EDF2F7;
+  --line:rgba(12,22,33,.14); --line-hi:rgba(12,22,33,.26);
+  --wire:rgba(12,22,33,.60);
+  --panel:#FFFFFF; --panel-line:rgba(12,22,33,.18);
+  --ink:#081420; --ink-2:#33465A; --ink-3:#5F7285;
+  --acc:#0B8A81; --acc2:#1F5FC8; --acc3:#6D42C4;
+  --good:#14804A; --warn:#8F5D0D; --crit:#BC2A32; --plan:#71818F;
+  --sheen:rgba(12,22,33,.035);
+  --shadow:0 14px 34px -26px rgba(12,30,48,.34);
+  --grad-1:rgba(11,138,129,.07); --grad-1b:rgba(11,138,129,0);
+  --grad-2:rgba(31,95,200,.05); --grad-2b:rgba(31,95,200,0);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--font);overflow:hidden}
+#viewport{position:fixed;inset:0;display:grid;place-items:center;
+  background:radial-gradient(1200px 720px at 5% -10%,var(--grad-1),var(--grad-1b) 62%),
+             radial-gradient(1000px 640px at 104% 110%,var(--grad-2),var(--grad-2b) 62%),var(--bg)}
+#stage{position:absolute;left:50%;top:50%;width:1600px;height:900px;transform-origin:center center}
+
+.slide{position:absolute;inset:0;padding:34px 92px 30px;display:flex;flex-direction:column}
+.head{flex:none;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.eyebrow .tick{width:20px;height:2px;background:var(--acc);border-radius:2px}
+.eyebrow .lbl{font-size:11px;font-weight:700;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-3)}
+h1{font-size:30px;line-height:1.1;font-weight:800;letter-spacing:-.024em;margin:0}
+h1 .a{color:var(--acc)}
+.hkeys{display:flex;gap:14px;align-items:center;flex:none;padding-bottom:3px}
+.key{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--ink-3);white-space:nowrap}
+.key .sw{width:22px;height:0;border-top:2px solid var(--wire)}
+.key .sw.d{border-top-style:dashed;opacity:.8}
+.key .bx{width:12px;height:10px;border-radius:3px;border:1px solid var(--acc2)}
+.key .bx.p{border-style:dashed;border-color:var(--plan)}
+
+.body{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:11px}
+
+/* Rule 1: container CSS px size MUST equal the viewBox size, on BOTH axes. */
+.diag{position:relative;width:1416px;height:648px;margin:0 auto;flex:none}
+.diag>svg{position:absolute;inset:0;width:100%;height:100%}
+
+svg .wire{stroke:var(--wire);stroke-width:1.8;fill:none}
+svg .wire.dash{stroke-dasharray:6 6;opacity:.7}
+.arrowhead{fill:none;stroke:var(--wire);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---- icon family: ALL stroked, so one rule serves every symbol ---- */
+.ic{flex:none;width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;color:var(--ink-3)}
+.ic.sm{width:15px;height:15px;stroke-width:1.8}
+
+.node{position:absolute;border-radius:11px;border:1px solid var(--panel-line);background:var(--panel);
+  padding:9px 12px;box-shadow:var(--shadow);display:flex;flex-direction:row;align-items:center;gap:11px}
+.nx{min-width:0;display:flex;flex-direction:column;justify-content:center}
+.node .t{font-size:13.5px;font-weight:700;letter-spacing:-.012em;color:var(--ink);line-height:1.18}
+.node .s{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-top:3px}
+.node .ex{font-size:11px;line-height:1.4;color:var(--ink-2);margin-top:4px}
+.node .s.mono{font-family:var(--mono);letter-spacing:.01em;text-transform:none;font-size:10px;color:var(--acc2)}
+
+.node.core{border-color:color-mix(in srgb,var(--acc) 55%,transparent)}
+.node.core .ic{color:var(--acc)}
+.node.gate{border-color:var(--crit)}
+.node.gate .ic{color:var(--crit)}
+.node.ext{border-color:color-mix(in srgb,var(--acc2) 55%,transparent)}
+.node.ext .ic{color:var(--acc2)}
+.node.human{background:var(--surface)}
+.node.human .ic{color:var(--ink-2)}
+.node.plan{border-style:dashed;border-color:var(--plan);background:transparent;box-shadow:none}
+.node.plan .t{color:var(--ink-2)} .node.plan .ex{color:var(--ink-3)} .node.plan .ic{color:var(--plan)}
+.ptag{position:absolute;right:9px;top:-8px;font-size:8px;font-weight:750;letter-spacing:.13em;
+  padding:2px 6px;border-radius:999px;background:var(--bg);border:1px dashed var(--plan);color:var(--plan)}
+
+/* zones read as network segments: tinted, dashed, labelled */
+.node.grp{border-style:dashed;border-color:var(--line-hi);box-shadow:none;padding:0;display:block;
+  background:var(--sheen);border-radius:14px}
+.node.grp.z1{background:color-mix(in srgb,var(--acc) 5%,transparent);border-color:color-mix(in srgb,var(--acc) 34%,transparent)}
+.node.grp.z2{background:color-mix(in srgb,var(--acc3) 6%,transparent);border-color:color-mix(in srgb,var(--acc3) 36%,transparent)}
+.node.grp.z3{background:color-mix(in srgb,var(--acc2) 5%,transparent);border-color:color-mix(in srgb,var(--acc2) 34%,transparent)}
+.node.grp.z4{background:transparent;border-color:var(--plan)}
+.grplbl{position:absolute;display:flex;align-items:center;gap:6px;
+  font-size:10px;font-weight:750;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.grplbl b{font-weight:750}
+.z1 .grplbl b,.z1 .grplbl .ic{color:var(--acc)}
+.z2 .grplbl b,.z2 .grplbl .ic{color:var(--acc3)}
+.z3 .grplbl b,.z3 .grplbl .ic{color:var(--acc2)}
+.z4 .grplbl b,.z4 .grplbl .ic{color:var(--plan)}
+.lanehd{position:absolute;display:flex;align-items:center;gap:6px;
+  font-size:10px;font-weight:750;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+
+/* link annotation, topology style — opaque so it reads on top of its wire */
+.lnk{position:absolute;font-family:var(--mono);font-size:8.5px;letter-spacing:.02em;color:var(--ink-3);
+  background:var(--bg);padding:1px 5px;border-radius:4px;white-space:nowrap;
+  border:1px solid var(--line);transform:translateX(-50%)}
+/* flow-step badge, sitting on the wire it annotates */
+.fnum{position:absolute;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--acc);
+  border:1px solid var(--acc);background:color-mix(in srgb,var(--acc) 16%,var(--bg))}
+
+.legend{flex:none;border-top:1px solid var(--line);padding-top:8px;display:flex;
+  flex-direction:column;align-items:stretch;gap:7px}
+.steps{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;min-width:0}
+.st{display:flex;align-items:center;gap:6px;min-width:0}
+.st i{flex:none;width:16px;height:16px;border-radius:50%;display:grid;place-items:center;font-style:normal;
+  font-family:var(--mono);font-size:9px;font-weight:700;color:var(--acc);border:1px solid var(--acc)}
+.st span{font-size:11px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st span b{color:var(--ink);font-weight:650}
+.foot{flex:none;font-size:10px;color:var(--ink-3);line-height:1.4}
+.foot b{color:var(--ink-2);font-weight:650}
+
+#tTheme{position:fixed;right:14px;bottom:12px;z-index:60;width:28px;height:28px;padding:0;display:grid;
+  place-items:center;border-radius:8px;border:1px solid var(--line-hi);background:var(--surface);
+  color:var(--ink-3);cursor:pointer}
+#tTheme:hover{color:var(--acc);border-color:var(--acc)}
+#tTheme svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+</style>
+
+<!-- Document-level defs: markers + the icon sprite. Zero-size, NEVER display:none — a marker
+     inside a hidden element renders invisible everywhere it is referenced. Every symbol here
+     is stroke-only and carries NO stroke-width of its own, so .ic controls the weight. -->
+<svg id="svgdefs" aria-hidden="true" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden">
+<defs>
+  <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+    <path class="arrowhead" d="M0.5 1 L8.5 5 L0.5 9"/></marker>
+  <marker id="ahs" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path class="arrowhead" d="M0.5 1 L8.5 5 L0.5 9"/></marker>
+
+  <symbol id="ic-code" viewBox="0 0 24 24">
+    <path d="M8.5 5.5 3 12l5.5 6.5M15.5 5.5 21 12l-5.5 6.5"/></symbol>
+  <symbol id="ic-terminal" viewBox="0 0 24 24">
+    <rect x="2.5" y="4" width="19" height="16" rx="2.4"/>
+    <path d="M7 10l3 2.4-3 2.4M13.2 15.4h4.2"/></symbol>
+  <symbol id="ic-branch" viewBox="0 0 24 24">
+    <circle cx="6.5" cy="6" r="2.4"/><circle cx="6.5" cy="18" r="2.4"/><circle cx="17.5" cy="8.5" r="2.4"/>
+    <path d="M6.5 8.4v7.2M6.5 12.4h6.6a4.4 4.4 0 0 0 4.4-1.5"/></symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.8"/><path d="M12 6.6V12l3.6 2.2"/></symbol>
+  <symbol id="ic-pointer" viewBox="0 0 24 24">
+    <path d="M5 3.2 11.6 20l2.3-6.9L20.6 11z"/></symbol>
+  <symbol id="ic-usercheck" viewBox="0 0 24 24">
+    <circle cx="9" cy="8" r="3.6"/>
+    <path d="M2.7 20c0-3.5 2.8-5.4 6.3-5.4 1 0 2 .15 2.9.45"/>
+    <path d="M14.6 16.8l2.3 2.3 4.4-4.4"/></symbol>
+  <symbol id="ic-idcard" viewBox="0 0 24 24">
+    <rect x="2.4" y="4.4" width="19.2" height="15.2" rx="2.4"/>
+    <circle cx="8.2" cy="10.6" r="2.2"/>
+    <path d="M4.9 16.6c.55-1.6 1.75-2.4 3.3-2.4s2.75.8 3.3 2.4"/>
+    <path d="M14.6 9.6h4.6M14.6 12.6h4.6M14.6 15.6h3"/></symbol>
+  <symbol id="ic-loop" viewBox="0 0 24 24">
+    <path d="M20.4 12a8.4 8.4 0 1 1-2.9-6.35"/><path d="M20.4 4.2v4.3h-4.3"/></symbol>
+  <symbol id="ic-shield" viewBox="0 0 24 24">
+    <path d="M12 2.6 20 5.6v6.1c0 5-3.4 8.4-8 9.7-4.6-1.3-8-4.7-8-9.7V5.6z"/>
+    <path d="M9.1 12h5.8"/></symbol>
+  <symbol id="ic-users" viewBox="0 0 24 24">
+    <circle cx="8.6" cy="8.6" r="3.3"/>
+    <path d="M2.6 19.6c0-3.4 2.7-5.3 6-5.3s6 1.9 6 5.3"/>
+    <path d="M16 6.3a3.3 3.3 0 0 1 0 6"/><path d="M17.4 14.7c2.4.5 4 2.2 4 4.9"/></symbol>
+  <symbol id="ic-chart" viewBox="0 0 24 24">
+    <rect x="2.6" y="3.2" width="18.8" height="17.6" rx="2.4"/>
+    <path d="M7.6 16.4v-3.6M12 16.4V8.4M16.4 16.4v-5.8"/></symbol>
+  <symbol id="ic-cpu" viewBox="0 0 24 24">
+    <rect x="6.2" y="6.2" width="11.6" height="11.6" rx="2.2"/>
+    <rect x="9.8" y="9.8" width="4.4" height="4.4" rx="1"/>
+    <path d="M9.4 2.4v3.8M14.6 2.4v3.8M9.4 17.8v3.8M14.6 17.8v3.8M2.4 9.4h3.8M2.4 14.6h3.8M17.8 9.4h3.8M17.8 14.6h3.8"/></symbol>
+  <symbol id="ic-plug" viewBox="0 0 24 24">
+    <path d="M9 2.6v5.6M15 2.6v5.6"/>
+    <path d="M6.4 8.2h11.2v3.1a5.6 5.6 0 0 1-11.2 0z"/>
+    <path d="M12 16.9v4.5"/></symbol>
+  <symbol id="ic-hub" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="2.7"/><circle cx="4.6" cy="5.4" r="2.2"/>
+    <circle cx="19.4" cy="5.4" r="2.2"/><circle cx="12" cy="20.6" r="2.2"/>
+    <path d="M10.1 10.1 6.2 6.9M13.9 10.1l3.9-3.2M12 14.7v3.7"/></symbol>
+  <symbol id="ic-cloud" viewBox="0 0 24 24">
+    <path d="M7.2 19a4.7 4.7 0 0 1-.5-9.35 6.3 6.3 0 0 1 12.05 1.6A4.05 4.05 0 0 1 17.8 19z"/></symbol>
+  <symbol id="ic-mail" viewBox="0 0 24 24">
+    <rect x="2.4" y="4.8" width="19.2" height="14.4" rx="2.4"/>
+    <path d="M3.2 7.2 12 13.2l8.8-6"/></symbol>
+  <symbol id="ic-chat" viewBox="0 0 24 24">
+    <path d="M20.8 11.6a8.2 8.2 0 0 1-8.2 8.2H7.4L3.2 22.6v-5.1a8.2 8.2 0 0 1 9.4-13 8.2 8.2 0 0 1 8.2 8.1z"/>
+    <path d="M8.6 11.6h.01M12.4 11.6h.01M16.2 11.6h.01"/></symbol>
+  <symbol id="ic-server" viewBox="0 0 24 24">
+    <rect x="2.6" y="3.4" width="18.8" height="7" rx="2"/>
+    <rect x="2.6" y="13.6" width="18.8" height="7" rx="2"/>
+    <circle cx="6.6" cy="6.9" r=".95"/><circle cx="6.6" cy="17.1" r=".95"/>
+    <path d="M16.4 6.9h2.2M16.4 17.1h2.2"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24">
+    <rect x="4.2" y="10.4" width="15.6" height="10.6" rx="2.4"/>
+    <path d="M7.8 10.4V7.2a4.2 4.2 0 0 1 8.4 0v3.2"/></symbol>
+  <symbol id="ic-globe" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.9"/><path d="M3.1 12h17.8"/>
+    <path d="M12 3.1a13.6 13.6 0 0 1 0 17.8 13.6 13.6 0 0 1 0-17.8z"/></symbol>
+</defs></svg>
+
+<div id="viewport">
+<div id="stage">
+<section class="slide">
+
+  <div class="head">
+    <div>
+      <div class="eyebrow"><span class="tick"></span><span class="lbl">Reference architecture</span></div>
+      <h1>Guardian on Cortex XSOAR 6 &mdash; <span class="a">integration points &amp; flow</span></h1>
+    </div>
+    <div class="hkeys">
+      <span class="key"><span class="sw"></span> built today</span>
+      <span class="key"><span class="sw d"></span> planned</span>
+      <span class="key">&#9666;&#9656; request + response</span>
+      <span class="key"><span class="bx"></span> integration point</span>
+      <span class="key"><span class="bx p"></span> not in the pack yet</span>
+    </div>
+  </div>
+
+  <div class="body">
+  <div class="diag">
+    <svg viewBox="0 0 1416 648">
+      <!-- access & triggers -> platform -->
+      <path class="wire" marker-end="url(#ah)" d="M252 71 C284 71, 284 98, 316 98"/>
+      <path class="wire" marker-end="url(#ah)" d="M252 167 C284 167, 284 207, 316 207"/>
+      <path class="wire" marker-end="url(#ah)" d="M252 263 C284 263, 284 207, 316 207"/>
+      <path class="wire" marker-end="url(#ah)" d="M252 359 C284 359, 284 207, 316 207"/>
+      <path class="wire" marker-end="url(#ah)" d="M252 455 C284 455, 284 207, 316 207"/>
+      <path class="wire" marker-start="url(#ahs)" marker-end="url(#ah)" d="M252 551 C284 551, 284 528, 316 528"/>
+
+      <!-- inside the XSOAR server -->
+      <path class="wire" marker-end="url(#ah)" d="M533 144 V 164"/>
+      <path class="wire" marker-end="url(#ah)" d="M533 250 V 270"/>
+      <path class="wire" marker-end="url(#ah)" d="M533 356 V 376"/>
+      <path class="wire" marker-end="url(#ah)" d="M533 462 V 482"/>
+
+      <!-- server -> dedicated engine -->
+      <path class="wire" marker-start="url(#ahs)" marker-end="url(#ah)" d="M750 207 C793 207, 793 154, 836 154"/>
+      <path class="wire" marker-end="url(#ah)" d="M750 313 C793 313, 793 280, 836 280"/>
+      <path class="wire dash" marker-end="url(#ah)" d="M750 313 C793 313, 793 399, 836 399"/>
+
+      <!-- engine -> external -->
+      <path class="wire" marker-start="url(#ahs)" marker-end="url(#ah)" d="M1044 154 C1087 154, 1087 80, 1130 80"/>
+      <path class="wire" marker-start="url(#ahs)" marker-end="url(#ah)" d="M1044 154 C1087 154, 1087 156, 1130 156"/>
+      <path class="wire" marker-start="url(#ahs)" marker-end="url(#ah)" d="M1044 280 C1087 280, 1087 294, 1130 294"/>
+      <path class="wire dash" marker-end="url(#ah)" d="M1044 280 C1087 280, 1087 434, 1130 434"/>
+      <path class="wire dash" marker-end="url(#ah)" d="M1044 280 C1087 280, 1087 510, 1130 510"/>
+      <path class="wire dash" marker-end="url(#ah)" d="M1044 399 C1087 399, 1087 586, 1130 586"/>
+    </svg>
+
+    <!-- ============ LANE 1 · access & triggers ============ -->
+    <div class="lanehd" style="left:0;top:2px">
+      <svg class="ic sm" viewBox="0 0 24 24"><use href="#ic-usercheck"/></svg> Access &amp; triggers</div>
+
+    <div class="node human" style="left:0;top:28px;width:252px;height:86px">
+      <svg class="ic" viewBox="0 0 24 24"><use href="#ic-code"/></svg>
+      <div class="nx"><div class="t">Content engineer</div>
+        <div class="s">Pack delivery</div>
+        <div class="ex">demisto-sdk upload &middot; Lists + Jobs seeded</div></div>
+    </div>
+    <div class="node human" style="left:0;top:124px;width:252px;height:86px">
+      <svg class="ic" viewBox="0 0 24 24"><use href="#ic-terminal"/></svg>
+      <div class="nx"><div class="t">War Room prompting</div>
+        <div class="s">Analyst &middot; on demand</div>
+        <div class="ex">!guardian-chat &middot; -plan &middot; -approve</div></div>
+    </div>
+    <div class="node human" style="left:0;top:220px;width:252px;height:86px">
+      <svg class="ic" viewBox="0 0 24 24"><use href="#ic-branch"/></svg>
+      <div class="nx"><div class="t">Playbook task</div>
+        <div class="s">Automated &middot; per incident</div>
+        <div class="ex">GuardianAgentLoop on an Agent Run</div></div>
+    </div>
+    <div class="node human" style="left:0;top:316px;width:252px;height:86px">
+      <svg class="ic" viewBox="0 0 24 24"><use href="#ic-clock"/></svg>
+      <div class="nx"><div class="t">Autonomous monitoring</div>
+        <div class="s">Scheduled job</div>
+        <div class="ex">GuardianIntakeSweep &mdash; triage every 6h</div></div>
+    </div>
+    <div class="node human" style="left:0;top:412px;width:252px;height:86px">
+      <svg class="ic" viewBox="0 0 24 24"><use href="#ic-pointer"/></svg>
+      <div class="nx"><div class="t">Layout action buttons</div>
+        <div class="s">SOC Agent indicator</div>
+        <div class="ex">New Investigation &middot; Pause &middot; Policy</div></div>
+    </div>
+    <div class="node human" style="left:0;top:508px;width:252px;height:86px">
+      <svg class="ic" viewBox="0 0 24 24"><use href="#ic-usercheck"/></svg>
+      <div class="nx"><div class="t">Approver &middot; SOC manager</div>
+        <div class="s">Human in the loop</div>
+        <div class="ex">approves gated actions &middot; reads dashboards</div></div>
+    </div>
+
+    <!-- ============ ZONE 1 · XSOAR server ============ -->
+    <div class="node grp z1" style="left:296px;top:6px;width:474px;height:590px">
+      <div class="grplbl" style="left:18px;top:14px">
+        <svg class="ic sm" viewBox="0 0 24 24"><use href="#ic-server"/></svg>
+        <span><b>Cortex XSOAR 6</b> &middot; server &middot; Guardian content pack</span></div>
+
+      <div class="node core" style="left:20px;top:46px;width:434px;height:92px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-idcard"/></svg>
+        <div class="nx"><div class="t">Agent configuration &mdash; where the persona lives</div>
+          <div class="s">System-locked Lists, deployed with the pack</div>
+          <div class="ex"><b>guardian_persona</b> (one global persona) &middot; 4 skill Lists + index &middot;
+            tool allowlist / denylist &middot; policy tiers &middot; prompt head + tail</div></div>
+      </div>
+
+      <div class="node core" style="left:20px;top:158px;width:434px;height:86px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-loop"/></svg>
+        <div class="nx"><div class="t">GuardianReasoningTick</div>
+          <div class="s">Re-entrant reasoning loop</div>
+          <div class="ex">Assembles persona + skills + tool catalogue + transcript, then self-reschedules
+            via ScheduledCommand.</div></div>
+      </div>
+
+      <div class="node gate" style="left:20px;top:264px;width:434px;height:86px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-shield"/></svg>
+        <div class="nx"><div class="t">GuardianToolBridge &mdash; the single chokepoint</div>
+          <div class="s">Default-DENY</div>
+          <div class="ex">kill-switch &rarr; denylist &rarr; allowlist &rarr; policy tier &rarr;
+            human approval &rarr; execute &rarr; audit</div></div>
+      </div>
+
+      <div class="node" style="left:20px;top:370px;width:434px;height:86px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-users"/></svg>
+        <div class="nx"><div class="t">Specialist subagents</div>
+          <div class="s">Depth 1 &middot; read-only tools &middot; max 3 iterations</div>
+          <div class="ex">Phishing Analyst (built) &middot; Malware Analyst <i>(planned)</i> &mdash;
+            dispatched as a tool, returns one summary</div></div>
+      </div>
+
+      <div class="node" style="left:20px;top:476px;width:434px;height:92px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-chart"/></svg>
+        <div class="nx"><div class="t">Audit, approvals &amp; reporting</div>
+          <div class="s">Immutable ledgers &middot; Observability dashboard</div>
+          <div class="ex">guardian_audit &middot; approvals ledger &middot; cost ledger &middot; 5 widgets:
+            approvals queue, cost, event feed, loop health, tool activity</div></div>
+      </div>
+    </div>
+
+    <!-- ============ ZONE 2 · dedicated engine ============ -->
+    <div class="node grp z2" style="left:816px;top:60px;width:248px;height:406px">
+      <div class="grplbl" style="left:18px;top:14px">
+        <svg class="ic sm" viewBox="0 0 24 24"><use href="#ic-cpu"/></svg>
+        <span><b>Dedicated SOAR engine</b></span></div>
+
+      <div class="node core" style="left:20px;top:46px;width:208px;height:96px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-cpu"/></svg>
+        <div class="nx"><div class="t">LLM provider</div>
+          <div class="s mono">guardian-llm-chat</div>
+          <div class="ex">One command, one normalised output shape.</div></div>
+      </div>
+
+      <div class="node" style="left:20px;top:162px;width:208px;height:116px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-plug"/></svg>
+        <div class="nx"><div class="t">Integration execution</div>
+          <div class="s">Every command runs here</div>
+          <div class="ex">Local integrations become tools &mdash; dynamic discovery, curated 34-command
+            allowlist.</div></div>
+      </div>
+
+      <div class="node plan" style="left:20px;top:296px;width:208px;height:86px">
+        <span class="ptag">Planned</span>
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-hub"/></svg>
+        <div class="nx"><div class="t">MCP client</div>
+          <div class="s">Not in the pack today</div>
+          <div class="ex">Would expose MCP servers as gated tools.</div></div>
+      </div>
+    </div>
+
+    <!-- ============ ZONE 3 · model plane (SaaS) ============ -->
+    <div class="node grp z3" style="left:1110px;top:6px;width:306px;height:194px">
+      <div class="grplbl" style="left:18px;top:13px">
+        <svg class="ic sm" viewBox="0 0 24 24"><use href="#ic-cloud"/></svg>
+        <span><b>Model plane</b> &middot; SaaS</span></div>
+      <div class="node ext" style="left:20px;top:40px;width:266px;height:68px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-cloud"/></svg>
+        <div class="nx"><div class="t">Azure AI Foundry</div>
+          <div class="s mono">provider=azure</div></div>
+      </div>
+      <div class="node ext" style="left:20px;top:116px;width:266px;height:68px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-cloud"/></svg>
+        <div class="nx"><div class="t">OpenAI</div>
+          <div class="s mono">provider=openai-compatible</div></div>
+      </div>
+    </div>
+
+    <!-- ============ ZONE 4 · customer on-prem stack ============ -->
+    <div class="node grp z3" style="left:1110px;top:216px;width:306px;height:128px">
+      <div class="grplbl" style="left:18px;top:13px">
+        <svg class="ic sm" viewBox="0 0 24 24"><use href="#ic-server"/></svg>
+        <span><b>Customer security stack</b></span></div>
+      <div class="node ext" style="left:20px;top:40px;width:266px;height:76px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-server"/></svg>
+        <div class="nx"><div class="t">Configured XSOAR integrations</div>
+          <div class="ex">XDR / EDR &middot; Exchange (EWS) &middot; Splunk &middot; TI &middot; sandbox</div></div>
+      </div>
+    </div>
+
+    <!-- ============ ZONE 5 · planned channels ============ -->
+    <div class="node grp z4" style="left:1110px;top:360px;width:306px;height:274px">
+      <div class="grplbl" style="left:18px;top:13px">
+        <svg class="ic sm" viewBox="0 0 24 24"><use href="#ic-globe"/></svg>
+        <span><b>Planned integrations</b></span></div>
+      <div class="node ext plan" style="left:20px;top:40px;width:266px;height:68px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-chat"/></svg>
+        <div class="nx"><div class="t">Microsoft Teams</div>
+          <div class="s">Notification + approval</div></div>
+      </div>
+      <div class="node ext plan" style="left:20px;top:116px;width:266px;height:68px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-mail"/></svg>
+        <div class="nx"><div class="t">Customer mail service</div>
+          <div class="s">Notification + approval</div></div>
+      </div>
+      <div class="node ext plan" style="left:20px;top:192px;width:266px;height:68px">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#ic-hub"/></svg>
+        <div class="nx"><div class="t">MCP servers</div>
+          <div class="s">External tool providers</div></div>
+      </div>
+    </div>
+
+    <!-- link annotations, topology style -->
+    <div class="lnk" style="left:284px;top:106px">HTTPS 443</div>
+    <div class="lnk" style="left:793px;top:120px">dispatch</div>
+    <div class="lnk" style="left:1087px;top:104px">HTTPS &middot; outbound</div>
+    <div class="lnk" style="left:1087px;top:246px">vendor APIs</div>
+    <div class="lnk" style="left:1087px;top:392px">Graph / SMTP</div>
+
+    <!-- flow-step badges -->
+    <div class="fnum" style="left:274px;top:177px">1</div>
+    <div class="fnum" style="left:523px;top:144px">2</div>
+    <div class="fnum" style="left:783px;top:170px">3</div>
+    <div class="fnum" style="left:523px;top:250px">4</div>
+    <div class="fnum" style="left:274px;top:530px">5</div>
+    <div class="fnum" style="left:783px;top:286px">6</div>
+    <div class="fnum" style="left:523px;top:462px">7</div>
+  </div>
+
+  <div class="legend">
+    <div class="steps">
+      <div class="st"><i>1</i><span><b>Trigger</b> &mdash; start or steer</span></div>
+      <div class="st"><i>2</i><span><b>Assemble</b> &mdash; persona + skills</span></div>
+      <div class="st"><i>3</i><span><b>Reason</b> &mdash; model call</span></div>
+      <div class="st"><i>4</i><span><b>Gate</b> &mdash; default-DENY</span></div>
+      <div class="st"><i>5</i><span><b>Approve</b> &mdash; human decides</span></div>
+      <div class="st"><i>6</i><span><b>Execute</b> &mdash; on the engine</span></div>
+      <div class="st"><i>7</i><span><b>Audit</b> &mdash; ledger + dashboard</span></div>
+    </div>
+    <div class="foot">Planned: MCP client/servers, Teams + mail notification, Malware Analyst subagent.
+      <b>Engine placement is a deployment choice</b> &mdash; the content does not require it.</div>
+  </div>
+  </div>
+</section>
+</div>
+</div>
+
+<button id="tTheme" title="Toggle theme (T)" aria-label="Toggle theme"><svg viewBox="0 0 20 20">
+  <path d="M15.8 11.9A6.4 6.4 0 0 1 8.1 4.2a6.4 6.4 0 1 0 7.7 7.7z"/></svg></button>
+
+<script>
+(function(){
+/* A publishing host supplies its own <html>, so a data-theme written into markup would be gone
+   at parse time and every token would resolve to nothing. Set it defensively. */
+document.documentElement.dataset.theme = document.documentElement.dataset.theme || 'dark';
+const stage=document.getElementById('stage');
+function fit(){
+  const s=Math.max(.05,Math.min((innerWidth-24)/1600,(innerHeight-24)/900));
+  stage.style.transform='translate(-50%,-50%) scale('+s+')';
+}
+addEventListener('resize',fit); fit();
+function toggleTheme(){
+  const r=document.documentElement;
+  r.dataset.theme = r.dataset.theme==='dark' ? 'light' : 'dark';
+}
+document.getElementById('tTheme').onclick=toggleTheme;
+addEventListener('keydown',e=>{ if(e.key==='t'||e.key==='T') toggleTheme(); });
+})();
+</script>

@@ -1,0 +1,106 @@
+id: GuardianTriageOther
+version: -1
+name: GuardianTriageOther
+description: >-
+  Triage branch for an issue that fits no type, or whose triage answer could not be used or did not fit the
+  issue's domain. No model session runs: it writes one case note saying an analyst has to decide and why
+  triage stopped (the triage apply step has already noted the summary and next step), and stops. The issue's
+  phase was already set to "Guardian triage: needs analyst" by the triage apply step.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 6be3208d-b072-5653-aac1-1c439a682434
+    type: start
+    task:
+      id: 6be3208d-b072-5653-aac1-1c439a682434
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 168b42ea-4e41-53da-86f2-41c0aca3725b
+    type: regular
+    task:
+      id: 168b42ea-4e41-53da-86f2-41c0aca3725b
+      version: -1
+      name: "Note - needs an analyst"
+      description: >-
+        Writes one case note saying that an analyst has to decide and why triage stopped here, then the
+        playbook ends. The triage apply step has already written its own note (branch, severity before and
+        after, the model's summary and next step), so this one adds only the reason. No model is involved.
+      script: 'GuardianCaseNote'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    scriptarguments:
+      content:
+        simple: |-
+          Guardian triage could not place this issue in a type, so it needs an analyst.
+          Why triage stopped here: ${Guardian.Triage.reason}
+          Triage status: ${Guardian.Triage.status}. Apply outcome: ${Guardian.TriageApply.status}.
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 4cd5e3fd-e6bf-5128-a540-5fc631e58e67
+    type: title
+    task:
+      id: 4cd5e3fd-e6bf-5128-a540-5fc631e58e67
+      version: -1
+      name: "Done"
+      description: >-
+        The playbook ends here.
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 340
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 455,
+        "width": 800,
+        "x": 0,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []
+adopted: true
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

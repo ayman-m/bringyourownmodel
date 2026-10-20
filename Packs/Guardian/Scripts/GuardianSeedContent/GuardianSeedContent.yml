@@ -1,0 +1,49 @@
+args: []
+comment: >-
+  Seeds and updates Guardian's configuration content at install time and on each upgrade, without overwriting
+  changes made by an operator. It first runs GuardianBootstrap so that every runtime List exists. It then
+  makes sure the configuration Lists (`guardian_settings`, `guardian_persona`, `guardian_policy`,
+  `guardian_tool_allowlist`, `guardian_tool_denylist`, `guardian_pricing`, `guardian_prompt_head`,
+  `guardian_prompt_tail`) and the entries of `guardian_skills_crud_index` exist. It compares each List's
+  content hash with the one recorded in `guardian_seed_version`, saves a snapshot to `guardian_seed_snapshots`
+  before any overwrite, and overwrites only a List that is unchanged since it was last seeded. Skill names
+  listed in `guardian_seed_version.deleted_skills` are not recreated. Running it again with nothing changed
+  leaves every List alone. It is an operator and install-time command and is not on the agent's tool
+  allowlist.
+commonfields:
+  id: GuardianSeedContent
+  version: -1
+enabled: true
+name: GuardianSeedContent
+outputs:
+- contextPath: Guardian.SeedContent.ensured
+  description: >-
+    Lists that were missing or empty and were created, or were unchanged since the last seed and were updated
+    to a newer default.
+  type: Unknown
+- contextPath: Guardian.SeedContent.left_alone
+  description: >-
+    Lists that were already correct: adopted as the first baseline, or equal to the recorded baseline with no
+    newer seed version.
+  type: Unknown
+- contextPath: Guardian.SeedContent.snapshotted
+  description: >-
+    Lists whose content differs from the last recorded baseline (changed by an operator or otherwise). A
+    snapshot is saved to `guardian_seed_snapshots` and the List is not overwritten.
+  type: Unknown
+- contextPath: Guardian.SeedContent.denylisted
+  description: "Names skipped because they appear in `guardian_seed_version.deleted_skills`."
+  type: Unknown
+- contextPath: Guardian.SeedContent.errors
+  description: "`{list_name, error}` entries for any List or final write that failed."
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

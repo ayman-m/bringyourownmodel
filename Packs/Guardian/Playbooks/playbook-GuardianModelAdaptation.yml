@@ -1,0 +1,253 @@
+id: GuardianModelAdaptation
+version: -1
+name: GuardianModelAdaptation
+description: >-
+  Guardian's daily model-adaptation run, started by the GuardianModelAdaptation Job (also runnable by hand).
+  It measures the model that is enabled right now and saves the result to the guardian_model_profile List, so
+  every investigation reads the model's measured limits instead of estimating them per incident. Steps: check
+  the kill switch (the probe makes real, billable model calls, so a thrown kill switch skips it), probe the
+  model with !guardian-probe-model (a throwaway warm-up call, then the tokens-per-character ratio, the
+  context-window search and the tool-call and structured-output checks), save the result with
+  GuardianModelProfileUpdate, then close this job run. A probe that did not produce a trustworthy
+  measurement leaves the previous profile in place and says why in the War Room. The model SIZE is not
+  measured; it comes from the model catalogue (guardian_model_catalog), looked up by the model name on every
+  run, and only an explicit guardian_settings.model_tier or a profile override changes it. This playbook is
+  deliberately separate from GuardianAgentLoop: it investigates nothing and the agent has no part in it, so no approval step applies.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: f98f5762-db1e-4c8a-ac89-647e3a588561
+    type: start
+    task:
+      id: f98f5762-db1e-4c8a-ac89-647e3a588561
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 5555fb47-ed54-4381-a422-bd1ee1577bc2
+    type: regular
+    task:
+      id: 5555fb47-ed54-4381-a422-bd1ee1577bc2
+      version: -1
+      name: Check kill switch
+      description: >-
+        Reads guardian_kill_switch. Read-only; a failed read lets the run continue (fail-open).
+        The probe makes real, billable model calls, so it is skipped while the kill switch is on.
+      script: 'GuardianKillSwitchCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 1862897e-c512-402e-aae0-c229f418c4be
+    type: condition
+    task:
+      id: 1862897e-c512-402e-aae0-c229f418c4be
+      version: -1
+      name: Kill switch on?
+      description: >-
+        Ends the playbook at the Halted task when the kill switch is on.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "3"
+      halted:
+      - "90"
+    separatecontext: false
+    conditions:
+    - label: halted
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Preflight.KillSwitch.proceed
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 340
+        }
+      }
+  "3":
+    id: "3"
+    taskid: 92271538-97f0-4bff-94b3-fccea70ee600
+    type: regular
+    task:
+      id: 92271538-97f0-4bff-94b3-fccea70ee600
+      version: -1
+      name: Probe the model
+      description: >-
+        Runs !guardian-probe-model against the enabled provider: a warm-up call (so a model the server unloaded while
+        idle is not measured cold), the tokens-per-character ratio, the usable context window, whether tool calls and
+        structured output work, and a recommended input budget. Makes real model calls and takes one to a few minutes.
+        Leaves the report at Guardian.ModelProbe.
+      script: 'guardian-probe-model'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 485
+        }
+      }
+  "4":
+    id: "4"
+    taskid: 7413dd3d-df93-4742-83f2-b5960c92f0be
+    type: regular
+    task:
+      id: 7413dd3d-df93-4742-83f2-b5960c92f0be
+      version: -1
+      name: Save the model profile
+      description: >-
+        Saves the probe result to the guardian_model_profile List that every investigation reads. If the probe was not
+        trustworthy (too slow, ran out of time, capability checks skipped) the previous profile stays and the reason is
+        printed. Operator overrides in the List are never touched. Not an agent action, so no approval step.
+      script: 'GuardianModelProfileUpdate'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 630
+        }
+      }
+  "5":
+    id: "5"
+    taskid: 92a72271-9469-4446-a551-1492c8fd63af
+    type: regular
+    task:
+      id: 92a72271-9469-4446-a551-1492c8fd63af
+      version: -1
+      name: Close this job run
+      description: >-
+        Fire-and-forget maintenance run: close this recurring job's own investigation so each scheduled run
+        finishes clean instead of accumulating open forever. Nothing here needs analyst review.
+      script: closeInvestigation
+      type: regular
+      iscommand: true
+      brand: ""
+    scriptarguments:
+      closeReason:
+        simple: Resolved
+      closeNotes:
+        simple: Guardian model adaptation run completed.
+    nexttasks:
+      '#none#':
+      - "6"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 775
+        }
+      }
+  "6":
+    id: "6"
+    taskid: 7197c6bf-b365-4f27-bf9e-e0370ef7a6c8
+    type: title
+    task:
+      id: 7197c6bf-b365-4f27-bf9e-e0370ef7a6c8
+      version: -1
+      name: Done
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 920
+        }
+      }
+  "90":
+    id: "90"
+    taskid: 5b0f7e59-c232-494d-8f1c-c4aa45b91f9d
+    type: title
+    task:
+      id: 5b0f7e59-c232-494d-8f1c-c4aa45b91f9d
+      version: -1
+      name: "Halted - kill switch is on"
+      type: title
+      iscommand: false
+      brand: ""
+      description: >-
+        The Guardian kill switch is on, so the model was not probed and the profile was not changed. Turn it off with
+        !guardian-killswitch state=off and run this playbook again, or wait for the next daily run.
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 340
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 920,
+        "width": 800,
+        "x": 450,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []
+fromversion: 6.10.0
+marketplaces:
+- xsoar

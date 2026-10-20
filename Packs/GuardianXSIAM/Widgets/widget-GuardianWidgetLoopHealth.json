@@ -1,0 +1,17 @@
+{
+  "id": "Guardian Loop Health",
+  "version": -1,
+  "fromVersion": "6.10.0",
+  "name": "Guardian Loop Health",
+  "dataType": "scripts",
+  "widgetType": "table",
+  "query": "GuardianWidgetLoopHealth",
+  "params": {
+    "tableColumns": [
+      {"displayed": true, "isDefault": true, "key": "Metric"},
+      {"displayed": true, "isDefault": true, "key": "Value"}
+    ]
+  },
+  "isPredefined": false,
+  "description": "Guardian Agent Run incident counts by Guardian.Loop.status (running/awaiting/done/stopped/not_started/unknown), avg ticks, stalled-run count, and the current guardian_kill_switch state."
+}

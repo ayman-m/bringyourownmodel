@@ -1,0 +1,776 @@
+id: GuardianInvestigateIssue
+version: -1
+name: GuardianInvestigateIssue
+description: >-
+  Investigates THIS Cortex platform issue end to end with no human step: the standard Guardian preparation (kill switch,
+  job guard, issue routing by family, model profile, system prompt, tool list, the family's skill), then one autonomous model session that checks
+  its own memory, reads the issue and looks for similar ones, consults the knowledge base, documents its reasoning
+  in a case note, remembers what it learned, and ends with a verdict. Containment and other state changes still wait
+  for a human through the tool bridge. Use GuardianEvalInvestigate instead for scored, read-only evaluation runs.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 2ae40b88-0453-4320-8458-c47f754776c7
+    type: start
+    task:
+      id: 2ae40b88-0453-4320-8458-c47f754776c7
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 6c546c59-9cec-5d08-9e25-b1706c088a00
+    type: regular
+    task:
+      id: 6c546c59-9cec-5d08-9e25-b1706c088a00
+      version: -1
+      name: Check kill switch
+      description: >-
+        Reads guardian_kill_switch. Read-only; a failed read lets the run continue (fail-open).
+        The reasoning loop re-checks the switch on every tick, so a switch thrown mid-run still halts it.
+      script: 'GuardianKillSwitchCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 6b87a8e6-2b0c-5a7b-9717-a95c1fa2658d
+    type: condition
+    task:
+      id: 6b87a8e6-2b0c-5a7b-9717-a95c1fa2658d
+      version: -1
+      name: Kill switch on?
+      description: >-
+        Ends the playbook at the Halted task when the kill switch is on.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "3"
+      halted:
+      - "90"
+    separatecontext: false
+    conditions:
+    - label: halted
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Preflight.KillSwitch.proceed
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 340
+        }
+      }
+  "3":
+    id: "3"
+    taskid: e98e351a-4f25-508e-bb73-474c4e990ff8
+    type: regular
+    task:
+      id: e98e351a-4f25-508e-bb73-474c4e990ff8
+      version: -1
+      name: Check job guard
+      description: >-
+        For a run started by a scheduled Job, asks GuardianJobGuard whether that Job was auto-disabled after
+        repeated failures. A run with no Job (manual, eval) has nothing to check. Fail-open.
+      script: 'GuardianJobGuardCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 485
+        }
+      }
+  "4":
+    id: "4"
+    taskid: f56858e3-1425-548a-83f8-cce99384f5fa
+    type: condition
+    task:
+      id: f56858e3-1425-548a-83f8-cce99384f5fa
+      version: -1
+      name: Job disabled?
+      description: >-
+        Ends the playbook at the Halted task when the spawning Job is auto-disabled.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "12"
+      halted:
+      - "91"
+    separatecontext: false
+    conditions:
+    - label: halted
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Preflight.JobGuard.proceed
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 630
+        }
+      }
+  "12":
+    id: "12"
+    taskid: 7d1c2a52-5b0e-5a6f-9d0b-0c4d7e8a1b12
+    type: regular
+    task:
+      id: 7d1c2a52-5b0e-5a6f-9d0b-0c4d7e8a1b12
+      version: -1
+      name: Route issue
+      description: >-
+        Reads the issue's own domain, category, scanner and tags and decides what kind of issue it is (threat
+        detection, cloud misconfiguration, Kubernetes CIS, identity risk, vulnerable package, package operational risk,
+        attack path, health). Writes Guardian.Route: the skill to load, the evidence plan and the kind of assessment.
+        The routing table is the guardian_issue_routes List. No model is involved and nothing is changed. A non-empty
+        skill input overrides the routed skill.
+      script: 'GuardianIssueRoute'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      skill_override:
+        simple: ${inputs.skill}
+    nexttasks:
+      '#none#':
+      - "13"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 775
+        }
+      }
+  "13":
+    id: "13"
+    taskid: 3a9f6b14-0e2d-5c8a-b7e1-5f2a9c4d6e13
+    type: condition
+    task:
+      id: 3a9f6b14-0e2d-5c8a-b7e1-5f2a9c4d6e13
+      version: -1
+      name: Needs a model session?
+      description: >-
+        Health issues are platform telemetry, not security work: they get a short note and no model session.
+        Every other family continues. A failed route (no Guardian.Route) also continues.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "5"
+      nomodel:
+      - "14"
+    separatecontext: false
+    conditions:
+    - label: nomodel
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Route.run_model
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 920
+        }
+      }
+  "14":
+    id: "14"
+    taskid: 9b4e1d37-6c8a-5f02-a3d5-1e7b0c9a2f14
+    type: regular
+    task:
+      id: 9b4e1d37-6c8a-5f02-a3d5-1e7b0c9a2f14
+      version: -1
+      name: Note - no model session needed
+      description: >-
+        Writes one short note saying why Guardian did not run a model session on this issue, then the playbook ends.
+      script: 'GuardianCaseNote'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      content:
+        simple: >-
+          Guardian did not run a model session: this is a ${Guardian.Route.family} issue (${Guardian.Route.reason}).
+          Platform health issues are telemetry, not security investigations.
+    nexttasks:
+      '#none#':
+      - "9"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 1065
+        }
+      }
+  "5":
+    id: "5"
+    taskid: 6d0f9539-ed36-5ee2-9d8f-e94c7cf11810
+    type: regular
+    task:
+      id: 6d0f9539-ed36-5ee2-9d8f-e94c7cf11810
+      version: -1
+      name: Resolve model profile
+      description: >-
+        Works out the model numbers this run uses: the model size (from the model catalogue, looked up by the model name; only an explicit guardian_settings.model_tier or a profile override changes it), the input budget
+        and the tool-list budget, from an operator override, else the model profile (guardian_model_profile: documented
+        limits from the model catalogue, or a probe result from the daily GuardianModelAdaptation job), else guardian_settings. Prints each value with its source and leaves the
+        result in context at Guardian.ModelProfile so every later task and the model session use the same numbers.
+        Warns when the size disagrees with the provider instance's "Model size" dropdown, or a probed profile is
+        old. Never blocks the run.
+      script: 'GuardianModelProfileCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "15"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 775
+        }
+      }
+  "15":
+    id: "15"
+    taskid: c2e84a09-1d63-5b7f-8a40-6f9d3b1e7c15
+    type: regular
+    task:
+      id: c2e84a09-1d63-5b7f-8a40-6f9d3b1e7c15
+      version: -1
+      name: Gather evidence
+      description: >-
+        Fetches what the platform already knows about this issue before the model starts: its status, the platform's
+        remediation text, the asset details, the parent case, how earlier issues of the same rule were resolved, and
+        Guardian's own memory for the rule and assets. Which steps run comes from the route's evidence plan. Every
+        command is read-only and costs no compute units, each call is audited, and a command that is missing or fails
+        is noted in the packet and never stops the run. The model session pins the packet (Guardian.Evidence).
+      script: 'GuardianIssueEvidence'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      mode:
+        simple: ${inputs.mode}
+    nexttasks:
+      '#none#':
+      - "17"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1030
+        }
+      }
+  "17":
+    id: "17"
+    taskid: e5b17c30-8a24-5d9e-b6f1-2c7d0a9e4b17
+    type: condition
+    task:
+      id: e5b17c30-8a24-5d9e-b6f1-2c7d0a9e4b17
+      version: -1
+      name: Rule already digested today?
+      description: >-
+        Only in digest mode: when a digest for this issue's rule was already written today, this issue needs no model
+        session of its own. In the normal per-issue mode this always continues.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "6"
+      done:
+      - "18"
+    separatecontext: false
+    conditions:
+    - label: done
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Evidence.digest_done
+            iscontext: true
+          right:
+            value:
+              simple: "true"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1105
+        }
+      }
+  "18":
+    id: "18"
+    taskid: 4f0d92b6-3c71-5e8a-9a5d-7b1e6c3d8f18
+    type: regular
+    task:
+      id: 4f0d92b6-3c71-5e8a-9a5d-7b1e6c3d8f18
+      version: -1
+      name: Note - rule already digested
+      description: Writes one short note saying why this issue got no model session, then the playbook ends.
+      script: 'GuardianCaseNote'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      content:
+        simple: >-
+          Guardian did not run a model session on this issue: a digest for its rule ${Guardian.Route.signals.rule_id} was already
+          written today (${Guardian.Evidence.digest_key}). See the issue that wrote it, or turn digest mode off to investigate
+          each issue on its own.
+    nexttasks:
+      '#none#':
+      - "9"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 1250
+        }
+      }
+  "16":
+    id: "16"
+    taskid: 8a3c5e71-2b94-5f0d-a1c6-9d4e7b2f0a16
+    type: regular
+    task:
+      id: 8a3c5e71-2b94-5f0d-a1c6-9d4e7b2f0a16
+      version: -1
+      name: Remember the outcome
+      description: >-
+        Stores one memory row for the finished run (key run:<issue id>) with the family, rule id, asset ids, verdict or
+        posture assessment, priority and summary, so a later issue of the same rule or on the same asset opens with this
+        outcome in front of it. In digest mode it also marks the rule as digested today. Needs no Job and does not depend
+        on the model storing anything. Writes nothing when the run ended without a verdict.
+      script: 'GuardianRunCapture'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "9"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1500
+        }
+      }
+  "6":
+    id: "6"
+    taskid: fbddce87-b3c7-54b3-b5b7-bfb935ad6e25
+    type: regular
+    task:
+      id: fbddce87-b3c7-54b3-b5b7-bfb935ad6e25
+      version: -1
+      name: Build system prompt
+      description: >-
+        Assembles the agent's system prompt (persona, action policy, approval mode, skills index) and leaves it in
+        context at Guardian.SystemPrompt. No model is involved.
+      script: 'GuardianPromptBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      summary_only:
+        simple: "true"
+    nexttasks:
+      '#none#':
+      - "7"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 920
+        }
+      }
+  "7":
+    id: "7"
+    taskid: b1210df7-bde8-564f-bff0-7f202639ce92
+    type: regular
+    task:
+      id: b1210df7-bde8-564f-bff0-7f202639ce92
+      version: -1
+      name: Build tool list
+      description: >-
+        Builds the list of tools offered to the model: the allowlisted commands that exist on this server, minus the
+        denylist, trimmed to this run's tool-list budget (see "Resolve model profile"). Leaves it in context at
+        Guardian.ToolCatalog. No model is involved.
+      script: 'GuardianToolCatalogBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      use_snapshot:
+        simple: "true"
+    nexttasks:
+      '#none#':
+      - "10"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1065
+        }
+      }
+  "10":
+    id: "10"
+    taskid: 80a53062-01cb-5fcc-aa83-dd99b14c2559
+    type: condition
+    task:
+      id: 80a53062-01cb-5fcc-aa83-dd99b14c2559
+      version: -1
+      name: Preload skill?
+      description: >-
+        Runs the next task only when the preload_skill input is true (default false).
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "8"
+      skill:
+      - "11"
+    separatecontext: false
+    conditions:
+    - label: skill
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: inputs.preload_skill
+            iscontext: true
+          right:
+            value:
+              simple: "true"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1210
+        }
+      }
+  "11":
+    id: "11"
+    taskid: 63075ab9-934d-512a-b77c-b3b1c7124eab
+    type: regular
+    task:
+      id: 63075ab9-934d-512a-b77c-b3b1c7124eab
+      version: -1
+      name: Load skill
+      description: >-
+        Loads the skill named by the skill input (a playbook of investigation guidance) into context at
+        Guardian.SkillBody. The model session adds it to the system prompt when it fits the model's input
+        budget, otherwise the model can load it itself. No model is involved. A skill that cannot be loaded
+        never stops the run.
+      script: 'GuardianSkillRead'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      name:
+        simple: ${Guardian.Route.skill}
+      summary_only:
+        simple: "true"
+    nexttasks:
+      '#none#':
+      - "8"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 1210
+        }
+      }
+  "8":
+    id: "8"
+    taskid: 45d685e0-703d-467f-8397-bad11167811c
+    type: regular
+    task:
+      id: 45d685e0-703d-467f-8397-bad11167811c
+      version: -1
+      name: Run Guardian model session
+      description: >-
+        The whole conversation with the model is this one task, deliberately: each turn the model chooses which tools
+        to call, the security gate vets every call, results go back to the model, and approvals and the final verdict
+        are handled in the same session. It reads the prompt and tool list built above and re-schedules itself
+        (ScheduledCommand) for each turn until the model concludes, a kill switch is thrown or the tick limit is hit.
+      script: 'GuardianReasoningTick'
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      prompt:
+        simple: ${inputs.prompt}
+      skill:
+        simple: ${Guardian.Route.skill}
+      use_prebuilt:
+        simple: "true"
+      scope_to_incident:
+        simple: "true"
+    nexttasks:
+      '#none#':
+      - "16"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1355
+        }
+      }
+  "9":
+    id: "9"
+    taskid: d98c531a-5670-4651-adc6-bfc49b1c330d
+    type: title
+    task:
+      id: d98c531a-5670-4651-adc6-bfc49b1c330d
+      version: -1
+      name: Done
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1525
+        }
+      }
+  "90":
+    id: "90"
+    taskid: 12f5dbcf-be17-5c2c-9b0a-f13ebaaa4c38
+    type: title
+    task:
+      id: 12f5dbcf-be17-5c2c-9b0a-f13ebaaa4c38
+      version: -1
+      name: "Halted - kill switch is on"
+      type: title
+      iscommand: false
+      brand: ""
+      description: >-
+        The Guardian kill switch is on, so no model session was started. Turn it off with !guardian-killswitch state=off
+        (or Resume Agent) and start a new run.
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 340
+        }
+      }
+  "91":
+    id: "91"
+    taskid: 6071fc4c-b55b-51af-a83c-6a3df28e2f34
+    type: title
+    task:
+      id: 6071fc4c-b55b-51af-a83c-6a3df28e2f34
+      version: -1
+      name: "Halted - Job is auto-disabled"
+      type: title
+      iscommand: false
+      brand: ""
+      description: >-
+        GuardianJobGuard auto-disabled the Job that started this run after repeated failures, so no model session was
+        started. Fix the cause and re-enable the Job.
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 630
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 1540,
+        "width": 730,
+        "x": 450,
+        "y": 50
+      }
+    }
+  }
+inputs:
+- key: prompt
+  value:
+    simple: >-
+      You are the SOC analyst agent for THIS Cortex platform issue, number ${incident.id}
+      (you are already assigned to it: do NOT search for or switch to another issue, never invent an id, and never ask anyone
+      for it). Work in this order, calling the tools yourself. Make exactly ONE tool call per turn and read its result
+      before choosing the next call; never write the case note or store a memory in the same turn as a lookup.
+      If the evidence packet has a rule_digest section, you are in DIGEST mode: write ONE report for the whole rule instead
+      of for this issue alone. Rank the affected assets (most issues first, internet-exposed and production first), say
+      what the rule found, what the common fix is, who likely owns the groups, and what should be handled first; check
+      one or two top assets with core-get-asset-details rather than all of them.
+      1) READ THE EVIDENCE PACKET pinned above first. It holds what the platform already knows: the issue's status and fields,
+      the platform's remediation text, the asset details, the case, how earlier issues of the same rule were resolved, and
+      what Guardian remembers about the rule and assets. Do not fetch again what is there, and name the sections you rely on.
+      A section listed as not available is unknown, not empty.
+      2) FOLLOW THE ACTIVE SKILL for this family. It lists the checks that matter, the commands and queries that answer them,
+      and the report format. Gather only what your question needs, and stop when another call would not change your answer.
+      A failed or empty lookup is not evidence either way: say so and carry on.
+      3) Judge by the assessment mode, which the issue pin above states (family and mode). In `posture` mode the
+      finding comes from a scanner: it is a fact about configuration, not a claim to corroborate, so confirm it still holds,
+      then assess how exposed it is, what it protects, who owns it and what fixes it. In `verdict` mode the issue is a
+      detector's claim: corroborate it with independent telemetry before you call it Malicious or Benign.
+      4) If a memory row or an earlier resolution in the packet covers this rule or asset, use it and quote its key. A
+      memory row is an earlier conclusion, often Guardian's own: check it against this issue's evidence instead of adopting
+      it. How analysts closed earlier issues of the rule is in prior_rules; a resolution as a false positive is evidence.
+      5) DOCUMENT: call GuardianCaseNote once, in the report format the skill gives. Keep the case note under 2500 characters. Notes over 4000 are
+      rejected and cost a retry. Cut repetition and raw lists before findings: name each item once, summarise
+      counts, and keep the verdict, key evidence and next steps. When you cite a cloud resource, copy its full
+      resource id exactly as it appears in the evidence. Never shorten it with '...'.
+      6) REMEMBER: if this run's evidence shows a durable pattern (a routine shown to be authorised, an accepted risk, a new
+      risk), call GuardianMemory with op=store, a key that names the rule or the asset (for example rule:<rule id> or
+      asset:<asset id>), a one-sentence value and tags. Store what you saw, not a guess: later runs on this rule read it.
+      7) DECIDE. Do NOT change anything: no core-update-issue, no core-update-case, no containment. Propose the next action
+      in your report instead.
+      In `verdict` mode: `Malicious` = confirmed hostile activity; `Suspicious` = likely hostile but not confirmed; `Benign` =
+      confirmed non-threat or expected activity; `Inconclusive` = genuinely insufficient signal in the issue's own evidence.
+      `techniques` lists parent-level ATT&CK ids that match THIS activity (the `T####` in the template is a placeholder, never
+      copy it), or [] if none apply. `confidence`: 90 or more only when a tool result or the packet confirms the key facts;
+      40-70 when the evidence is partial. If nothing independent corroborates the detector, answer Suspicious (confidence
+      40-70), not Malicious. Telemetry that shows the activity happened confirms the detector's facts, not that the activity
+      was authorised: Benign at 70 or more needs evidence that it was expected (an earlier issue of this rule resolved as a
+      false positive, a known automation identity doing its usual job, or the same identity doing the same thing from the
+      same networks before). A source IP never seen on this tenant, failed sign-ins around the change, or a lookup that
+      failed argue against Benign; when the activity is confirmed but its authorisation is not, answer Suspicious and
+      propose confirming it with the owner. End with EXACTLY this fenced block and nothing after it:
+      ```json
+      {"verdict": "Malicious|Suspicious|Benign|Inconclusive", "confidence": 0-100,
+       "techniques": ["T####"], "summary": "one-line blast-radius / rationale"}
+      ```
+      In `posture` mode: `Confirmed` = the condition still holds; `Not reproducible` = it no longer holds or the asset is gone;
+      `Accepted risk candidate` = it holds, but the evidence shows a deliberate, contained or low-impact setup that an owner
+      could accept. `priority` is P1 (fix now: internet-exposed or admin-level in production), P2, P3 or P4 (low impact); say
+      why. `exposure`, `owner` and `fix` are each one short line; if the owner is unknown, write unknown. End with EXACTLY this
+      fenced block and nothing after it:
+      ```json
+      {"assessment": "Confirmed|Not reproducible|Accepted risk candidate", "priority": "P1|P2|P3|P4",
+       "exposure": "who or what can reach it", "owner": "team or role, or unknown", "fix": "the change that closes it",
+       "summary": "one-line rationale"}
+      ```
+  required: true
+  description: >-
+    Investigation prompt: investigate THIS issue by its family and end with the verdict block (verdict mode) or the posture
+    block (posture mode).
+  playbookInputQuery: null
+- key: skill
+  value:
+    simple: ""
+  required: false
+  description: >-
+    Optional override. Leave empty to use the skill chosen for this issue's family by the Route issue task
+    (guardian_issue_routes). Set a skill name to force that skill for every run of this playbook.
+  playbookInputQuery: null
+- key: mode
+  value:
+    simple: issue
+  required: false
+  description: >-
+    issue (the default) investigates this issue on its own. digest also reads the open issues of its rule, grouped by
+    asset, and asks for ONE report on the whole rule; once a digest for a rule exists for the day, the other issues of
+    that rule get a short note and no model session. Use digest with a narrow automation rule on a noisy posture rule.
+  playbookInputQuery: null
+- key: preload_skill
+  value:
+    simple: "true"
+  required: false
+  description: >-
+    When "true", the skill named by the skill input is loaded and added to the model's system prompt (if it fits
+    within 15% of max_input_tokens). On for this playbook so the run always carries the skill.
+  playbookInputQuery: null
+outputs: []
+adopted: true
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

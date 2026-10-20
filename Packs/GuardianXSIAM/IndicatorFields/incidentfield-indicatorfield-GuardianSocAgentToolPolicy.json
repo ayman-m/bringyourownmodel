@@ -1,0 +1,17 @@
+{
+    "id": "indicator_socagenttoolpolicy",
+    "name": "Guardian Approved Tool Policy",
+    "cliName": "socagenttoolpolicy",
+    "type": "longText",
+    "placeholder": "JSON only: {\"commands\": [\"ip\", \"domain\"]}. Validate it, then use Apply Approved Tool Policy.",
+    "associatedTypes": ["SOC Agent"],
+    "associatedToAll": false,
+    "content": true,
+    "system": false,
+    "group": 2,
+    "unsearchable": true,
+    "required": false,
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "marketplaces": ["marketplacev2"]
+}

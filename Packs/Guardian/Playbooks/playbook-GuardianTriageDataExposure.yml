@@ -1,0 +1,529 @@
+id: GuardianTriageDataExposure
+version: -1
+name: GuardianTriageDataExposure
+description: >-
+  Triage branch for a data loss prevention alert, exfiltration, or public or over-shared data. Collects read-
+  only enrichment for it (the user record (UserData), the endpoint record (Endpoint) and the destination
+  domain and URL reputation (Domain, URL, DBotScore)), adds it to the evidence packet, then runs one focused
+  model session. Every lookup is skipped when its input is empty and continues on error; nothing here changes
+  the incident, and the model session proposes actions and takes none.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: b000fa17-9ba1-5f00-9c02-f29f12a9a96c
+    type: start
+    task:
+      id: b000fa17-9ba1-5f00-9c02-f29f12a9a96c
+      version: -1
+      name: ""
+      description: ""
+      type: start
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 805ad9ee-0fe6-5733-bfd4-5d6537a3b9f6
+    type: condition
+    task:
+      id: 805ad9ee-0fe6-5733-bfd4-5d6537a3b9f6
+      version: -1
+      name: "Has an identity?"
+      description: >-
+        Runs the next lookups only when the triage input `identity` is not empty; an empty value skips them
+        quietly instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "2"
+      '#default#':
+      - "3"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: Guardian.Triage.inputs.identity
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: ec691d7d-f02e-5c7c-b173-f22b22698105
+    type: regular
+    task:
+      id: ec691d7d-f02e-5c7c-b173-f22b22698105
+      version: -1
+      name: "User record"
+      description: >-
+        Reads the account from every enabled identity integration with GetUserData (Aggregated Scripts pack):
+        status, groups, manager, risk. Skipped when that script is not installed. Read-only.
+      script: 'GetUserData'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "3"
+    scriptarguments:
+      user_name:
+        simple: "${Guardian.Triage.inputs.identity}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    skipunavailable: true
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 340
+        }
+      }
+  "3":
+    id: "3"
+    taskid: d7dcedb6-40fe-5824-92e9-52d82010ed0f
+    type: condition
+    task:
+      id: d7dcedb6-40fe-5824-92e9-52d82010ed0f
+      version: -1
+      name: "Has a host?"
+      description: >-
+        Runs the next lookups only when the triage input `host` is not empty; an empty value skips them
+        quietly instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "4"
+      '#default#':
+      - "5"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: Guardian.Triage.inputs.host
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 485
+        }
+      }
+  "4":
+    id: "4"
+    taskid: fb2d3351-9de1-562e-872a-c7a35f590e3f
+    type: regular
+    task:
+      id: fb2d3351-9de1-562e-872a-c7a35f590e3f
+      version: -1
+      name: "Endpoint record"
+      description: >-
+        Reads the host from every enabled endpoint integration (`endpoint`): status, operating system, IP
+        addresses, isolation. Read-only.
+      script: '|||endpoint'
+      type: regular
+      iscommand: true
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    scriptarguments:
+      hostname:
+        simple: "${Guardian.Triage.inputs.host}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 630
+        }
+      }
+  "5":
+    id: "5"
+    taskid: 405b8530-575a-5190-95bf-6c152504e922
+    type: condition
+    task:
+      id: 405b8530-575a-5190-95bf-6c152504e922
+      version: -1
+      name: "Has a domain?"
+      description: >-
+        Runs the next lookups only when the triage input `domain` is not empty; an empty value skips them
+        quietly instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "6"
+      '#default#':
+      - "7"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: Guardian.Triage.inputs.domain
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 775
+        }
+      }
+  "6":
+    id: "6"
+    taskid: b013b21e-37e9-5de0-ae68-2a18c848eeaf
+    type: regular
+    task:
+      id: b013b21e-37e9-5de0-ae68-2a18c848eeaf
+      version: -1
+      name: "Domain reputation"
+      description: >-
+        Reputation of the destination domain (`domain`). Read-only.
+      script: '|||domain'
+      type: regular
+      iscommand: true
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "7"
+    scriptarguments:
+      domain:
+        simple: "${Guardian.Triage.inputs.domain}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 920
+        }
+      }
+  "7":
+    id: "7"
+    taskid: 8fd2a5bb-7996-51c0-8b71-f0867252cdaa
+    type: condition
+    task:
+      id: 8fd2a5bb-7996-51c0-8b71-f0867252cdaa
+      version: -1
+      name: "Has a URL?"
+      description: >-
+        Runs the next lookups only when the triage input `url` is not empty; an empty value skips them quietly
+        instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "8"
+      '#default#':
+      - "9"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: Guardian.Triage.inputs.url
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1065
+        }
+      }
+  "8":
+    id: "8"
+    taskid: b5df1fee-93aa-51d4-bb6a-d8d9ef11597e
+    type: regular
+    task:
+      id: b5df1fee-93aa-51d4-bb6a-d8d9ef11597e
+      version: -1
+      name: "URL reputation"
+      description: >-
+        Reputation of the destination URL (`url`). Read-only.
+      script: '|||url'
+      type: regular
+      iscommand: true
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "9"
+    scriptarguments:
+      url:
+        simple: "${Guardian.Triage.inputs.url}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 1210
+        }
+      }
+  "9":
+    id: "9"
+    taskid: cb11f0b4-f509-5f9e-bfd9-0caf25835f20
+    type: regular
+    task:
+      id: cb11f0b4-f509-5f9e-bfd9-0caf25835f20
+      version: -1
+      name: "Add enrichment to the evidence packet"
+      description: >-
+        Adds the lookups above to the pinned evidence packet (GuardianIncidentEvidence mode=append), so the
+        focused session sees them without fetching anything again. A path with nothing in context is listed as
+        not available.
+      script: 'GuardianIncidentEvidence'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "10"
+    scriptarguments:
+      mode:
+        simple: "append"
+      paths:
+        simple: "UserData,Endpoint,Domain,DBotScore,URL"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1355
+        }
+      }
+  "10":
+    id: "10"
+    taskid: 664d26a9-9477-53de-876b-fee68c1c0ee4
+    type: regular
+    task:
+      id: 664d26a9-9477-53de-876b-fee68c1c0ee4
+      version: -1
+      name: "Clear the triage session state"
+      description: >-
+        Deletes Guardian.Loop, the finished triage session, so the focused session starts its own loop.
+      script: 'DeleteContext'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "11"
+    scriptarguments:
+      key:
+        simple: "Guardian.Loop"
+      subplaybook:
+        simple: "no"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1500
+        }
+      }
+  "11":
+    id: "11"
+    taskid: f61406a8-fb75-5f86-a51a-15081605a846
+    type: regular
+    task:
+      id: f61406a8-fb75-5f86-a51a-15081605a846
+      version: -1
+      name: "Load the skill for this type"
+      description: >-
+        Loads the skill the taxonomy names for this type (Guardian.Triage.skill).
+      script: 'GuardianSkillRead'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "12"
+    scriptarguments:
+      name:
+        simple: "${Guardian.Triage.skill}"
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1645
+        }
+      }
+  "12":
+    id: "12"
+    taskid: 657e9750-497c-58fd-9df0-e4de32dfbbe2
+    type: regular
+    task:
+      id: 657e9750-497c-58fd-9df0-e4de32dfbbe2
+      version: -1
+      name: "Run the focused model session"
+      description: >-
+        One model session focused on this type: it reads the packet with its enrichment, makes the remaining
+        lookups, writes one case note and ends with the verdict block. It continues the incident's run totals,
+        so the incident shows the whole playbook run.
+      script: 'GuardianReasoningTick'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "13"
+    scriptarguments:
+      prompt:
+        simple: "${inputs.prompt}"
+      skill:
+        simple: "${Guardian.Triage.skill}"
+      use_prebuilt:
+        simple: "true"
+      scope_to_incident:
+        simple: "true"
+      assessment_mode:
+        simple: "${Guardian.Triage.assessment_mode}"
+      max_ticks:
+        simple: "${inputs.max_ticks}"
+      continue_run_totals:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1790
+        }
+      }
+  "13":
+    id: "13"
+    taskid: 4e401e2e-f115-506f-8368-5e9509171556
+    type: regular
+    task:
+      id: 4e401e2e-f115-506f-8368-5e9509171556
+      version: -1
+      name: "Remember the outcome"
+      description: >-
+        Stores one memory row for this run (GuardianRunCapture), so later incidents of the same alert or
+        entity open with it. Nothing is stored when the session ended without a verdict.
+      script: 'GuardianRunCapture'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "14"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1935
+        }
+      }
+  "14":
+    id: "14"
+    taskid: 37933800-4268-5a9d-abed-323897b630e9
+    type: title
+    task:
+      id: 37933800-4268-5a9d-abed-323897b630e9
+      version: -1
+      name: "Done"
+      description: ""
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 2080
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 2280,
+        "width": 850,
+        "x": 0,
+        "y": 50
+      }
+    }
+  }
+inputs:
+- key: prompt
+  value:
+    simple: |-
+      Triage already classified THIS incident (number ${incident.id}) as `${Guardian.Triage.investigation_type}` with severity `${Guardian.Triage.severity}` (it arrived as `${Guardian.Triage.original_severity}`), confidence ${Guardian.Triage.confidence}, likely benign: ${Guardian.Triage.likely_benign}. You are already assigned to this incident: do NOT search for or switch to another incident, never invent an id, and never ask anyone for it. Triage is a first look: confirm it or correct it from evidence. Make exactly ONE tool call per turn and read its result before choosing the next call.
+      1) READ THE EVIDENCE PACKET pinned above. Besides the incident's own sections it holds `enrichment:` sections: read-only lookups the playbook already ran for this type. They hold the user record (UserData), the endpoint record (Endpoint) and the destination domain and URL reputation (Domain, URL, DBotScore). Check who moved or exposed the data, whether the destination is personal, unknown or known-bad, and whether the activity is part of the user's normal work. A lookup that is not listed was skipped, had nothing to return, or failed; that is unknown, not clean. Do not repeat what is there.
+      The triage inputs this playbook used: identity=`${Guardian.Triage.inputs.identity}`, host=`${Guardian.Triage.inputs.host}`, domain=`${Guardian.Triage.inputs.domain}`, url=`${Guardian.Triage.inputs.url}`. A lookup whose input is empty was skipped, not failed. Do not run it yourself with a different kind of value: a host name is not an identity, and an internal address is not a remote one. If the missing input matters, say so in your report.
+      2) FOLLOW THE ACTIVE SKILL and gather only what your question still needs. Stop when another call would not change your answer.
+      3) DOCUMENT: call GuardianCaseNote once, in the report format the skill gives. Keep the case note under 2500 characters. Notes over 4000 are rejected and cost a retry. Cut repetition and raw lists before findings: name each item once, summarise counts, and keep the verdict, key evidence and next steps.
+      4) REMEMBER: if this run's evidence shows a durable pattern (a routine shown to be authorised, a false positive, a new threat), call GuardianMemory with op=store, a key that names the alert or the entity (for example alert:<alert name> or ip:<address>), a one-sentence value and tags. Store what you saw, not a guess: later runs on this alert read it.
+      5) Do NOT change anything: no setIncident, no closeInvestigation, no containment. Propose the next action in your report instead.
+      6) END with EXACTLY the verdict block and nothing after it, as the system prompt gives it: Malicious, Suspicious, Benign or Inconclusive, with confidence, techniques and summary.
+  required: false
+  description: >-
+    Prompt for the focused model session on this type. It says what triage concluded (from Guardian.Triage)
+    and where the enrichment is.
+  playbookInputQuery: null
+- key: max_ticks
+  value:
+    simple: ""
+  required: false
+  description: >-
+    Optional cap on the model turns of the focused session. Empty (the default) uses the same limit
+    GuardianAgentLoop gets: the model size's limit, or the guardian_settings and model profile override. A
+    number can only lower that limit. The parent playbook passes its investigate_max_ticks input.
+  playbookInputQuery: null
+outputs: []
+fromversion: 6.10.0
+marketplaces:
+- xsoar

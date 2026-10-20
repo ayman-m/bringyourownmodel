@@ -1,0 +1,20 @@
+{
+    "name": "Guardian",
+    "description": "The native XSOAR 6 AI incident-investigation agent.",
+    "support": "community",
+    "currentVersion": "1.0.3",
+    "author": "Bring Your Own Model community",
+    "url": "https://github.com/ayman-m/bringyourownmodel",
+    "email": "",
+    "created": "2026-07-04T00:00:00Z",
+    "categories": [
+        "Analytics & SIEM"
+    ],
+    "tags": [],
+    "useCases": [],
+    "keywords": [],
+    "marketplaces": [
+        "xsoar"
+    ],
+    "fromVersion": "6.10.0"
+}

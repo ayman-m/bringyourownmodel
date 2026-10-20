@@ -1,0 +1,30 @@
+args: []
+comment: >-
+  Read-only readiness check of the Guardian SOC Agent. It is used as the indicator layout's Agent Readiness
+  section and returns HTML: an overall status badge and one row per check (kill switch, runtime allowlist,
+  tool discovery, provider command) with its state and what to do next. Falls back to markdown if the HTML
+  cannot be built. The readiness check button re-runs it. It never refreshes discovery or changes anything.
+commonfields:
+  id: GuardianSocAgentReadiness
+  version: -1
+enabled: true
+name: GuardianSocAgentReadiness
+outputs:
+- contextPath: Guardian.SocAgent.Readiness.status
+  description: Ready, Paused, Needs review, or Degraded.
+  type: String
+- contextPath: Guardian.SocAgent.Readiness.findings
+  description: Individual read-only readiness checks.
+  type: Unknown
+script: '-'
+system: false
+tags:
+- dynamic-indicator-section
+- indicator-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

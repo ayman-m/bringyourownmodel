@@ -1,0 +1,33 @@
+{
+    "id": "GuardianEvalHarvest",
+    "version": -1,
+    "name": "GuardianEvalHarvest",
+    "details": "Every day, turns recently closed incidents that have a verdict (closed within the last 48 hours) into evaluation cases in guardian_eval_cases_runtime, skipping synthetic runs (eval, simulate and the intake sweep). Safe to repeat: each incident is harvested once. Runs a playbook that calls !GuardianEvalHarvest.",
+    "type": "##default##",
+    "playbookId": "GuardianEvalHarvest",
+    "labels": [
+        {
+            "type": "Instance",
+            "value": "GuardianEvalHarvest"
+        }
+    ],
+    "tags": [
+        "guardian",
+        "guardian-eval"
+    ],
+    "scheduled": true,
+    "recurrent": true,
+    "humanCron": {
+        "timePeriodType": "hours",
+        "timePeriod": 24
+    },
+    "cronView": false,
+    "timezone": "UTC",
+    "shouldTriggerNew": false,
+    "closePrevRun": true,
+    "notifyOwner": false,
+    "isFeed": false,
+    "selectedFeeds": [],
+    "isAllFeeds": false,
+    "fromVersion": "6.10.0"
+}

@@ -1,0 +1,54 @@
+args:
+- name: skill_override
+  description: >-
+    Optional. A skill name that replaces the routed skill (the playbook passes its `skill` input here). The
+    family, evidence plan and assessment mode are still taken from the routing table.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Decides what kind of Cortex platform issue the current one is (threat detection, cloud misconfiguration,
+  Kubernetes CIS, identity risk, vulnerable package, package operational risk, attack path, health) from the
+  issue's own domain, category, scanner and tags, and picks the skill, the evidence plan and the kind of
+  assessment for it from the `guardian_issue_routes` List. Read-only: it calls no model and changes nothing.
+commonfields:
+  id: GuardianIssueRoute
+  version: -1
+enabled: true
+name: GuardianIssueRoute
+outputs:
+- contextPath: Guardian.Route.family
+  description: "detection, misconfiguration, kubernetes_cis, identity, vulnerability, code_risk, attack_path, health or unknown."
+  type: String
+- contextPath: Guardian.Route.skill
+  description: The skill to load for this issue (the override when one was given).
+  type: String
+- contextPath: Guardian.Route.evidence_plan
+  description: Names of the evidence steps the pre-fetch should run for this family.
+  type: Unknown
+- contextPath: Guardian.Route.assessment_mode
+  description: "verdict (Malicious / Suspicious / Benign / Inconclusive), posture (Confirmed / Not reproducible / Accepted risk candidate) or none."
+  type: String
+- contextPath: Guardian.Route.run_model
+  description: '"true", or "false" when the family needs no model session (health).'
+  type: String
+- contextPath: Guardian.Route.route_id
+  description: The id of the table row that matched, or "default".
+  type: String
+- contextPath: Guardian.Route.reason
+  description: Why this route was chosen, including any skill fallback.
+  type: String
+- contextPath: Guardian.Route.signals
+  description: The facts the route was based on (domain, category, source, family tags, rule id, asset ids).
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

@@ -1,0 +1,20 @@
+{
+    "id": "SOC Agent",
+    "version": -1,
+    "details": "SOC Agent",
+    "regex": "^guardian:[a-z0-9][a-z0-9._-]*$",
+    "expiration": 0,
+    "layout": "GuardianSocAgentLayout",
+    "reputationScriptName": "",
+    "reputationCommand": "",
+    "enhancementScriptNames": [],
+    "disabled": false,
+    "file": false,
+    "mergeContext": false,
+    "system": false,
+    "locked": false,
+    "fromVersion": "6.10.0",
+    "marketplaces": [
+        "marketplacev2"
+    ]
+}

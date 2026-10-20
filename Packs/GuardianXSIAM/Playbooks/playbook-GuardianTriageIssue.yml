@@ -1,0 +1,1297 @@
+id: GuardianTriageIssue
+version: -1
+name: GuardianTriageIssue
+description: >-
+  Triages THIS Cortex platform issue with a short model session and then acts on its answer by fixed rules,
+  not by prose. The standard Guardian preparation (kill switch, job guard, issue routing, model profile,
+  evidence packet, system prompt, tool list) is followed by one short triage session that ends with a fixed
+  block (severity, type, confidence). A program validates the block, with one repair call and then a fallback,
+  and the playbook sets the issue's severity and phase (never its type or description), then branches by type
+  to a sub-playbook that collects read-only enrichment and runs one focused model session. Containment and
+  other state changes still wait for a human. The investigation playbook GuardianInvestigateIssue is
+  unchanged.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: d8f92028-8951-591b-a1ee-bc5d9480efbd
+    type: start
+    task:
+      id: d8f92028-8951-591b-a1ee-bc5d9480efbd
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: d7b681af-2c87-5689-9858-0eb879db35b2
+    type: regular
+    task:
+      id: d7b681af-2c87-5689-9858-0eb879db35b2
+      version: -1
+      name: "Check kill switch"
+      description: >-
+        Reads guardian_kill_switch. Read-only; a failed read lets the run continue (fail-open). The reasoning
+        loop re-checks the switch on every tick, so a switch thrown mid-run still halts it.
+      script: 'GuardianKillSwitchCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: f3730f4a-adc0-536e-9c0c-32897a3ac90a
+    type: condition
+    task:
+      id: f3730f4a-adc0-536e-9c0c-32897a3ac90a
+      version: -1
+      name: "Kill switch on?"
+      description: >-
+        Ends the playbook at the Halted task when the kill switch is on.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "3"
+      halted:
+      - "32"
+    separatecontext: false
+    conditions:
+    - label: halted
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Preflight.KillSwitch.proceed
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 340
+        }
+      }
+  "3":
+    id: "3"
+    taskid: 4713a2f3-64ee-5558-acd6-1e94e2f4e477
+    type: regular
+    task:
+      id: 4713a2f3-64ee-5558-acd6-1e94e2f4e477
+      version: -1
+      name: "Check job guard"
+      description: >-
+        For a run started by a scheduled Job, asks GuardianJobGuard whether that Job was auto-disabled after
+        repeated failures. A run with no Job (manual, eval) has nothing to check. Fail-open.
+      script: 'GuardianJobGuardCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 485
+        }
+      }
+  "4":
+    id: "4"
+    taskid: 9a22870a-df6b-5628-b054-37326ddc16bd
+    type: condition
+    task:
+      id: 9a22870a-df6b-5628-b054-37326ddc16bd
+      version: -1
+      name: "Job disabled?"
+      description: >-
+        Ends the playbook at the Halted task when the spawning Job is auto-disabled.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "5"
+      halted:
+      - "33"
+    separatecontext: false
+    conditions:
+    - label: halted
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Preflight.JobGuard.proceed
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 630
+        }
+      }
+  "5":
+    id: "5"
+    taskid: 5aba1e04-7f7c-57e3-931d-1c5e9180cd8e
+    type: regular
+    task:
+      id: 5aba1e04-7f7c-57e3-931d-1c5e9180cd8e
+      version: -1
+      name: "Route issue"
+      description: >-
+        Reads the issue's own domain, category, scanner and tags and decides what kind of issue it is (threat
+        detection, cloud misconfiguration, Kubernetes CIS, identity risk, vulnerable package, package
+        operational risk, attack path, health). Writes Guardian.Route: the skill, the evidence plan and the
+        kind of assessment (verdict or posture), which later tells triage whether the issue is a detection or
+        a scanner finding. The routing table is the guardian_issue_routes List. No model is involved and
+        nothing is changed.
+      script: 'GuardianIssueRoute'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "6"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 775
+        }
+      }
+  "6":
+    id: "6"
+    taskid: 8bbb2d9f-0605-575e-aab6-db6a882b443e
+    type: condition
+    task:
+      id: 8bbb2d9f-0605-575e-aab6-db6a882b443e
+      version: -1
+      name: "Needs a model session?"
+      description: >-
+        Health issues are platform telemetry, not security work: they get a short note and no model session.
+        Every other family continues. A failed route (no Guardian.Route) also continues.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "8"
+      nomodel:
+      - "7"
+    separatecontext: false
+    conditions:
+    - label: nomodel
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Route.run_model
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 920
+        }
+      }
+  "7":
+    id: "7"
+    taskid: 73ce50ad-7a03-54ab-849d-4e7795d2c139
+    type: regular
+    task:
+      id: 73ce50ad-7a03-54ab-849d-4e7795d2c139
+      version: -1
+      name: "Note - no model session needed"
+      description: >-
+        Writes one short note saying why Guardian did not run a model session on this issue, then the playbook
+        ends.
+      script: 'GuardianCaseNote'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      content:
+        simple: >-
+          Guardian did not run a model session: this is a platform ${Guardian.Route.family} issue, handled
+          without a model session. Platform health issues are telemetry, not security investigations.
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 1065
+        }
+      }
+  "8":
+    id: "8"
+    taskid: 879c8614-7be6-5e71-a4cb-660486250be6
+    type: regular
+    task:
+      id: 879c8614-7be6-5e71-a4cb-660486250be6
+      version: -1
+      name: "Resolve model profile"
+      description: >-
+        Works out the model numbers this run uses: the model size (from the model catalogue, looked up by the model name; only an explicit guardian_settings.model_tier or a profile override changes it), the input
+        budget and the tool-list budget, from an operator override, else the model profile
+        (guardian_model_profile), else guardian_settings. Prints each value with its source and leaves the
+        result in context at Guardian.ModelProfile so the evidence packet and the model sessions use the same
+        numbers. Warns when the size disagrees with the provider instance's "Model size" dropdown, or a probed
+        profile is old. Never blocks the run.
+      script: 'GuardianModelProfileCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "9"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1065
+        }
+      }
+  "9":
+    id: "9"
+    taskid: b72c5335-aee8-5953-ad58-4d97d2636a06
+    type: regular
+    task:
+      id: b72c5335-aee8-5953-ad58-4d97d2636a06
+      version: -1
+      name: "Gather evidence"
+      description: >-
+        Fetches what the platform already knows about this issue before the model starts: its status, the
+        platform's remediation text, the asset details, the parent case, how earlier issues of the same rule
+        were resolved, and Guardian's own memory for the rule and assets. Which steps run comes from the
+        route's evidence plan. Every command is read-only and costs no compute units, each call is audited,
+        and a command that is missing or fails is noted in the packet and never stops the run. The triage
+        session and the sub-playbook both pin this packet (Guardian.Evidence); nothing is fetched twice.
+      script: 'GuardianIssueEvidence'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "10"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1210
+        }
+      }
+  "10":
+    id: "10"
+    taskid: a34149c4-17a7-5889-8f4f-f6c8e5268ab5
+    type: regular
+    task:
+      id: a34149c4-17a7-5889-8f4f-f6c8e5268ab5
+      version: -1
+      name: "Build system prompt"
+      description: >-
+        Assembles the agent's system prompt (persona, action policy, approval mode, skills index) and leaves
+        it in context at Guardian.SystemPrompt. No model is involved.
+      script: 'GuardianPromptBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "11"
+    scriptarguments:
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1355
+        }
+      }
+  "11":
+    id: "11"
+    taskid: 83fa1b7b-f54e-5d91-b45b-0d02dd2cdcab
+    type: regular
+    task:
+      id: 83fa1b7b-f54e-5d91-b45b-0d02dd2cdcab
+      version: -1
+      name: "Build tool list"
+      description: >-
+        Builds the list of tools offered to the model: the allowlisted commands that exist on this server,
+        minus the denylist, trimmed to this run's tool-list budget (see "Resolve model profile"). Leaves it in
+        context at Guardian.ToolCatalog. No model is involved.
+      script: 'GuardianToolCatalogBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "12"
+    scriptarguments:
+      use_snapshot:
+        simple: "true"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1500
+        }
+      }
+  "12":
+    id: "12"
+    taskid: 2b0da4d8-05f8-5496-948d-9ea5c67dbb4c
+    type: regular
+    task:
+      id: 2b0da4d8-05f8-5496-948d-9ea5c67dbb4c
+      version: -1
+      name: "Load the triage skill"
+      description: >-
+        Loads the triage skill into context at Guardian.SkillBody. The model session adds it to the system
+        prompt when it fits the model's input budget, otherwise the model can load it itself. No model is
+        involved. A skill that cannot be loaded never stops the run.
+      script: 'GuardianSkillRead'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "13"
+    scriptarguments:
+      name:
+        simple: "cortex_triage"
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1645
+        }
+      }
+  "13":
+    id: "13"
+    taskid: 25530228-afcb-5639-b47a-e457ec4d5443
+    type: regular
+    task:
+      id: 25530228-afcb-5639-b47a-e457ec4d5443
+      version: -1
+      name: "Clear earlier session and triage state"
+      description: >-
+        Deletes Guardian.Loop so this session starts a new loop (a second model session on the same issue, a
+        re-run or the sub-playbook's, would otherwise stop at "loop already done"), and Guardian.Triage so a
+        result from an earlier run can never be read as this run's. Guardian.TriageApply is kept: it is what
+        makes a second apply a no-op.
+      script: 'DeleteContext'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "14"
+    scriptarguments:
+      key:
+        simple: "Guardian.Loop,Guardian.Triage"
+      subplaybook:
+        simple: "no"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1790
+        }
+      }
+  "14":
+    id: "14"
+    taskid: f2d23823-cda6-57d4-94e4-6076bb2df917
+    type: regular
+    task:
+      id: f2d23823-cda6-57d4-94e4-6076bb2df917
+      version: -1
+      name: "Run the triage session"
+      description: >-
+        A short model session in triage mode: the model reads the pinned packet, makes at most a few lookups
+        and ends with the triage block. Its turn limit is the triage_max_ticks input. It writes no case note,
+        no memory row and no verdict field. The conclusion is left at Guardian.Loop.conclusion for the next
+        task. If the session fails, the next task still runs and falls back to a generic path.
+      script: 'GuardianReasoningTick'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "15"
+    scriptarguments:
+      prompt:
+        simple: "${inputs.prompt}"
+      skill:
+        simple: "cortex_triage"
+      use_prebuilt:
+        simple: "true"
+      scope_to_incident:
+        simple: "true"
+      assessment_mode:
+        simple: "triage"
+      max_ticks:
+        simple: "${inputs.triage_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1935
+        }
+      }
+  "15":
+    id: "15"
+    taskid: fb83dd97-6f38-5d27-8ae6-c89a7ca328ce
+    type: regular
+    task:
+      id: fb83dd97-6f38-5d27-8ae6-c89a7ca328ce
+      version: -1
+      name: "Validate the triage answer"
+      description: >-
+        Parses the triage block, checks every value against the lists in guardian_triage_types, repairs a
+        missing or invalid block with one model call over the conclusion text, and otherwise falls back. Also
+        checks the type against the issue's domain (a type that does not fit goes to Other) and merges the
+        inputs the sub-playbooks use from the issue's own fields first. Writes Guardian.Triage (status,
+        branch, severity, inputs). No model is involved except the single repair call.
+      script: 'GuardianTriageResult'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "16"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 2080
+        }
+      }
+  "16":
+    id: "16"
+    taskid: 26cc00ac-5c62-5baa-9467-10395397b7dc
+    type: regular
+    task:
+      id: 26cc00ac-5c62-5baa-9467-10395397b7dc
+      version: -1
+      name: "Clear the kill switch result"
+      description: >-
+        Deletes the earlier kill switch result so the second check below writes a single value instead of
+        adding a second one beside it.
+      script: 'DeleteContext'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "17"
+    scriptarguments:
+      key:
+        simple: "Guardian.Preflight.KillSwitch"
+      subplaybook:
+        simple: "no"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 2225
+        }
+      }
+  "17":
+    id: "17"
+    taskid: 36b4229b-083f-5268-b4cb-e34b7013e2fc
+    type: regular
+    task:
+      id: 36b4229b-083f-5268-b4cb-e34b7013e2fc
+      version: -1
+      name: "Check kill switch before applying"
+      description: >-
+        Reads the kill switch again right before the only task that changes the issue, because the triage
+        session can run for minutes. Fail-open, like the first check.
+      script: 'GuardianKillSwitchCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "18"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 2370
+        }
+      }
+  "18":
+    id: "18"
+    taskid: 2236fb76-7dbe-5f3a-a3e4-052d3e06a528
+    type: condition
+    task:
+      id: 2236fb76-7dbe-5f3a-a3e4-052d3e06a528
+      version: -1
+      name: "Kill switch on now?"
+      description: >-
+        Ends the playbook at the Halted task, without changing the issue, when the kill switch was thrown
+        during the triage session.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "19"
+      halted:
+      - "34"
+    separatecontext: false
+    conditions:
+    - label: halted
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Preflight.KillSwitch.proceed
+            iscontext: true
+          right:
+            value:
+              simple: "false"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 2515
+        }
+      }
+  "19":
+    id: "19"
+    taskid: aa5e186c-5974-54ea-a919-e8599e652867
+    type: regular
+    task:
+      id: aa5e186c-5974-54ea-a919-e8599e652867
+      version: -1
+      name: "Apply the triage result"
+      description: >-
+        The only task that changes the issue, and an operator-owned one: the model can never call it. Writes
+        the severity and the phase ("Guardian triage: <type>") through one core-update-issue call, never the
+        type, the description or the status. Raises severity on a structured result; lowers it only for a
+        structured result of confidence 80 or more; a repaired or fallback result never changes severity.
+        Skips an issue that has an owner, is resolved or was already triaged. With apply_changes set to false
+        it writes only the case note. Every write and every skip leaves an audit row, and the note records the
+        severity before and after.
+      script: 'GuardianTriageApply'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "20"
+    scriptarguments:
+      apply_changes:
+        simple: "${inputs.apply_changes}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 2660
+        }
+      }
+  "20":
+    id: "20"
+    taskid: 5d3aa44c-d883-5cbc-b316-0cd14ee62f43
+    type: condition
+    task:
+      id: 5d3aa44c-d883-5cbc-b316-0cd14ee62f43
+      version: -1
+      name: "Which type?"
+      description: >-
+        Branches on Guardian.Triage.branch, which the validator sets from the model's answer and the issue's
+        domain: one path for each type in guardian_triage_types, and Other for an unusable answer or a type
+        that does not fit the domain. The model never picks the path directly.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      identity_threat:
+      - "21"
+      cloud_change:
+      - "22"
+      endpoint_threat:
+      - "23"
+      data_exposure:
+      - "24"
+      misconfiguration:
+      - "25"
+      vulnerability:
+      - "26"
+      code_risk:
+      - "27"
+      excessive_privilege:
+      - "28"
+      attack_path:
+      - "29"
+      other:
+      - "30"
+      '#default#':
+      - "30"
+    separatecontext: false
+    conditions:
+    - label: identity_threat
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "identity_threat"
+          ignorecase: true
+    - label: cloud_change
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "cloud_change"
+          ignorecase: true
+    - label: endpoint_threat
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "endpoint_threat"
+          ignorecase: true
+    - label: data_exposure
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "data_exposure"
+          ignorecase: true
+    - label: misconfiguration
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "misconfiguration"
+          ignorecase: true
+    - label: vulnerability
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "vulnerability"
+          ignorecase: true
+    - label: code_risk
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "code_risk"
+          ignorecase: true
+    - label: excessive_privilege
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "excessive_privilege"
+          ignorecase: true
+    - label: attack_path
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "attack_path"
+          ignorecase: true
+    - label: other
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Triage.branch
+            iscontext: true
+          right:
+            value:
+              simple: "other"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 2805
+        }
+      }
+  "21":
+    id: "21"
+    taskid: 5834c40e-987a-513d-9ea0-c1922048fdce
+    type: playbook
+    task:
+      id: 5834c40e-987a-513d-9ea0-c1922048fdce
+      version: -1
+      name: "GuardianTriageIdentityThreat"
+      description: >-
+        Runs the GuardianTriageIdentityThreat playbook (deterministic enrichment, then one focused model
+        session). Sign-in anomaly, credential use or session abuse by a person or service identity.
+      playbookName: GuardianTriageIdentityThreat
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 60,
+          "y": 2950
+        }
+      }
+  "22":
+    id: "22"
+    taskid: e7189e19-5df9-5c53-8749-d02627402c9c
+    type: playbook
+    task:
+      id: e7189e19-5df9-5c53-8749-d02627402c9c
+      version: -1
+      name: "GuardianTriageCloudChange"
+      description: >-
+        Runs the GuardianTriageCloudChange playbook (deterministic enrichment, then one focused model
+        session). A person or identity changed cloud network, IAM or storage configuration.
+      playbookName: GuardianTriageCloudChange
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 390,
+          "y": 2950
+        }
+      }
+  "23":
+    id: "23"
+    taskid: 3c502011-2ce8-572b-9ac4-377ab1b766d0
+    type: playbook
+    task:
+      id: 3c502011-2ce8-572b-9ac4-377ab1b766d0
+      version: -1
+      name: "GuardianTriageEndpointThreat"
+      description: >-
+        Runs the GuardianTriageEndpointThreat playbook (deterministic enrichment, then one focused model
+        session). Malware, suspicious execution or persistence on a host.
+      playbookName: GuardianTriageEndpointThreat
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 720,
+          "y": 2950
+        }
+      }
+  "24":
+    id: "24"
+    taskid: 466ca4d5-68ee-58dc-bb60-5788be496752
+    type: playbook
+    task:
+      id: 466ca4d5-68ee-58dc-bb60-5788be496752
+      version: -1
+      name: "GuardianTriageDataExposure"
+      description: >-
+        Runs the GuardianTriageDataExposure playbook (deterministic enrichment, then one focused model
+        session). Public or over-shared data, unusual data access or exfiltration.
+      playbookName: GuardianTriageDataExposure
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1050,
+          "y": 2950
+        }
+      }
+  "25":
+    id: "25"
+    taskid: 2d9482fb-855a-54da-b573-a75aab4df0bc
+    type: playbook
+    task:
+      id: 2d9482fb-855a-54da-b573-a75aab4df0bc
+      version: -1
+      name: "GuardianTriageMisconfiguration"
+      description: >-
+        Runs the GuardianTriageMisconfiguration playbook (deterministic enrichment, then one focused model
+        session). A cloud (CSPM) or Kubernetes policy finding: a setting that is wrong.
+      playbookName: GuardianTriageMisconfiguration
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1380,
+          "y": 2950
+        }
+      }
+  "26":
+    id: "26"
+    taskid: 64ec631f-dd43-5ee9-86eb-e7a89c14bf31
+    type: playbook
+    task:
+      id: 64ec631f-dd43-5ee9-86eb-e7a89c14bf31
+      version: -1
+      name: "GuardianTriageVulnerability"
+      description: >-
+        Runs the GuardianTriageVulnerability playbook (deterministic enrichment, then one focused model
+        session). A known CVE on a host, image or package.
+      playbookName: GuardianTriageVulnerability
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1710,
+          "y": 2950
+        }
+      }
+  "27":
+    id: "27"
+    taskid: 208917b6-85bd-5cbe-b870-8fb7fa1eb5aa
+    type: playbook
+    task:
+      id: 208917b6-85bd-5cbe-b870-8fb7fa1eb5aa
+      version: -1
+      name: "GuardianTriageCodeRisk"
+      description: >-
+        Runs the GuardianTriageCodeRisk playbook (deterministic enrichment, then one focused model session).
+        Infrastructure-as-code, secrets or package operational risk found in code.
+      playbookName: GuardianTriageCodeRisk
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 2040,
+          "y": 2950
+        }
+      }
+  "28":
+    id: "28"
+    taskid: fed0a695-1c54-5790-ae4b-b522a6e375cf
+    type: playbook
+    task:
+      id: fed0a695-1c54-5790-ae4b-b522a6e375cf
+      version: -1
+      name: "GuardianTriageExcessivePrivilege"
+      description: >-
+        Runs the GuardianTriageExcessivePrivilege playbook (deterministic enrichment, then one focused model
+        session). CIEM finding: admin or unused permissions on an identity or role.
+      playbookName: GuardianTriageExcessivePrivilege
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 2370,
+          "y": 2950
+        }
+      }
+  "29":
+    id: "29"
+    taskid: 16295548-b895-58a8-9543-42a1ca3bc839
+    type: playbook
+    task:
+      id: 16295548-b895-58a8-9543-42a1ca3bc839
+      version: -1
+      name: "GuardianTriageAttackPath"
+      description: >-
+        Runs the GuardianTriageAttackPath playbook (deterministic enrichment, then one focused model session).
+        A graph attack path from an entry point to a sensitive asset.
+      playbookName: GuardianTriageAttackPath
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 2700,
+          "y": 2950
+        }
+      }
+  "30":
+    id: "30"
+    taskid: d8fc3208-3ad3-5042-97fe-196358355f7b
+    type: playbook
+    task:
+      id: d8fc3208-3ad3-5042-97fe-196358355f7b
+      version: -1
+      name: "GuardianTriageOther"
+      description: >-
+        Runs the GuardianTriageOther playbook (no model session, one case note). None of the above fits; an
+        analyst decides.
+      playbookName: GuardianTriageOther
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 3030,
+          "y": 2950
+        }
+      }
+  "31":
+    id: "31"
+    taskid: e4b7dd89-8611-5e4a-afb4-94d49f3a1887
+    type: title
+    task:
+      id: e4b7dd89-8611-5e4a-afb4-94d49f3a1887
+      version: -1
+      name: "Done"
+      description: >-
+        The playbook ends here.
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 3095
+        }
+      }
+  "32":
+    id: "32"
+    taskid: e9c48dcd-6c53-5b83-aa16-37f0c3e42837
+    type: title
+    task:
+      id: e9c48dcd-6c53-5b83-aa16-37f0c3e42837
+      version: -1
+      name: "Halted - kill switch is on"
+      description: >-
+        The Guardian kill switch is on, so no model session was started. Turn it off with !guardian-killswitch
+        state=off (or Resume Agent) and start a new run.
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 340
+        }
+      }
+  "33":
+    id: "33"
+    taskid: 07f13397-e712-58cf-bc90-ade64aaada54
+    type: title
+    task:
+      id: 07f13397-e712-58cf-bc90-ade64aaada54
+      version: -1
+      name: "Halted - Job is auto-disabled"
+      description: >-
+        GuardianJobGuard auto-disabled the Job that started this run after repeated failures, so no model
+        session was started. Fix the cause and re-enable the Job.
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 630
+        }
+      }
+  "34":
+    id: "34"
+    taskid: 2572b8fa-ff35-5167-a554-5b71e3f7df4f
+    type: title
+    task:
+      id: 2572b8fa-ff35-5167-a554-5b71e3f7df4f
+      version: -1
+      name: "Halted - kill switch was thrown during triage"
+      description: >-
+        The kill switch was thrown while the triage session ran. The triage answer was validated but not
+        applied to the issue and no sub-playbook ran.
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 2515
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 3210,
+        "width": 3380,
+        "x": 0,
+        "y": 50
+      }
+    }
+  }
+inputs:
+- key: prompt
+  value:
+    simple: >-
+      You are triaging THIS Cortex platform issue, number ${incident.id} (you are already assigned to it: do
+      NOT search for or switch to another issue, never invent an id, and never ask anyone for it). This is a
+      TRIAGE run: you rate the issue and name its type, you do not investigate it end to end.
+
+      1) READ THE EVIDENCE PACKET pinned above first. It holds what the platform already knows: the issue's
+      fields, the platform's remediation text, the asset details, the parent case, how earlier issues of the
+      same rule were resolved, and what Guardian remembers about the rule and assets. Do not fetch again what
+      is there. A section listed as not available is unknown, not empty.
+
+      2) FOLLOW THE ACTIVE SKILL (cortex_triage). Make at most a few lookups, ONE tool call per turn, and only
+      when the result could change the severity or the type: how common an address or file is, one ready-made
+      GuardianXQL template, or the asset as the platform sees it now. A failed or empty lookup is not evidence
+      either way: say so and carry on.
+
+      3) Do NOT write a case note, do NOT store a memory row and do NOT change anything: no core-update-issue,
+      no core-update-case, no containment. The playbook records the outcome.
+
+      4) END with EXACTLY the triage block from the skill and nothing after it: severity, investigation_type,
+      confidence, likely_benign, escalate, summary, key_entities and next_step. Every value comes from the
+      allowed lists in the skill; use `other` for the type when nothing fits.
+  required: false
+  description: >-
+    Triage prompt: triage THIS issue by reading the pinned packet and the triage skill, with at most a few
+    lookups, and end with exactly the triage block. No case note, no memory row, no changes.
+  playbookInputQuery: null
+- key: apply_changes
+  value:
+    simple: "true"
+  required: false
+  description: >-
+    When "true" (the default), the triage result sets the issue's severity and phase through the guarded apply
+    task. Set to "false" for a dry run that writes only the case note.
+  playbookInputQuery: null
+- key: triage_max_ticks
+  value:
+    simple: "6"
+  required: false
+  description: >-
+    The most model turns the triage session may take. It can only lower the tick limit set in
+    guardian_settings.
+  playbookInputQuery: null
+- key: investigate_max_ticks
+  value:
+    simple: ""
+  required: false
+  description: >-
+    Optional cap on the model turns of the focused session of the chosen sub-playbook (passed to its max_ticks
+    input). Empty (the default) gives that session the same limit GuardianInvestigateIssue gets: the model
+    size's limit (25, 40 or 60), or the guardian_settings and model profile override. A number can only lower
+    that limit.
+  playbookInputQuery: null
+outputs: []
+adopted: true
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

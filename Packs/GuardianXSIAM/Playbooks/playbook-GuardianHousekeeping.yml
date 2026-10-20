@@ -1,0 +1,131 @@
+id: GuardianHousekeeping
+version: -1
+name: GuardianHousekeeping
+description: >-
+  Runs !GuardianHousekeeping, the hourly maintenance sweep: consolidates per-incident audit ledgers, rotates
+  guardian_audit, reaps stale pending approvals and expired memory, and runs the stalled-run watchdog. It exists to
+  give the scheduled Job a playbook to run; the automation is self-contained and can also be run by hand.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 45fb74ba-4859-4ef4-b4e0-1d815d8a6231
+    type: start
+    task:
+      id: 45fb74ba-4859-4ef4-b4e0-1d815d8a6231
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: b66e8e7a-8e79-4004-b19b-5c9e4566eaa1
+    type: regular
+    task:
+      id: b66e8e7a-8e79-4004-b19b-5c9e4566eaa1
+      version: -1
+      name: Run the Guardian housekeeping sweep
+      description: >-
+        Runs the full hourly sweep: consolidate per-incident audit ledgers,
+        rotate/shard guardian_audit, reap stale pending approvals + expired
+        memory, and the stalled-run watchdog (re-arm or reap stuck
+        Guardian Agent Run incidents). Best-effort per operation -- see
+        GuardianHousekeeping.py's module docstring for the full design.
+      script: 'GuardianHousekeeping'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "3"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "3":
+    id: "3"
+    taskid: c1a2b3d4-0001-4a5b-9c8d-0000cafe0001
+    type: regular
+    task:
+      id: c1a2b3d4-0001-4a5b-9c8d-0000cafe0001
+      version: -1
+      name: Close this job run
+      description: >-
+        Fire-and-forget maintenance run: close this recurring job's own investigation so each
+        scheduled run finishes clean instead of accumulating open forever. (closePrevRun on the
+        Job only closes the PREVIOUS run when the NEXT fires; this closes THIS run as soon as its
+        work is done.) Nothing here needs analyst review. Deliberately NOT added to
+        GuardianAgentLoop, which is also used for on-demand investigations an analyst reviews.
+      script: closeInvestigation
+      type: regular
+      iscommand: true
+      brand: ""
+    scriptarguments:
+      closeReason:
+        simple: Resolved
+      closeNotes:
+        simple: Guardian recurring maintenance run completed.
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 285
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 1c593c04-fc88-4607-8a18-a127e2029d9f
+    type: title
+    task:
+      id: 1c593c04-fc88-4607-8a18-a127e2029d9f
+      version: -1
+      name: Done
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 370
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 385,
+        "width": 380,
+        "x": 450,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []
+adopted: true
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

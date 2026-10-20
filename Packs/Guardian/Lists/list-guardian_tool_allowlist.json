@@ -1,0 +1,9 @@
+{
+    "id": "guardian_tool_allowlist",
+    "version": -1,
+    "name": "guardian_tool_allowlist",
+    "description": "The read-oriented tools the agent may use and is offered. A command that is neither on this list nor in guardian_policy is denied.",
+    "data": "{\"_comment\": \"The read-oriented tools the agent may use. This list decides which tools are offered to the model, which also keeps the tool definitions within the token budget. Commands that are not installed on your tenant are dropped automatically.\", \"commands\": [\"GuardianSkillRead\", \"getIncidents\", \"getEntries\", \"SearchIncidentsV2\", \"findIndicators\", \"ip\", \"domain\", \"url\", \"file\", \"splunk-search\", \"GuardianMemory\", \"GuardianAskAnalyst\", \"GuardianCaseNote\", \"GuardianKBSearch\", \"getList\", \"GuardianPlanApprove\", \"splunk-results\", \"endpoint\", \"whois\", \"attack-pattern\", \"mitre-get-indicators\", \"unit42-get-indicators\", \"unit42-get-threat-objects\", \"internal-wildfire-get-report\", \"xdr-get-endpoints\", \"xdr-get-incidents\", \"xdr-get-alerts\", \"rasterize\", \"ews-search-mailbox\", \"ews-get-items\", \"ews-get-items-as-eml\", \"GuardianPlaybookMonitor\", \"GuardianDiagnostics\", \"GuardianSubagentDispatch\"]}",
+    "type": "json",
+    "fromVersion": "6.10.0"
+}

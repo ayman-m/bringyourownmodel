@@ -1,0 +1,21 @@
+args: []
+comment: >-
+  Shared helper library for the Guardian automations. Other scripts do not call it; the build step copies its
+  helper block into each Guardian script. You can also run it directly: it exercises every helper and returns
+  "ok", which confirms that the library is valid on this server.
+commonfields:
+  id: GuardianCommon
+  version: -1
+enabled: true
+name: GuardianCommon
+outputs: []
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

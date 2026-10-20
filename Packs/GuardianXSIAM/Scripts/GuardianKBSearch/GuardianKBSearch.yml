@@ -1,0 +1,76 @@
+args:
+- name: query
+  description: >-
+    Required. Keywords for the guidance you need, for example "lateral movement rdp". An entry is returned
+    only if it contains every word (case-insensitive) in its title, tags or body. Results are ranked by match
+    strength, with title and tag matches counting more. For a technique's name and tactics use the ATT&CK feed
+    (`attack-pattern`) instead.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: tags
+  description: >-
+    Optional. Comma-separated list (for example "lateral-movement,rdp") or JSON array of tags. An entry must
+    have at least one of them. Combined with `query` as an AND.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: technique
+  description: >-
+    Optional. An ATT&CK technique id, for example "T1003.001". Returns entries for that technique, including
+    related response playbooks. Combined with `query` and `tags` as an AND.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: limit
+  description: "Optional. Maximum number of results, most relevant first. Defaults to 5, maximum 15."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Searches the SOC investigation knowledge base (20 MITRE ATT&CK technique guides, 10 incident response
+  playbooks and 13 cloud and posture topics) for guidance: how a technique shows up in telemetry, the steps to confirm or rule it out, the
+  data sources to check, and for playbooks the triage, scope, containment and verdict criteria. Every query
+  word must match an entry, optionally narrowed by tag or technique, and results are ranked by match strength.
+  Each result is a title, technique and short snippet, not the whole entry. A query with no match returns an
+  empty result, not an error. It is read-only.
+commonfields:
+  id: GuardianKBSearch
+  version: -1
+enabled: true
+name: GuardianKBSearch
+outputs:
+- contextPath: Guardian.KB.query
+  description: The query that ran.
+  type: String
+- contextPath: Guardian.KB.tags
+  description: The parsed tag filter that was applied (empty list if none given).
+  type: Unknown
+- contextPath: Guardian.KB.technique
+  description: The normalized technique filter that was applied (null if none given).
+  type: String
+- contextPath: Guardian.KB.results
+  description: >-
+    Matching entries, most relevant first. Each has id, technique, category, title, tags, a short snippet and
+    a score.
+  type: Unknown
+- contextPath: Guardian.KB.count
+  description: Number of results returned.
+  type: Number
+- contextPath: Guardian.KB.total_kb_entries
+  description: Total number of entries in the KB List this call searched against.
+  type: Number
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

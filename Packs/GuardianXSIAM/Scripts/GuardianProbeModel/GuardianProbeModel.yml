@@ -1,0 +1,173 @@
+args:
+- name: max_probe_tokens
+  required: false
+  description: >-
+    Upper bound, in tokens, of the context-window search. Not set by default: a model in the model catalogue
+    is searched up to its documented usable input limit, and any other model up to 131072 (about 128K). Raise
+    it for a model with a very large window if the probe reports "at ceiling".
+- name: force
+  required: false
+  description: >-
+    Search the context window even for a documented frontier model (one that the model catalogue marks as not
+    needing a probe). Default false: such a model is not searched, because its documented limits are used.
+  defaultValue: 'false'
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+- name: output_reserve
+  required: false
+  description: >-
+    Tokens reserved for the model's output, subtracted from the window when the recommended `max_input_tokens`
+    is computed. Defaults to the live value of `guardian_settings.output_reserve_tokens`, or 4096 if that List
+    cannot be read.
+- name: safety_margin
+  required: false
+  description: >-
+    Headroom factor between 0 and 1 for the recommendation: floor((window - output_reserve) x safety_margin x
+    measured_chars_per_token / 4). Default 0.85.
+  defaultValue: '0.85'
+- name: max_response_seconds
+  required: false
+  description: >-
+    A first response counts as fast only if it arrives within this many seconds. A prompt size can fit the
+    model's context window and still be unusable if the model answers too slowly. Defaults to 0.75 times the
+    provider instance's "Request timeout (seconds)" (limited to 15-100), or 90 if that cannot be read.
+- name: warm_up
+  required: false
+  description: >-
+    Make one throwaway call before measuring, so a model that was unloaded while idle is loaded first and its
+    load time is not counted as slowness. Default true; pass false to skip it.
+  defaultValue: 'true'
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+comment: >-
+  `!guardian-probe-model` measures the enabled model through `guardian-llm-chat`. It first looks the model up
+  in the model catalogue (`guardian_model_catalog`): a documented frontier model is not searched (only its
+  characters-per-token ratio and capabilities are measured), and any other known model is searched up to its
+  documented input limit and compared with it (within 20% confirms the documented figure; further below, the
+  measured figure is used, with the evidence). It reports the model's real characters-per-token ratio, its effective context window (the largest prompt it recalls correctly and
+  answers within the time budget, so a model that is too slow is reported as speed-limited), a separate
+  estimate of how much it can recall regardless of speed, whether it honors tools and structured output, and a
+  recommended `guardian_settings.max_input_tokens`. It makes real, billable model calls and is an
+  operator-only command. It does not change `guardian_settings`; it only adds a history record to
+  `guardian_model_calibration` for each run. A time budget keeps one run within the platform's script limit,
+  and a run that runs out of time returns a truncated result. Run it again after you change the model,
+  provider or hardware.
+commonfields:
+  id: guardian-probe-model
+  version: -1
+enabled: true
+name: guardian-probe-model
+outputs:
+- contextPath: Guardian.ModelProbe.ratio.chars_per_token
+  description: Measured (or assumed) characters per token for the enabled model.
+  type: Number
+- contextPath: Guardian.ModelProbe.ratio.measured
+  description: True if chars_per_token was measured from the provider's reported prompt_tokens; False if it fell back to the chars/4 assumption.
+  type: Boolean
+- contextPath: Guardian.ModelProbe.window.window
+  description: >-
+    Effective context window in tokens: the largest prompt the model recalled correctly and answered within
+    the time budget. Base `max_input_tokens` on this value.
+  type: Number
+- contextPath: Guardian.ModelProbe.window.at_ceiling
+  description: "True if the window reached the probe ceiling. Raise `max_probe_tokens` to probe higher."
+  type: Boolean
+- contextPath: Guardian.ModelProbe.window.truncated
+  description: "True if the time budget ran out before the search finished. The window is then a lower bound."
+  type: Boolean
+- contextPath: Guardian.ModelProbe.window.speed_limited_at_floor
+  description: >-
+    True if the model recalled correctly even at the smallest size but was too slow at every size. A smaller
+    `max_input_tokens` will not help.
+  type: Boolean
+- contextPath: Guardian.ModelProbe.correctness_window
+  description: >-
+    Sampled lower bound of how much context the model recalls correctly, regardless of speed. If it is much
+    larger than the effective window, the deployment is limited by speed, not by context.
+  type: Number
+- contextPath: Guardian.ModelProbe.latency_budget.max_response_seconds
+  description: "Number of seconds a first response had to beat to count as fast in this run."
+  type: Number
+- contextPath: Guardian.ModelProbe.latency_budget.source
+  description: >-
+    Where `max_response_seconds` came from: "arg" (you set it), "live" (the instance's request timeout) or
+    "fallback" (the live value could not be read).
+  type: String
+- contextPath: Guardian.ModelProbe.window.quota_limited
+  description: >-
+    True if the search stopped on a rate or quota error (tokens per minute). The window was then not reached;
+    this is not a context limit.
+  type: Boolean
+- contextPath: Guardian.ModelProbe.window.skipped
+  description: True if no window search was run because the model is documented in the model catalogue.
+  type: Boolean
+- contextPath: Guardian.ModelProbe.latency_budget.baseline_seconds
+  description: The model's own small-prompt time, added to the latency budget for the "too slow" test.
+  type: Number
+- contextPath: Guardian.ModelProbe.latency_budget.allowed_seconds
+  description: The first-response time allowed per size (the latency budget plus the baseline).
+  type: Number
+- contextPath: Guardian.ModelProbe.catalog.id
+  description: The model catalogue entry that matched the enabled model (empty when the model is not listed).
+  type: String
+- contextPath: Guardian.ModelProbe.catalog.usable_input_tokens
+  description: The documented usable input limit in real tokens (after the output reserve).
+  type: Number
+- contextPath: Guardian.ModelProbe.catalog.documented_budget
+  description: The input budget derived from the documented limit, in the loop's chars/4 units.
+  type: Number
+- contextPath: Guardian.ModelProbe.comparison.verdict
+  description: "The 20% rule: confirmed (within 20% of the documented limit), measured (more than 20% below it) or quota."
+  type: String
+- contextPath: Guardian.ModelProbe.comparison.evidence
+  description: The evidence behind the verdict, for example the first response time past the window.
+  type: String
+- contextPath: Guardian.ModelProbe.calibration_write.ok
+  description: True if this run's diagnostic record was successfully appended to guardian_model_calibration.
+  type: Boolean
+- contextPath: Guardian.ModelProbe.calibration_write.key
+  description: "The provider:instance:model key the calibration record is filed under."
+  type: String
+- contextPath: Guardian.ModelProbe.capabilities.tools
+  description: Whether the model emitted a tool call when offered a tool.
+  type: Boolean
+- contextPath: Guardian.ModelProbe.capabilities.structured_output
+  description: Whether the model returned valid JSON when asked with response_format.
+  type: Boolean
+- contextPath: Guardian.ModelProbe.recommendation.max_input_tokens
+  description: Recommended guardian_settings.max_input_tokens = floor((window - output_reserve) x safety_margin).
+  type: Number
+- contextPath: Guardian.ModelProbe.recommendation.output_reserve
+  description: The output-token reserve actually used in the recommendation above.
+  type: Number
+- contextPath: Guardian.ModelProbe.recommendation.output_reserve_source
+  description: >-
+    Where the output reserve came from: "arg" (you set it), "live" (`guardian_settings.output_reserve_tokens`)
+    or "fallback" (the live value could not be read).
+  type: String
+- contextPath: Guardian.ModelProbe.warm_up.ok
+  description: Whether the throwaway warm-up call succeeded (null when skipped).
+  type: Boolean
+- contextPath: Guardian.ModelProbe.warm_up.seconds
+  description: How long the warm-up call took.
+  type: Number
+- contextPath: Guardian.ModelProbe.calibration_record
+  description: >-
+    The history record saved to `guardian_model_calibration` (provider, instance_name, model, window,
+    recommended_max_input_tokens, chars_per_token, capabilities and more). GuardianModelProfileUpdate reads
+    it.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

@@ -1,0 +1,103 @@
+id: GuardianTriageOther
+version: -1
+name: GuardianTriageOther
+description: >-
+  Triage branch for an incident that fits no type, or whose triage answer could not be used or did not fit the
+  incident's domain. No model session runs: it writes one case note saying an analyst has to decide and why
+  triage stopped (the triage apply step has already noted the summary and next step), and stops. The
+  incident's phase was already set to "Guardian triage: needs analyst" by the triage apply step.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 16702aae-1633-5e06-aa86-8a3d0534ccfa
+    type: start
+    task:
+      id: 16702aae-1633-5e06-aa86-8a3d0534ccfa
+      version: -1
+      name: ""
+      description: ""
+      type: start
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 6a8f4e72-db22-5fbe-b71e-e6a02ee895df
+    type: regular
+    task:
+      id: 6a8f4e72-db22-5fbe-b71e-e6a02ee895df
+      version: -1
+      name: "Note - needs an analyst"
+      description: >-
+        Writes one case note with the reason triage stopped here.
+      script: 'GuardianCaseNote'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    scriptarguments:
+      content:
+        simple: |-
+          Guardian triage could not place this incident in a type, so it needs an analyst.
+          Why triage stopped here: ${Guardian.Triage.reason}
+          Triage status: ${Guardian.Triage.status}. Apply outcome: ${Guardian.TriageApply.status}.
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: ff9dc5a1-f4b2-5a07-9b6e-05992828bc8c
+    type: title
+    task:
+      id: ff9dc5a1-f4b2-5a07-9b6e-05992828bc8c
+      version: -1
+      name: "Done"
+      description: ""
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 340
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 540,
+        "width": 850,
+        "x": 0,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []
+fromversion: 6.10.0
+marketplaces:
+- xsoar

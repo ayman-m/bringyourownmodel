@@ -1,0 +1,246 @@
+args:
+- name: action
+  description: >-
+    `run` launches the canned cases as real "Guardian Agent Run" incidents. `score` scores concluded eval
+    incidents that are not scored yet and adds a row per case to `guardian_eval_results`. `report` renders the
+    accuracy, cost and latency scorecard from the scored rows. `compare` shows which report metrics moved
+    between two run labels, without giving a verdict.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - run
+  - score
+  - report
+  - compare
+  defaultValue: run
+- name: case_ids
+  description: >-
+    Comma-separated case ids. For `run`, only these cases are launched (default: all). For `report` and
+    `compare`, only these cases are included (default: every scored case).
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: incident_ids
+  description: >-
+    For `score` only: comma-separated incident ids to score directly, instead of scanning for eval incidents.
+    Default: scan all.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: run_label
+  description: >-
+    A label for grouping runs. With `run`, it is set on every incident created (default: no label). Use the
+    same label across repeat launches of the same cases, and different labels to compare, for example, before
+    and after a model change. With `report`, only rows with this label are included.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: baseline_label
+  description: "For `compare` only (required): the run label of the baseline side."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: candidate_label
+  description: "For `compare` only (required): the run label of the candidate side."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: min_delta
+  description: "For `compare` only: how far a metric must change to be flagged as moved. Default 0.20."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  A light evaluation harness. It runs a set of canned test cases through the real GuardianAgentLoop and
+  records basic outcome metrics (concluded, ticks, cost, verdict reached, tools used) in
+  `guardian_eval_results` for the observability dashboard. `action=run` launches one "Guardian Agent Run"
+  incident per case. `action=score` scores the cases that have concluded; it skips incidents already scored,
+  so it is safe to run on a schedule (GuardianEvalScore job). `action=report` is read-only and can be run at
+  any time. `action=compare` compares two labelled groups and reports what moved. It is an operator and test
+  command and is not on the agent's tool allowlist.
+commonfields:
+  id: GuardianEval
+  version: -1
+enabled: true
+name: GuardianEval
+outputs:
+- contextPath: Guardian.Eval.Run.launched
+  description: >-
+    `{case_id, incident_id, name, seed_warning, run_label}` for each case launched (`run`). `run_label` is
+    null when no label was given.
+  type: Unknown
+- contextPath: Guardian.Eval.Run.errors
+  description: '{case_id, error} for each case that failed to launch
+    (action=run).'
+  type: Unknown
+- contextPath: Guardian.Eval.Score.scored
+  description: The newly-appended guardian_eval_results row for each
+    incident scored this run (action=score).
+  type: Unknown
+- contextPath: Guardian.Eval.Score.still_running
+  description: '{incident_id, run_status} for each tagged incident found but
+    not yet concluded (action=score).'
+  type: Unknown
+- contextPath: Guardian.Eval.Score.already_scored
+  description: Incident ids already present in guardian_eval_results, skipped
+    (action=score).
+  type: Unknown
+- contextPath: Guardian.Eval.Score.errors
+  description: '{incident_id, error} for each incident that failed to score
+    (action=score).'
+  type: Unknown
+- contextPath: Guardian.Eval.Report.rows_count
+  description: Number of scored rows the report was computed over, after
+    the case_ids filter and dropping rows for a case no longer in the case
+    library (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.count_launched
+  description: Live count of every guardiantriggersource=eval incident ever
+    launched (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.concluded_count
+  description: Count of working-set rows whose run concluded (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.concluded_rate
+  description: concluded_count / count_launched (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.n_v
+  description: Count of concluded rows that also produced a verdict (N_v) --
+    the denominator for binary/exact-4-class accuracy and the confusion
+    matrix (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.verdict_production_rate
+  description: n_v / concluded_count (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.binary_correct
+  description: Count of N_v rows whose binary malicious-vs-not-malicious bucket
+    matched expected -- the binary_accuracy numerator (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.binary_accuracy
+  description: Binary malicious-vs-not-malicious accuracy over the N_v rows
+    (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.wilson_lo
+  description: Lower bound of the binary accuracy's Wilson 95% confidence
+    interval (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.wilson_hi
+  description: Upper bound of the binary accuracy's Wilson 95% confidence
+    interval (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.majority_baseline
+  description: Accuracy of always predicting the majority binary class over
+    the N_v rows -- the naive baseline binary_accuracy is compared against
+    (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.confusion_matrix
+  description: >-
+    Confusion matrix `{expected_verdict: {actual_bucket: count}}` over the cases with a verdict (`report`).
+    The actual bucket is Malicious, Suspicious, Benign, Inconclusive, Other or None.
+  type: Unknown
+- contextPath: Guardian.Eval.Report.exact_correct
+  description: Count of N_v rows whose actual verdict bucket exactly matched
+    expected_verdict -- the exact_accuracy numerator (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.exact_accuracy
+  description: Secondary exact-4-class accuracy (actual verdict bucket ==
+    expected_verdict exactly) over the N_v rows (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.technique_case_count
+  description: Count of concluded-with-verdict cases whose expected_techniques
+    is non-empty -- the denominator underlying technique_f1_mean (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.technique_f1_mean
+  description: Headline technique-detection score -- unrounded mean per-case
+    F1 over concluded-with-verdict cases whose expected_techniques is
+    non-empty (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.restraint_total
+  description: Count of concluded-with-verdict cases whose expected_techniques
+    is empty -- the denominator for benign_restraint (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.restraint_correct
+  description: Count of restraint_total cases whose actual_techniques was also
+    empty -- the benign_restraint numerator (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.benign_restraint
+  description: Fraction of concluded-with-verdict cases with empty
+    expected_techniques whose actual_techniques was also empty (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.regression_no_conclusion_total
+  description: Count of scored rows whose case declares
+    expected_outcome=no_conclusion -- these never enter the verdict-accuracy
+    pipeline above; this is the denominator for regression_no_conclusion_rate
+    (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.regression_no_conclusion_correct
+  description: Count of regression_no_conclusion_total rows whose run
+    correctly did NOT reach a verdict -- the regression_no_conclusion_rate
+    numerator (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.regression_no_conclusion_rate
+  description: Fraction of expected_outcome=no_conclusion cases that
+    correctly held back from reaching a verdict; null when
+    regression_no_conclusion_total is 0 (action=report).
+  type: Number
+- contextPath: Guardian.Eval.Report.cost_usd
+  description: '{available, mean, median, max, p90} for cost_usd across the
+    working row set -- p90 only computed at n>=10 (action=report).'
+  type: Unknown
+- contextPath: Guardian.Eval.Report.latency_seconds
+  description: '{available, mean, median, max, p90} for latency_seconds
+    across the working row set -- p90 only computed at n>=10 (action=report).'
+  type: Unknown
+- contextPath: Guardian.Eval.Report.tick_count
+  description: '{available, mean, median, max, p90} for tick_count across
+    the working row set -- p90 only computed at n>=10 (action=report).'
+  type: Unknown
+- contextPath: Guardian.Eval.Compare.baseline_label
+  description: The run_label treated as the baseline (left) side of the diff
+    (action=compare).
+  type: String
+- contextPath: Guardian.Eval.Compare.candidate_label
+  description: The run_label treated as the candidate (right) side of the diff
+    (action=compare).
+  type: String
+- contextPath: Guardian.Eval.Compare.min_delta
+  description: The noise floor actually applied -- the min_delta arg if
+    given, else the default 0.20 (action=compare).
+  type: Number
+- contextPath: Guardian.Eval.Compare.baseline
+  description: The full Guardian.Eval.Report-shaped metrics dict (minus
+    rows) for the baseline_label side (action=compare).
+  type: Unknown
+- contextPath: Guardian.Eval.Compare.candidate
+  description: The full Guardian.Eval.Report-shaped metrics dict (minus
+    rows) for the candidate_label side (action=compare).
+  type: Unknown
+- contextPath: Guardian.Eval.Compare.either_side_is_anecdotal
+  description: >-
+    True when either side has one verdict or fewer, so the comparison has not been repeated and should be
+    treated as an anecdote (`compare`).
+  type: Boolean
+- contextPath: Guardian.Eval.Compare.metrics
+  description: >-
+    `{key, label, baseline_value, candidate_value, delta, moved}` for each compared metric (`compare`).
+    `delta` is null and `moved` is false when either value is missing. It shows what moved, not a verdict.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

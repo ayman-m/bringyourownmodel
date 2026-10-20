@@ -1,0 +1,9 @@
+{
+    "id": "guardian_preapproved",
+    "version": -1,
+    "name": "guardian_preapproved",
+    "description": "The narrow set of actions that may run without a person when an incident is in bypass mode. Everything else waits for approval.",
+    "data": "{\"_comment\": \"A class may run without a person only when all of these hold: the incident is in bypass mode; the command is require_approval in guardian_policy; it is not a destructive or credential-class action; its arguments satisfy the class constraints; and the command is also in the code-side auto-approve set of GuardianToolBridge. Editing this list alone cannot widen autonomy: that set must change too. Today there are two classes: xdr-endpoint-tag-add (tag values limited to a small set, reversible with xdr-endpoint-tag-remove) and GuardianContainmentSimulate (an inert test action that only writes a note).\", \"classes\": [{\"command\": \"xdr-endpoint-tag-add\", \"description\": \"Tag one or more Cortex XDR endpoints with a Guardian-controlled investigative label. Genuinely low-risk and fully reversible (xdr-endpoint-tag-remove); adds a label only, no containment/quarantine/execution effect.\", \"arg_constraints\": {\"endpoint_ids\": {\"required\": true}, \"tag\": {\"required\": true, \"allowed_values\": [\"guardian-auto-flagged\", \"guardian-suspicious-endpoint\", \"guardian-under-investigation\"]}}}, {\"command\": \"GuardianContainmentSimulate\", \"description\": \"DUMMY simulated endpoint isolation -- inert; records a sanitized note only, no real containment.\", \"arg_constraints\": {\"endpoint_id\": {\"required\": true}, \"reason\": {\"required\": false}}}]}",
+    "type": "json",
+    "fromVersion": "6.10.0"
+}

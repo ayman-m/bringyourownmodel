@@ -1,0 +1,29 @@
+args:
+- name: reason
+  description: >-
+    Why all Guardian runs are being paused. It is recorded in the kill-switch audit event.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Guardian Agent Run layout button. Pauses ALL Guardian runs by turning the global kill switch on through the
+  audited `guardian-killswitch` command; every run halts within one poll cycle, not only this one. There is no
+  per-run pause. Operator-only: the agent cannot call it.
+commonfields:
+  id: GuardianButtonPause
+  version: -1
+enabled: true
+name: GuardianButtonPause
+outputs: []
+script: '-'
+system: false
+tags:
+- incident-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

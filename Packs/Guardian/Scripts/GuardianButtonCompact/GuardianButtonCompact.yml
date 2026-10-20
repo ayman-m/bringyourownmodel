@@ -1,0 +1,23 @@
+args: []
+comment: >-
+  Guardian Agent Run layout button. Compacts this run's transcript now through the existing `guardian-compact`
+  command, which summarizes the older messages into a checkpoint and keeps the newest ten. It makes one billed
+  model call and reports an error when there is no active loop or the transcript is already short.
+  Operator-only: the agent cannot call it.
+commonfields:
+  id: GuardianButtonCompact
+  version: -1
+enabled: true
+name: GuardianButtonCompact
+outputs: []
+script: '-'
+system: false
+tags:
+- incident-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

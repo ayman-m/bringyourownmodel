@@ -1,0 +1,19 @@
+{
+    "id": "incident_guardiangateaction",
+    "version": -1,
+    "cliName": "guardiangateaction",
+    "name": "Guardian Gate Action",
+    "type": "shortText",
+    "group": 0,
+    "hidden": false,
+    "associatedToAll": false,
+    "associatedTypes": [
+        "Guardian Agent Run"
+    ],
+    "systemAssociatedTypes": null,
+    "unmapped": false,
+    "content": true,
+    "system": false,
+    "fromVersion": "6.10.0",
+    "isReadOnly": false
+}

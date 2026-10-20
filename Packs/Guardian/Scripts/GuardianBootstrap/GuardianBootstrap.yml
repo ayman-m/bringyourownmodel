@@ -1,0 +1,33 @@
+args: []
+comment: >-
+  Creates the Guardian Lists that must exist at runtime and cannot be delivered with the pack:
+  `guardian_kill_switch`, `guardian_audit`, `guardian_cost_ledger`, `guardian_memory`,
+  `guardian_approvals_ledger`, `guardian_jobs_registry`, `guardian_seed_version`, `guardian_skills_crud_index`,
+  `guardian_model_calibration` and `guardian_model_profile`. Each is created with a
+  sensible default only when it is missing or empty, and an existing List is never overwritten. Run it once
+  after every pack install or reinstall; it is safe to run again.
+commonfields:
+  id: GuardianBootstrap
+  version: -1
+enabled: true
+name: GuardianBootstrap
+outputs:
+- contextPath: Guardian.Bootstrap.created
+  description: "Names of Lists that were missing or empty and were created with their default value."
+  type: Unknown
+- contextPath: Guardian.Bootstrap.already_present
+  description: "Names of Lists that already had content and were left untouched."
+  type: Unknown
+- contextPath: Guardian.Bootstrap.errors
+  description: "`{list_name, error}` entries for any List that could not be read or created."
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

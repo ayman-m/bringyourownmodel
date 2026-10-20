@@ -1,0 +1,30 @@
+args: []
+comment: >-
+  Writes one `guardian_memory` case record for every closed incident that Guardian reached a verdict on, so
+  the case record does not depend on the model choosing to save it. Each run covers incidents closed in the
+  last 30 hours (the job runs every 4 hours, so the windows overlap on purpose). Re-processing an incident updates the same record
+  instead of adding a duplicate. It takes no arguments and is an operator and maintenance command that is not
+  on the agent's tool allowlist.
+commonfields:
+  id: GuardianCaseCapture
+  version: -1
+enabled: true
+name: GuardianCaseCapture
+outputs:
+- contextPath: Guardian.CaseCapture.captured
+  description: >-
+    `{incident_id, key}` for each incident whose case summary was written or updated in `guardian_memory`.
+  type: Unknown
+- contextPath: Guardian.CaseCapture.errors
+  description: "`{incident_id, key, error}` for each incident whose case summary could not be written."
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

@@ -1,0 +1,236 @@
+category: Utilities
+commonfields:
+  id: GuardianCohere
+  version: -1
+name: GuardianCohere
+display: Guardian Cohere
+description: >-
+  Cohere North model provider for Guardian. It implements the `guardian-llm-chat` command, like every other
+  Guardian provider, and returns the standard `Guardian.LLM.Completion` result, so the rest of the pack works
+  the same whichever model you use. It connects to a private Cohere North deployment: it sends the chat
+  request to `/api/v1/chat` and then reads the reply from `/api/v1/conversations/{id}`, using the agent id,
+  session (conversation) id and bearer token you configure. Enable only one Guardian model provider
+  integration at a time.
+configuration:
+- display: Endpoint URL
+  name: endpoint_url
+  type: 0
+  required: true
+  additionalinfo: >-
+    Base URL of the Cohere North deployment, e.g. https://core.example.com (no path suffix). The
+    integration appends /api/v1/chat and /api/v1/conversations/{id}.
+- display: Agent ID
+  name: agent_id
+  type: 0
+  required: true
+  additionalinfo: >-
+    The Cohere North agent id sent as agent.id on every chat request (identifies the pre-configured
+    North agent/persona serving the conversation).
+- display: Session ID (conversation id)
+  name: session_id
+  type: 0
+  required: false
+  additionalinfo: >-
+    The Cohere North conversation id, sent as `conversation.id`. In "reuse" mode (the default) it is required:
+    it is a conversation you created in North, and it is used for every call. In "stateless" mode a new
+    conversation id is created for each call and this field is ignored.
+- display: Bearer token
+  name: bearer_token
+  type: 4
+  required: true
+  additionalinfo: >-
+    The API bearer token for the North deployment, sent as Authorization: Bearer <token>. Stored
+    encrypted.
+- display: Conversation mode
+  name: conversation_mode
+  type: 15
+  required: true
+  defaultvalue: reuse
+  options:
+  - reuse
+  - stateless
+  additionalinfo: >-
+    "reuse" (default): use the Session ID as the conversation id on every call and send only the new messages
+    of each turn. The North server keeps the conversation history. All incidents then share one conversation,
+    so run one investigation at a time. "stateless": create a new conversation id per call and send the full
+    transcript. This isolates each investigation, and is recommended for several concurrent incidents, if your
+    North deployment accepts conversation ids from the client.
+- display: Tool format
+  name: tool_format
+  type: 15
+  required: true
+  defaultvalue: openai
+  options:
+  - openai
+  - cohere
+  additionalinfo: >-
+    Format of the tool (function) definitions. "openai" (default) sends OpenAI function tools unchanged.
+    "cohere" converts them to Cohere `parameter_definitions`, for North builds that need that format. Used
+    only when Guardian sends tools.
+- display: Model label
+  name: model
+  type: 0
+  required: false
+  defaultvalue: cohere-north
+  additionalinfo: >-
+    Label reported as `Guardian.LLM.Completion.model` and by `!guardian-model`. North does not report a model
+    name, because the agent you configure decides which model is used. The label is for display only.
+- display: Model size
+  name: model_tier
+  type: 15
+  required: true
+  defaultvalue: auto
+  options:
+  - auto
+  - small
+  - medium
+  - large
+  additionalinfo: >-
+    The capability class of the model that runs behind this North agent, for information. "auto" (the default)
+    declares nothing: the size a run uses is taken from the model catalogue, looked up by the model name. Choose
+    "small", "medium" or "large" only to document a model that is not in the catalogue, and set the same value in
+    `guardian_settings.model_tier` (the field itself changes nothing). The size is also shown next to the Model
+    label in `Guardian.LLM.Completion` and by `!guardian-model`, and Guardian warns when a declared size differs
+    from the size a run uses; "auto" never does. "small": under 13B parameters, for example Cohere Command R7B.
+    "medium": 13B to 40B, for example Cohere Command R 32B. "large": over 40B, or a large mixture-of-experts
+    model, for example Cohere Command R+ or Command A.
+- display: Request timeout (seconds)
+  name: request_timeout
+  type: 0
+  required: false
+  defaultvalue: '200'
+  additionalinfo: >-
+    Per-HTTP-call timeout (seconds) for the chat POST and each conversation GET. North generation can
+    be slow; the default matches the reference client.
+- display: Trust any certificate (not secure)
+  name: insecure
+  type: 8
+  required: false
+- display: Use system proxy settings
+  name: proxy
+  type: 8
+  required: false
+script:
+  script: '-'
+  type: python
+  subtype: python3
+  dockerimage: demisto/python3:3.11.10.116949
+  isfetch: false
+  runonce: false
+  commands:
+  - name: guardian-llm-chat
+    description: >-
+      Provider-independent chat completion. Sends OpenAI-Chat-Completions-shaped messages
+      (and optional tool definitions / structured-output schema) through the configured
+      provider adapter, and returns a normalized completion under Guardian.LLM.Completion
+      regardless of which provider served the request.
+    arguments:
+    - name: messages
+      required: false
+      description: >-
+        JSON array of OpenAI Chat-Completions message objects, e.g.
+        [{"role":"system","content":"..."},{"role":"user","content":"..."}]. Supports the
+        full message shape including "name", "tool_call_id", and assistant "tool_calls".
+        Mutually exclusive with system_message/user_message -- provide this OR that pair,
+        never both. Required if user_message is not given.
+    - name: system_message
+      required: false
+      description: >-
+        Convenience alternative to messages, for a single interactive turn (e.g. testing from
+        the Playground) without hand-formatting a JSON array. Optional system-role text.
+        Ignored/rejected if messages is also provided.
+    - name: user_message
+      required: false
+      description: >-
+        Convenience alternative to messages: the user-role text for a single turn. Required
+        if messages is not given; combined with system_message (if set) into a two-message
+        array. Ignored/rejected if messages is also provided.
+    - name: tools
+      required: false
+      description: >-
+        JSON array of OpenAI "tools" (function) definitions to make available for tool/function
+        calling, e.g. [{"type":"function","function":{"name":"...","parameters":{...}}}].
+    - name: tool_choice
+      required: false
+      description: >-
+        Either a plain string ("auto" | "none" | "required") or a JSON object selecting one
+        specific tool, e.g. {"type":"function","function":{"name":"my_tool"}}.
+    - name: response_format
+      required: false
+      description: >-
+        JSON object requesting structured output, e.g. {"type":"json_object"} or
+        {"type":"json_schema","json_schema":{...}}. Only honored if the configured
+        model/provider supports structured outputs; unsupported providers will surface the
+        provider's own error.
+    - name: temperature
+      required: false
+      description: Sampling temperature (provider-dependent range, typically 0-2).
+    - name: reasoning_effort
+      required: false
+      description: 'Reasoning effort hint for reasoning-capable models: low | medium | high.'
+      auto: PREDEFINED
+      predefined:
+      - low
+      - medium
+      - high
+    - name: parallel_tool_calls
+      required: false
+      description: Whether the model may return multiple tool calls in one response (true/false).
+      auto: PREDEFINED
+      predefined:
+      - 'true'
+      - 'false'
+    - name: timeout
+      required: false
+      description: Per-call time limit in seconds. One deadline for the whole turn (conversation read, submit and poll; no retries), never longer than the instance's request timeout. Leave empty for the default.
+    outputs:
+    - contextPath: Guardian.LLM.Completion.id
+      description: Provider-assigned completion id (null for a request blocked by a content filter before generation).
+      type: String
+    - contextPath: Guardian.LLM.Completion.model
+      description: Model (or deployment) that served the request.
+      type: String
+    - contextPath: Guardian.LLM.Completion.created
+      description: Unix timestamp of the completion, as reported by the provider.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.choices.index
+      description: Choice index.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.choices.message.role
+      description: Role of the returned message (normally "assistant").
+      type: String
+    - contextPath: Guardian.LLM.Completion.choices.message.content
+      description: Text content of the returned message (may be null when only tool_calls are returned).
+      type: String
+    - contextPath: Guardian.LLM.Completion.choices.message.tool_calls
+      description: Tool/function calls requested by the model, in OpenAI tool_calls shape.
+      type: Unknown
+    - contextPath: Guardian.LLM.Completion.choices.finish_reason
+      description: 'Per-choice normalized finish reason: stop | length | tool_calls | content_filter | other provider-reported values.'
+      type: String
+    - contextPath: Guardian.LLM.Completion.finish_reason
+      description: Normalized finish reason of the first choice, surfaced at the top level for convenience.
+      type: String
+    - contextPath: Guardian.LLM.Completion.content_filter
+      description: True if this request or response was blocked/flagged by the provider's content filter.
+      type: Boolean
+    - contextPath: Guardian.LLM.Completion.content_filter_detail
+      description: Structured detail (message, raw provider error) when content_filter is true and the block happened on the input (pre-generation) side.
+      type: Unknown
+    - contextPath: Guardian.LLM.Completion.usage.prompt_tokens
+      description: Prompt tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.completion_tokens
+      description: Completion tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.total_tokens
+      description: Total tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.cached_tokens
+      description: Cached prompt-token count, when the provider reports one (e.g. OpenAI prompt_tokens_details.cached_tokens); null otherwise.
+      type: Number
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2
+tests:
+- No tests (auto formatted)

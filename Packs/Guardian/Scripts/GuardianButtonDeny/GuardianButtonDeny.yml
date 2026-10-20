@@ -1,0 +1,38 @@
+args:
+- name: approval_id
+  description: >-
+    The approval ID of the pending request, copied from the Approval ID column of the Recommended
+    Actions table.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: reason
+  description: >-
+    Why the action is denied. It is passed back to the agent on its next reasoning tick.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Guardian Agent Run layout button. Denies a pending action by its approval ID and a reason, through the
+  operator-only `guardian-deny` command; nothing runs and the agent is told why on its next reasoning tick. It
+  refuses an approval that belongs to another incident. Operator-only: it is not on the agent's allowlist and
+  the agent cannot call it.
+commonfields:
+  id: GuardianButtonDeny
+  version: -1
+enabled: true
+name: GuardianButtonDeny
+outputs: []
+script: '-'
+system: false
+tags:
+- incident-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

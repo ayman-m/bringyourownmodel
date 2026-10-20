@@ -1,0 +1,125 @@
+args:
+- name: op
+  description: "The operation: create, update, delete or toggle."
+  required: true
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - create
+  - update
+  - delete
+  - toggle
+- name: name
+  description: >-
+    The skill name, in lowercase snake_case, for example "incident_triage_v2". For `create` it must not match
+    an existing skill name. For `update`, `delete` and `toggle` it must be a skill in
+    `guardian_skills_crud_index`. A skill shipped with the pack is rejected as system-locked.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: displayName
+  description: "Display name. Required for `create`. For `update` it is changed only if given."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: category
+  description: >-
+    Skill category, for example "foundation", "workflows" or "custom". Optional. Defaults to "custom" on
+    `create`.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: description
+  description: >-
+    One-line description shown in the available-skills block of the prompt. Required for `create`. Optional
+    for `update`.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: body
+  description: >-
+    The skill's markdown body, everything after the front matter, which the script generates from the other
+    fields. Required for `create`. For `update`, omit it to keep the existing body.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: attack
+  description: >-
+    Optional list of MITRE ATT&CK technique ids the skill relates to, for example T1566 and T1078. Defaults to
+    an empty list on `create`.
+  required: false
+  isArray: true
+  default: false
+  secret: false
+- name: enabled
+  description: >-
+    true or false. Defaults to true on `create`. Required for `toggle`. For `update` it is changed only if
+    given.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+comment: >-
+  Lets the agent create, update, delete or toggle a skill, always with human approval. The policy parks every
+  call as a pending approval, and it runs only after a person approves it with `!guardian-approve`. A delete
+  also needs `confirm=CONFIRM`. Every update or delete saves a snapshot first, with a SHA-256 hash before and
+  after. A delete is soft: the skill is copied to `guardian_skill_deleted_<name>` and can be restored. It
+  manages only skills in `guardian_skills_crud_index`. The skills shipped with the pack are read-only at
+  runtime, and changing one returns a clear error. A skill created this way is listed in the
+  skills menu with the pack's skills, and GuardianSkillRead can load it.
+commonfields:
+  id: GuardianSkillsCRUD
+  version: -1
+enabled: true
+name: GuardianSkillsCRUD
+outputs:
+- contextPath: Guardian.SkillsCRUD.op
+  description: The operation that ran (create/update/delete/toggle).
+  type: String
+- contextPath: Guardian.SkillsCRUD.name
+  description: The skill name the operation targeted.
+  type: String
+- contextPath: Guardian.SkillsCRUD.entry
+  description: The resulting guardian_skills_crud_index entry (create/update/toggle only).
+  type: Unknown
+- contextPath: Guardian.SkillsCRUD.list_name
+  description: "The name of the `guardian_skill_<name>` List that was written (`create` only)."
+  type: String
+- contextPath: Guardian.SkillsCRUD.history_seq
+  description: "The snapshot sequence number written by this call (`update` and `delete` only)."
+  type: Number
+- contextPath: Guardian.SkillsCRUD.sha256_before
+  description: "SHA-256 hash of the skill body before the change (`update` only)."
+  type: String
+- contextPath: Guardian.SkillsCRUD.sha256_after
+  description: "SHA-256 hash of the skill body after the change (`update` only)."
+  type: String
+- contextPath: Guardian.SkillsCRUD.sha256
+  description: "SHA-256 hash of the skill body when it was deleted (`delete` only)."
+  type: String
+- contextPath: Guardian.SkillsCRUD.restorable_list
+  description: "The `guardian_skill_deleted_<name>` List that holds the restorable copy (`delete` only)."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2
+tests:
+- No tests (auto formatted)

@@ -1,0 +1,49 @@
+args:
+- name: name
+  description: "Required name for the follow-up investigation."
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: details
+  description: >-
+    Required rationale and starting details for the follow-up investigation, written by the analyst.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+- name: severity
+  description: Optional initial severity (0 unknown, 1 low, 2 medium, 3 high, 4 critical).
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined: ['0', '1', '2', '3', '4']
+comment: >-
+  Operator-only SOC Agent indicator action. Creates a "Guardian Agent Run" incident, which starts the
+  GuardianAgentLoop playbook, only after an analyst supplies a name and details, and then writes an audit
+  event. The agent's tool bridge cannot call it.
+commonfields:
+  id: GuardianSocAgentCreateInvestigation
+  version: -1
+enabled: true
+name: GuardianSocAgentCreateInvestigation
+outputs:
+- contextPath: Guardian.SocAgent.FollowUp.incident_id
+  description: ID of the created follow-up investigation when returned by the server.
+  type: String
+- contextPath: Guardian.SocAgent.FollowUp.audited
+  description: Whether the creation audit event was written successfully.
+  type: Boolean
+script: '-'
+system: false
+tags:
+- indicator-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

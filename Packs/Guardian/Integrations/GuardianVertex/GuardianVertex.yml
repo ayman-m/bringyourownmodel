@@ -1,0 +1,225 @@
+category: Utilities
+commonfields:
+  id: GuardianVertex
+  version: -1
+name: GuardianVertex
+display: Guardian Vertex
+description: >-
+  Model provider for Guardian that works with the endpoint you choose (bring your own inference). Every
+  reasoning tick calls the `guardian-llm-chat` command. It supports any OpenAI Chat Completions compatible
+  endpoint (self-hosted vLLM, TGI or Ollama, OpenAI, or Azure OpenAI) and Google Vertex AI Gemini models, and
+  it returns every response in the standard OpenAI Chat Completions shape, so the rest of Guardian does not
+  depend on the provider. Enable only one Guardian model provider integration at a time.
+configuration:
+- display: Provider
+  name: provider
+  type: 15
+  required: true
+  defaultvalue: openai-compatible
+  options:
+  - openai-compatible
+  - azure
+  - vertex
+  additionalinfo: >-
+    Selects the provider. "openai-compatible": any server that speaks the OpenAI Chat Completions format
+    (OpenAI, vLLM, TGI, the OpenAI-compatible endpoint of Ollama, LiteLLM and others). "azure": Azure OpenAI
+    deployments (uses the api-version parameter and the /openai/deployments/<model>/chat/completions URL, and
+    detects content filtering). "vertex": Google Vertex AI Gemini models (generateContent API with
+    service-account authentication). For "vertex" fill in Project ID, Region and Service Account JSON.
+- display: Base URL
+  name: base_url
+  type: 0
+  required: false
+  additionalinfo: >-
+    For provider=openai-compatible: the server root, e.g. https://api.openai.com or
+    http://localhost:8000 — the adapter appends /v1/chat/completions (or just
+    /chat/completions if the URL you give already ends in /v1). For provider=azure: the resource
+    endpoint, e.g. https://<resource>.openai.azure.com (no path suffix). Ignored for
+    provider=vertex (the endpoint is derived from Project ID / Region instead).
+- display: Model / deployment name
+  name: model
+  type: 0
+  required: true
+  additionalinfo: >-
+    The model name (openai-compatible), the Azure deployment name (azure), or the Gemini model
+    name (vertex), e.g. gemini-2.5-flash or gemini-2.5-pro.
+- display: API version (Azure only)
+  name: api_version
+  type: 0
+  required: false
+  defaultvalue: 2024-10-21
+  additionalinfo: Azure OpenAI api-version query parameter. Ignored by the openai-compatible and vertex providers.
+- display: Project ID (Vertex only)
+  name: project_id
+  type: 0
+  required: false
+  additionalinfo: >-
+    GCP project ID with Vertex AI / Gemini access. Required for provider=vertex; ignored by the
+    other providers.
+- display: Region (Vertex only)
+  name: region
+  type: 0
+  required: false
+  defaultvalue: us-central1
+  additionalinfo: >-
+    Vertex AI region, e.g. us-central1, europe-west4, or "global" (uses the global
+    aiplatform.googleapis.com endpoint instead of a regional one). Only used for provider=vertex.
+- display: Service Account JSON (Vertex only)
+  name: service_account_json
+  type: 4
+  required: false
+  additionalinfo: >-
+    The full GCP service-account JSON key (granted roles/aiplatform.user) used to mint a
+    short-lived OAuth2 access token for Vertex AI calls. Required for provider=vertex; stored
+    encrypted; ignored by the other providers.
+- display: Auth style
+  name: auth_style
+  type: 15
+  required: true
+  defaultvalue: bearer
+  options:
+  - bearer
+  - api-key
+  - entra-token
+  additionalinfo: >-
+    How the credential below is sent. "bearer": Authorization: Bearer <key> (OpenAI and most
+    OpenAI-compatible servers). "api-key": api-key: <key> header (Azure OpenAI's native
+    key style). "entra-token": Authorization: Bearer <token>, where the credential is a
+    pre-acquired Entra ID / AAD access token rather than a static API key (Azure only).
+- display: API Key
+  name: api_key
+  type: 4
+  required: false
+  additionalinfo: The API key (or Entra ID token, if Auth style = entra-token). Stored encrypted.
+- display: Trust any certificate (not secure)
+  name: insecure
+  type: 8
+  required: false
+- display: Use system proxy settings
+  name: proxy
+  type: 8
+  required: false
+script:
+  script: '-'
+  type: python
+  subtype: python3
+  dockerimage: demisto/googleapi-python3:1.0.0.10507473
+  isfetch: false
+  runonce: false
+  commands:
+  - name: guardian-llm-chat
+    description: >-
+      Provider-independent chat completion. Sends OpenAI-Chat-Completions-shaped messages
+      (and optional tool definitions / structured-output schema) through the configured
+      provider adapter, and returns a normalized completion under Guardian.LLM.Completion
+      regardless of which provider served the request.
+    arguments:
+    - name: messages
+      required: false
+      description: >-
+        JSON array of OpenAI Chat-Completions message objects, e.g.
+        [{"role":"system","content":"..."},{"role":"user","content":"..."}]. Supports the
+        full message shape including "name", "tool_call_id", and assistant "tool_calls".
+        Mutually exclusive with system_message/user_message -- provide this OR that pair,
+        never both. Required if user_message is not given.
+    - name: system_message
+      required: false
+      description: >-
+        Convenience alternative to messages, for a single interactive turn (e.g. testing from
+        the Playground) without hand-formatting a JSON array. Optional system-role text.
+        Ignored/rejected if messages is also provided.
+    - name: user_message
+      required: false
+      description: >-
+        Convenience alternative to messages: the user-role text for a single turn. Required
+        if messages is not given; combined with system_message (if set) into a two-message
+        array. Ignored/rejected if messages is also provided.
+    - name: tools
+      required: false
+      description: >-
+        JSON array of OpenAI "tools" (function) definitions to make available for tool/function
+        calling, e.g. [{"type":"function","function":{"name":"...","parameters":{...}}}].
+    - name: tool_choice
+      required: false
+      description: >-
+        Either a plain string ("auto" | "none" | "required") or a JSON object selecting one
+        specific tool, e.g. {"type":"function","function":{"name":"my_tool"}}.
+    - name: response_format
+      required: false
+      description: >-
+        JSON object requesting structured output, e.g. {"type":"json_object"} or
+        {"type":"json_schema","json_schema":{...}}. Only honored if the configured
+        model/provider supports structured outputs; unsupported providers will surface the
+        provider's own error.
+    - name: temperature
+      required: false
+      description: Sampling temperature (provider-dependent range, typically 0-2).
+    - name: reasoning_effort
+      required: false
+      description: 'Reasoning effort hint for reasoning-capable models: low | medium | high.'
+      auto: PREDEFINED
+      predefined:
+      - low
+      - medium
+      - high
+    - name: parallel_tool_calls
+      required: false
+      description: Whether the model may return multiple tool calls in one response (true/false).
+      auto: PREDEFINED
+      predefined:
+      - 'true'
+      - 'false'
+    - name: timeout
+      required: false
+      description: Per-call time limit in seconds. A hard bound for this one call (one attempt, no retries), never longer than the instance's request timeout. Leave empty for the default.
+    outputs:
+    - contextPath: Guardian.LLM.Completion.id
+      description: Provider-assigned completion id (null for a request blocked by a content filter before generation).
+      type: String
+    - contextPath: Guardian.LLM.Completion.model
+      description: Model (or deployment) that served the request.
+      type: String
+    - contextPath: Guardian.LLM.Completion.created
+      description: Unix timestamp of the completion, as reported by the provider.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.choices.index
+      description: Choice index.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.choices.message.role
+      description: Role of the returned message (normally "assistant").
+      type: String
+    - contextPath: Guardian.LLM.Completion.choices.message.content
+      description: Text content of the returned message (may be null when only tool_calls are returned).
+      type: String
+    - contextPath: Guardian.LLM.Completion.choices.message.tool_calls
+      description: Tool/function calls requested by the model, in OpenAI tool_calls shape.
+      type: Unknown
+    - contextPath: Guardian.LLM.Completion.choices.finish_reason
+      description: 'Per-choice normalized finish reason: stop | length | tool_calls | content_filter | other provider-reported values.'
+      type: String
+    - contextPath: Guardian.LLM.Completion.finish_reason
+      description: Normalized finish reason of the first choice, surfaced at the top level for convenience.
+      type: String
+    - contextPath: Guardian.LLM.Completion.content_filter
+      description: True if this request or response was blocked/flagged by the provider's content filter.
+      type: Boolean
+    - contextPath: Guardian.LLM.Completion.content_filter_detail
+      description: Structured detail (message, raw provider error) when content_filter is true and the block happened on the input (pre-generation) side.
+      type: Unknown
+    - contextPath: Guardian.LLM.Completion.usage.prompt_tokens
+      description: Prompt tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.completion_tokens
+      description: Completion tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.total_tokens
+      description: Total tokens billed for the request.
+      type: Number
+    - contextPath: Guardian.LLM.Completion.usage.cached_tokens
+      description: Cached prompt-token count, when the provider reports one (e.g. OpenAI prompt_tokens_details.cached_tokens); null otherwise.
+      type: Number
+fromversion: 6.10.0
+marketplaces:
+- xsoar
+tests:
+- No tests (auto formatted)

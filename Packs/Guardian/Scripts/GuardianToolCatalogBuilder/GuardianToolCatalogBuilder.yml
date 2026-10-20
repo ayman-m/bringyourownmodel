@@ -1,0 +1,93 @@
+args:
+- name: use_snapshot
+  required: false
+  description: >-
+    Take the model size and tool budget from the run's Guardian.ModelProfile snapshot (left by the
+    playbook's "Resolve model profile" task) instead of reading the Lists again. The playbook sets it
+    to true. Without a valid snapshot the builder resolves them itself.
+  defaultValue: 'false'
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+- name: model_params
+  required: false
+  description: >-
+    The run's resolved model numbers as a JSON object (what the agent loop resolved at its first tick).
+    When given and well formed they are used as they are, so the tool list and the loop use the same size
+    and budget. Without it the builder resolves them itself.
+comment: >-
+  Builds the tool catalogue that is offered to the model from the live command list
+  (`demisto.getAllSupportedCommands()`), curated by `guardian_tool_allowlist` and `guardian_tool_denylist`.
+  The denylist is applied here and again in GuardianToolBridge, because a tool list in a prompt is not a
+  security boundary. It writes `Guardian.ToolCatalog` (the function definitions) and
+  `Guardian.ToolCatalogMeta` (token estimate, count and warnings).
+commonfields:
+  id: GuardianToolCatalogBuilder
+  version: -1
+enabled: true
+name: GuardianToolCatalogBuilder
+outputs:
+- contextPath: Guardian.ToolCatalog
+  description: >-
+    Array of OpenAI-style `{"type":"function","function":{...}}` tool definitions for the allowed commands
+    that are live and not denied.
+  type: Unknown
+- contextPath: Guardian.ToolCatalogMeta.TokenEstimate
+  description: "Estimated token count of the serialized catalogue. The estimate errs on the low side."
+  type: Number
+- contextPath: Guardian.ToolCatalogMeta.ConfiguredCommands
+  description: >-
+    Command names from the effective allowlist, in order, before filtering by availability, denylist and token
+    budget.
+  type: Unknown
+- contextPath: Guardian.ToolCatalogMeta.AllowlistSource
+  description: >-
+    `runtime` when the editable `guardian_tool_allowlist_runtime` List is in use, otherwise `baseline` (the
+    pack's allowlist, before it is first created).
+  type: String
+- contextPath: Guardian.ToolCatalogMeta.Count
+  description: Number of commands present in the tool catalogue.
+  type: Number
+- contextPath: Guardian.ToolCatalogMeta.Warning
+  description: "Set if the token estimate exceeds `max_tool_def_tokens`. Null otherwise."
+  type: String
+- contextPath: Guardian.ToolCatalogMeta.MaxToolDefTokens
+  description: >-
+    The token ceiling for all tool definitions together, from `guardian_settings.max_tool_def_tokens` or the
+    built-in default.
+  type: Number
+- contextPath: Guardian.ToolCatalogMeta.MaxToolDefTokensSource
+  description: >-
+    Where the budget came from (override, `guardian_settings` or model tier), with a note when it was limited
+    to a share of `max_input_tokens`.
+  type: String
+- contextPath: Guardian.ToolCatalogMeta.DescriptionTruncated
+  description: "Callable commands whose descriptions were shortened to fit the per-command size limit."
+  type: Unknown
+- contextPath: Guardian.ToolCatalogMeta.ExcludedByDenylist
+  description: >-
+    Allowlisted command names that were left out because they are also in `guardian_tool_denylist`.
+  type: Unknown
+- contextPath: Guardian.ToolCatalogMeta.ExcludedByOperatorBoundary
+  description: >-
+    Guardian operator-control commands that were left out because the agent may not manage itself.
+  type: Unknown
+- contextPath: Guardian.ToolCatalogMeta.MissingOnBox
+  description: "Allowlisted command names that are not available on this server."
+  type: Unknown
+- contextPath: Guardian.ToolCatalogMeta.DenylistArgRules
+  description: >-
+    `command:targetList` argument-level denylist rules. They are not applied here; GuardianToolBridge applies
+    them when the command runs.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

@@ -1,0 +1,34 @@
+args:
+- name: reason
+  description: Required operator reason for replacing the shared runtime allowlist.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Operator-only SOC Agent indicator action. Reads the approved JSON policy from the SOC Agent indicator,
+  checks every command against the latest discovery snapshot, replaces `guardian_tool_allowlist_runtime` with
+  it and writes an audit entry. It never changes the allowlist that ships with the pack.
+commonfields:
+  id: GuardianSocAgentApplyToolPolicy
+  version: -1
+enabled: true
+name: GuardianSocAgentApplyToolPolicy
+outputs:
+- contextPath: Guardian.SocAgent.ToolPolicyApply.command_count
+  description: Number of commands applied to the runtime allowlist.
+  type: Number
+- contextPath: Guardian.SocAgent.ToolPolicyApply.audited
+  description: Whether the post-change audit entry wrote successfully.
+  type: Boolean
+script: '-'
+system: false
+tags:
+- indicator-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

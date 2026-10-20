@@ -1,0 +1,59 @@
+args:
+- name: incident_id
+  description: >-
+    Optional incident id. Defaults to, and must match, the incident the command runs in. Another incident's id
+    returns an error.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: keep_recent
+  description: >-
+    How many of the newest transcript messages to keep verbatim instead of summarizing. Defaults to 10.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  `!guardian-compact` compacts this incident's agent transcript now, instead of waiting for the automatic
+  threshold. It summarizes the older messages into a checkpoint and keeps the recent ones verbatim. The cost
+  of the summarization call is added to the run's cost and to the cost ledger. It returns an error when there
+  is no active loop or when the transcript is already within the number of messages to keep. This is an
+  operator-only command and is not on the agent's tool allowlist.
+commonfields:
+  id: guardian-compact
+  version: -1
+enabled: true
+name: guardian-compact
+outputs:
+- contextPath: Guardian.CompactSummary.incident_id
+  description: The incident id compacted.
+  type: String
+- contextPath: Guardian.CompactSummary.messages_summarized
+  description: How many transcript messages were folded into the new checkpoint.
+  type: Number
+- contextPath: Guardian.CompactSummary.kept_count
+  description: How many messages were preserved verbatim in the recent window.
+  type: Number
+- contextPath: Guardian.CompactSummary.had_prior_checkpoint
+  description: Whether an earlier checkpoint was found and superseded by this compaction.
+  type: Boolean
+- contextPath: Guardian.CompactSummary.model
+  description: The model that served the summarization call.
+  type: String
+- contextPath: Guardian.CompactSummary.cost_note
+  description: A short note on this compaction's own billed cost, if any usage was reported.
+  type: String
+- contextPath: Guardian.CompactSummary.new_message_count
+  description: Total message count in the rebuilt transcript after compaction.
+  type: Number
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

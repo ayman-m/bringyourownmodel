@@ -1,0 +1,23 @@
+comment: >-
+  Pre-process script of the GuardianIntakeHygiene pre-process rule. It runs on an incoming "Guardian Agent
+  Run" incident before it is created, and drops the incident when `guardian_kill_switch` is enabled, so a
+  scheduled job cannot start a new agent run while the kill switch is on. If the kill switch cannot be read,
+  or any error occurs, the incident is kept: the reasoning loop and the tool bridge check the switch on every
+  cycle. For the scheduled intake sweep it also drops the incident when the queue has no open work other than
+  Guardian's own, so no run is spent on a sweep with nothing to triage. It changes nothing.
+commonfields:
+  id: GuardianIntakeHygiene
+  version: -1
+enabled: true
+name: GuardianIntakeHygiene
+script: '-'
+system: false
+tags:
+- preProcessing
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

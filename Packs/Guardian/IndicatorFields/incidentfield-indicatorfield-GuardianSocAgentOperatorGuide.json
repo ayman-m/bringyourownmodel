@@ -1,0 +1,17 @@
+{
+    "id": "indicator_socagentoperatorguide",
+    "name": "Guardian Operator Guide",
+    "cliName": "socagentoperatorguide",
+    "type": "html",
+    "placeholder": "Trusted, curated HTML only. Prefer Markdown for normal operational text.",
+    "associatedTypes": ["SOC Agent"],
+    "associatedToAll": false,
+    "content": true,
+    "system": false,
+    "group": 2,
+    "unsearchable": true,
+    "required": false,
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "marketplaces": ["xsoar"]
+}

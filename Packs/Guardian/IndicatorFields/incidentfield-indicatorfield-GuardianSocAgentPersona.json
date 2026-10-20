@@ -1,0 +1,17 @@
+{
+    "id": "indicator_socagentpersona",
+    "name": "Guardian Approved Persona",
+    "cliName": "socagentpersona",
+    "type": "markdown",
+    "placeholder": "Operator-approved persona proposal. The effective persona remains the guardian_persona List until changed through the approved configuration workflow.",
+    "associatedTypes": ["SOC Agent"],
+    "associatedToAll": false,
+    "content": true,
+    "system": false,
+    "group": 2,
+    "unsearchable": true,
+    "required": false,
+    "version": -1,
+    "fromVersion": "6.10.0",
+    "marketplaces": ["xsoar"]
+}

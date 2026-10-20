@@ -1,0 +1,38 @@
+args: []
+comment: >-
+  Turns real, closed incidents that Guardian reached a verdict on into evaluation cases in
+  `guardian_eval_cases_runtime`, so the evaluation set grows beyond the built-in cases without a redeploy.
+  Incidents created by evaluation, simulation or the intake sweep are excluded. The expected verdict is
+  Guardian's own conclusion at close time and is not independently verified. An incident that was already
+  harvested is left unchanged, so overlapping runs are harmless. It is an operator and maintenance command and
+  is not on the agent's tool allowlist.
+commonfields:
+  id: GuardianEvalHarvest
+  version: -1
+enabled: true
+name: GuardianEvalHarvest
+outputs:
+- contextPath: Guardian.EvalHarvest.harvested
+  description: '{incident_id, case_id} for each real, closed, verdicted
+    incident newly turned into a guardian_eval_cases_runtime row this run.'
+  type: Unknown
+- contextPath: Guardian.EvalHarvest.skipped
+  description: >-
+    `{incident_id, reason}` for each candidate that was not harvested, because it has no usable details or
+    verdict, or was harvested before. Not an error.
+  type: Unknown
+- contextPath: Guardian.EvalHarvest.errors
+  description: >-
+    `{error}` if the write to `guardian_eval_cases_runtime` failed. At most one entry, because all new cases
+    are written together.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

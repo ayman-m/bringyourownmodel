@@ -1,0 +1,21 @@
+args: []
+comment: >-
+  Operator-only SOC Agent indicator action button. Re-runs GuardianSocAgentReadiness and returns a short
+  confirmation. The full report is shown in the layout's "Agent Readiness" panel.
+commonfields:
+  id: GuardianSocAgentReadinessCheck
+  version: -1
+enabled: true
+name: GuardianSocAgentReadinessCheck
+outputs: []
+script: '-'
+system: false
+tags:
+- indicator-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

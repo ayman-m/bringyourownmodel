@@ -1,0 +1,481 @@
+id: GuardianTriageCodeRisk
+version: -1
+name: GuardianTriageCodeRisk
+description: >-
+  Triage branch for infrastructure-as-code, secrets or package operational risk found in code. Collects the
+  application-security issues with the same name and the other open issues of the rule, adds them to the
+  evidence packet, then runs one focused model session on the vulnerability skill. Everything it fetches is
+  read-only; the model session proposes actions and takes none.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: d9b94b8d-8399-5447-9d1b-8435f1d7ad74
+    type: start
+    task:
+      id: d9b94b8d-8399-5447-9d1b-8435f1d7ad74
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+      description: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 50
+        }
+      }
+  "1":
+    id: "1"
+    taskid: 4255a919-6234-54d3-b45a-3e0ee82b06a5
+    type: regular
+    task:
+      id: 4255a919-6234-54d3-b45a-3e0ee82b06a5
+      version: -1
+      name: "Clear earlier enrichment"
+      description: >-
+        Deletes the context keys this playbook fills (Core.AppsecIssue, Core.Issue), so a re-run starts clean
+        and a result from an earlier run is never mistaken for a new one.
+      script: 'DeleteContext'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    scriptarguments:
+      key:
+        simple: "Core.AppsecIssue,Core.Issue"
+      subplaybook:
+        simple: "no"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 195
+        }
+      }
+  "2":
+    id: "2"
+    taskid: 8cc93bac-2e92-5c09-b2c4-1416be607752
+    type: condition
+    task:
+      id: 8cc93bac-2e92-5c09-b2c4-1416be607752
+      version: -1
+      name: "Has an issue name?"
+      description: >-
+        Runs the next lookups only when the issue's name is not empty; an empty value skips them quietly
+        instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "3"
+      '#default#':
+      - "4"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: incident.name
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 340
+        }
+      }
+  "3":
+    id: "3"
+    taskid: 3949ac48-6581-594f-9ce3-655a497f923b
+    type: regular
+    task:
+      id: 3949ac48-6581-594f-9ce3-655a497f923b
+      version: -1
+      name: "Same finding elsewhere in code"
+      description: >-
+        Lists up to 10 application-security issues with the same name (Core.AppsecIssue): repository, file and
+        asset. Read-only.
+      script: '|||core-get-appsec-issues'
+      type: regular
+      iscommand: true
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    scriptarguments:
+      issue_name:
+        simple: "${incident.name}"
+      limit:
+        simple: "10"
+      status:
+        simple: "New,In Progress"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 485
+        }
+      }
+  "4":
+    id: "4"
+    taskid: cbccad94-10d1-55ff-97eb-a4daa58cfe59
+    type: condition
+    task:
+      id: cbccad94-10d1-55ff-97eb-a4daa58cfe59
+      version: -1
+      name: "Has a rule id?"
+      description: >-
+        Runs the next lookups only when the triage input `rule_id` is not empty; an empty value skips them
+        quietly instead of raising an error.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "5"
+      '#default#':
+      - "6"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isNotEmpty
+          left:
+            value:
+              simple: Guardian.Triage.inputs.rule_id
+            iscontext: true
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 630
+        }
+      }
+  "5":
+    id: "5"
+    taskid: 44efb1f2-9cdc-5836-8f97-9dbffc5a3930
+    type: regular
+    task:
+      id: 44efb1f2-9cdc-5836-8f97-9dbffc5a3930
+      version: -1
+      name: "Other open issues of this rule"
+      description: >-
+        Lists up to 10 other new issues of the same rule (Core.Issue). Read-only.
+      script: '|||core-get-issues'
+      type: regular
+      iscommand: true
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "6"
+    scriptarguments:
+      rule_id:
+        simple: "${Guardian.Triage.inputs.rule_id}"
+      status:
+        simple: "New"
+      page_size:
+        simple: "10"
+      output_keys:
+        simple: "internal_id,issue_name,severity,asset_ids,issue_source,case_ids"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 100,
+          "y": 775
+        }
+      }
+  "6":
+    id: "6"
+    taskid: 16488394-1a33-54f5-860a-2044e215fa5a
+    type: regular
+    task:
+      id: 16488394-1a33-54f5-860a-2044e215fa5a
+      version: -1
+      name: "Add enrichment to the evidence packet"
+      description: >-
+        Adds what the lookups above left in context (Core.AppsecIssue, Core.Issue) to the evidence packet as
+        extra bounded sections, so the model session sees them without fetching anything again. A lookup that
+        returned nothing is listed as not available in the packet. Fetches nothing and changes nothing on the
+        issue.
+      script: 'GuardianIssueEvidence'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "7"
+    scriptarguments:
+      mode:
+        simple: "append"
+      paths:
+        simple: "Core.AppsecIssue,Core.Issue"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 920
+        }
+      }
+  "7":
+    id: "7"
+    taskid: 5adf49d2-4cdd-589b-8802-aef656ec3003
+    type: regular
+    task:
+      id: 5adf49d2-4cdd-589b-8802-aef656ec3003
+      version: -1
+      name: "Clear the triage session state"
+      description: >-
+        Deletes Guardian.Loop, the triage session's state, so the focused model session below starts its own
+        loop instead of stopping at "loop already done". The triage outcome stays in Guardian.Triage.
+      script: 'DeleteContext'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "8"
+    scriptarguments:
+      key:
+        simple: "Guardian.Loop"
+      subplaybook:
+        simple: "no"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1065
+        }
+      }
+  "8":
+    id: "8"
+    taskid: 6f15e58f-857d-5665-81f5-285393f860bd
+    type: regular
+    task:
+      id: 6f15e58f-857d-5665-81f5-285393f860bd
+      version: -1
+      name: "Load the skill for this type"
+      description: >-
+        Loads the skill the triage chose for this type and domain (Guardian.Triage.skill) so the model session
+        can carry it in its system prompt. The skill loaded before triage was the triage skill. No model is
+        involved; a skill that cannot be loaded never stops the run.
+      script: 'GuardianSkillRead'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "9"
+    scriptarguments:
+      name:
+        simple: "${Guardian.Triage.skill}"
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1210
+        }
+      }
+  "9":
+    id: "9"
+    taskid: 43adabec-54a8-5be1-84b7-02e7e260f042
+    type: regular
+    task:
+      id: 43adabec-54a8-5be1-84b7-02e7e260f042
+      version: -1
+      name: "Run the focused model session"
+      description: >-
+        One autonomous model session on this type: it reads the evidence packet with the enrichment above,
+        follows the skill, checks only what is still open, writes one case note and ends with the verdict or
+        posture block. Every tool call goes through the security gate; containment and other state changes
+        wait for a human. Re-schedules itself for each turn until the model concludes, the kill switch is
+        thrown or the tick limit (input max_ticks) is hit. It continues the tick count, cost and tool activity
+        of the triage session on the issue instead of restarting them.
+      script: 'GuardianReasoningTick'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "10"
+    scriptarguments:
+      prompt:
+        simple: "${inputs.prompt}"
+      skill:
+        simple: "${Guardian.Triage.skill}"
+      use_prebuilt:
+        simple: "true"
+      scope_to_incident:
+        simple: "true"
+      assessment_mode:
+        simple: "${Guardian.Triage.assessment_mode}"
+      max_ticks:
+        simple: "${inputs.max_ticks}"
+      continue_run_totals:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1355
+        }
+      }
+  "10":
+    id: "10"
+    taskid: 020ed270-60a2-5757-bb42-90025e4cad10
+    type: regular
+    task:
+      id: 020ed270-60a2-5757-bb42-90025e4cad10
+      version: -1
+      name: "Remember the outcome"
+      description: >-
+        Stores one memory row for the finished run (key run:<issue id>) with the family, rule, assets, verdict
+        or posture assessment, priority and summary, so a later issue of the same rule or on the same asset
+        opens with this outcome in front of it. Writes nothing when the run ended without a verdict.
+      script: 'GuardianRunCapture'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "11"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1500
+        }
+      }
+  "11":
+    id: "11"
+    taskid: a3bf0e78-ffa1-5168-8c2f-c52b8a653310
+    type: title
+    task:
+      id: a3bf0e78-ffa1-5168-8c2f-c52b8a653310
+      version: -1
+      name: "Done"
+      description: >-
+        The playbook ends here.
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1645
+        }
+      }
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 1760,
+        "width": 800,
+        "x": 0,
+        "y": 50
+      }
+    }
+  }
+inputs:
+- key: prompt
+  value:
+    simple: >-
+      Triage already classified THIS issue (number ${incident.id}) as `${Guardian.Triage.investigation_type}`
+      with severity `${Guardian.Triage.severity}` (it arrived as `${Guardian.Triage.original_severity}`),
+      confidence ${Guardian.Triage.confidence}, likely benign: ${Guardian.Triage.likely_benign}. You are
+      already assigned to this issue: do NOT search for or switch to another issue, never invent an id, and
+      never ask anyone for it. Triage is a first look: confirm it or correct it from evidence. Make exactly
+      ONE tool call per turn and read its result before choosing the next call.
+
+      1) READ THE EVIDENCE PACKET pinned above. Besides the issue's own sections it holds `enrichment:`
+      sections: read-only lookups the playbook already ran for this type. They hold the other
+      application-security issues with the same name (which repositories and files are affected) and the other
+      open issues of the same rule. Judge whether the finding is live (a secret that is still valid, a package
+      in production code) or contained, and who owns the repository. A lookup that is not listed was skipped,
+      had nothing to return, or failed; that is unknown, not clean. Do not repeat what is there.
+
+      The triage inputs this playbook used: rule_id=`${Guardian.Triage.inputs.rule_id}`. A lookup whose input
+      is empty was skipped, not failed. Do not run it yourself with a different kind of value: a VM, host or
+      resource name is not an identity, and a subscription id is not an asset id. If the missing input
+      matters, say so in your report. If you re-run a templated query, keep the template's default window
+      unless you state why.
+
+      2) FOLLOW THE ACTIVE SKILL and gather only what your question still needs. Stop when another call would
+      not change your answer.
+
+      3) DOCUMENT: call GuardianCaseNote once, in the report format the skill gives. Keep the case note under 2500 characters. Notes over 4000 are
+      rejected and cost a retry. Cut repetition and raw lists before findings: name each item once, summarise
+      counts, and keep the verdict, key evidence and next steps. When you cite a cloud resource, copy its full
+      resource id exactly as it appears in the evidence. Never shorten it with '...'.
+
+      4) REMEMBER: if this run's evidence shows a durable pattern (a routine shown to be authorised, an
+      accepted risk, a new risk), call GuardianMemory with op=store, a key that names the rule or the asset
+      (for example rule:<rule id> or asset:<asset id>), a one-sentence value and tags. Store what you saw, not
+      a guess: later runs on this rule read it.
+
+      5) Do NOT change anything: no core-update-issue, no core-update-case, no containment. Propose the next
+      action in your report instead.
+
+      6) END with EXACTLY the final block for assessment mode `${Guardian.Triage.assessment_mode}` and nothing
+      after it, as the system prompt and the skill give it: in `verdict` mode the verdict block (Malicious,
+      Suspicious, Benign or Inconclusive, with confidence, techniques and summary); in `posture` mode the
+      posture block (assessment Confirmed, Not reproducible or Accepted risk candidate, with priority P1 to
+      P4, exposure, owner, fix and summary).
+  required: false
+  description: >-
+    Prompt for the focused model session on this type. It says what triage concluded (from Guardian.Triage)
+    and where the enrichment is.
+  playbookInputQuery: null
+- key: max_ticks
+  value:
+    simple: ""
+  required: false
+  description: >-
+    Optional cap on the model turns of the focused session. Empty (the default) uses the same limit
+    GuardianInvestigateIssue gets: the model size's limit, or the guardian_settings and model profile
+    override. A number can only lower that limit. The parent playbook passes its investigate_max_ticks input.
+  playbookInputQuery: null
+outputs: []
+adopted: true
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

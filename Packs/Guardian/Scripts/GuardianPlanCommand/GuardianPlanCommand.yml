@@ -1,0 +1,50 @@
+args:
+- name: incident_id
+  description: >-
+    Optional incident id. Defaults to, and must match, the incident the command runs in. Another incident's id
+    returns an error.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  `!guardian-plan` asks the model for an investigation plan for the current incident, without running any
+  tools. It makes one model call with the same system prompt the reasoning loop uses and the incident's own
+  fields as untrusted case data, posts the plan to the War Room as a tagged note, and returns it. The call is
+  billed and recorded in the cost ledger under the trigger "guardian-plan-command", separately from the run's
+  own cost. It needs a working model integration instance. It is an operator command and is not on the agent's
+  tool allowlist.
+commonfields:
+  id: guardian-plan
+  version: -1
+enabled: true
+name: guardian-plan
+outputs:
+- contextPath: Guardian.Plan.incident_id
+  description: The incident id this plan was generated for.
+  type: String
+- contextPath: Guardian.Plan.plan
+  description: The model's plan text.
+  type: String
+- contextPath: Guardian.Plan.model
+  description: The model that served this call.
+  type: String
+- contextPath: Guardian.Plan.posted_to_war_room
+  description: Whether the plan was successfully posted to the War Room as a note.
+  type: Boolean
+- contextPath: Guardian.Plan.cost_note
+  description: A short note on this call's own billed cost, if any usage was reported.
+  type: String
+- contextPath: Guardian.Plan.warning
+  description: Set only when the War Room note failed to post (the plan is still returned either way).
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

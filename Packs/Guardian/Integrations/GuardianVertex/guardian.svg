@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+    <defs>
+        <linearGradient id="wGreen" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#56B55A"/><stop offset="100%" stop-color="#3A883D"/></linearGradient>
+        <linearGradient id="wYellow" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E2A614"/><stop offset="100%" stop-color="#FFD447"/></linearGradient>
+        <linearGradient id="wBlue" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1963B3"/><stop offset="100%" stop-color="#2D8DF0"/></linearGradient>
+        <linearGradient id="wRed" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#B72721"/><stop offset="100%" stop-color="#E84A42"/></linearGradient>
+    </defs>
+    <style>
+        polygon { stroke: #0A1428; stroke-width: 2.5px; stroke-linejoin: round; }
+        @keyframes pipelineFlow {
+            0% { filter: brightness(1) saturate(1); }
+            25% { filter: brightness(1.4) saturate(1.2); }
+            50% { filter: brightness(1) saturate(1); }
+            100% { filter: brightness(1) saturate(1); }
+        }
+        .facet-1 { animation: pipelineFlow 4s infinite 0s; }
+        .facet-2 { animation: pipelineFlow 4s infinite 1s; }
+        .facet-3 { animation: pipelineFlow 4s infinite 2s; }
+        .facet-4 { animation: pipelineFlow 4s infinite 3s; }
+    </style>
+    <polygon class="facet-1" points="50,15 50,45 15,35 15,15" fill="url(#wGreen)" />
+    <polygon class="facet-4" points="50,15 85,15 85,35 50,45" fill="url(#wRed)" />
+    <polygon class="facet-3" points="50,45 85,35 85,60 50,95" fill="url(#wBlue)" />
+    <polygon class="facet-2" points="50,45 50,95 15,60 15,35" fill="url(#wYellow)" />
+</svg>

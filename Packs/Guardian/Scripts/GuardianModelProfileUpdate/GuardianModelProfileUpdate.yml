@@ -1,0 +1,50 @@
+args:
+- name: force
+  required: false
+  description: >-
+    Accept a partial probe result (capability checks skipped or ratio not measured), or a truncated one that
+    would cut the existing budget by more than half. Default false: such a result leaves the previous profile
+    in place. A result with no usable input budget is never accepted.
+  defaultValue: 'false'
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+comment: >-
+  Saves the latest `!guardian-probe-model` result (`Guardian.ModelProbe` in context) to the
+  `guardian_model_profile` List, which every investigation reads for the context budget. The record says where
+  its figure comes from: `documented` (no window probe was needed, the model's limits are in the model
+  catalogue), `confirmed` (the measured window is within 20% of the documented limit, which is used),
+  `measured` (more than 20% below it, so the measured figure is used) or `quota` (a rate limit stopped the
+  probe, so the documented limit is kept). A model that is not in the catalogue is saved as `measured`. It runs
+  after the probe in the daily GuardianModelAdaptation job, or by hand after `!guardian-probe-model`. If the
+  probe result is not trustworthy it keeps the previous profile, and it never changes the operator's
+  `overrides`. It is not an agent tool.
+commonfields:
+  id: GuardianModelProfileUpdate
+  version: -1
+enabled: true
+name: GuardianModelProfileUpdate
+outputs:
+- contextPath: Guardian.ModelProfileUpdate.updated
+  description: True when the profile List was written.
+  type: Boolean
+- contextPath: Guardian.ModelProfileUpdate.reason
+  description: Why the profile was not updated, or a note on an accepted forced result.
+  type: String
+- contextPath: Guardian.ModelProfileUpdate.key
+  description: The provider:instance key of the record.
+  type: String
+- contextPath: Guardian.ModelProfileUpdate.record
+  description: The record that was (or would have been) written.
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

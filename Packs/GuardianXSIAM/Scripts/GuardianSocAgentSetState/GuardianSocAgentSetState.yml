@@ -1,0 +1,42 @@
+args:
+- name: state
+  description: "`pause` halts Guardian at the next poll cycle. `resume` allows normal operation again."
+  required: true
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined: [pause, resume]
+- name: reason
+  description: "Required reason, recorded in the kill-switch audit event."
+  required: true
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Operator-only SOC Agent indicator action. Pauses or resumes Guardian by calling the audited
+  `guardian-killswitch` command, so the layout and the agent's tool catalogue do not expose the kill switch
+  directly.
+commonfields:
+  id: GuardianSocAgentSetState
+  version: -1
+enabled: true
+name: GuardianSocAgentSetState
+outputs:
+- contextPath: Guardian.SocAgent.State.state
+  description: "The resulting state label shown to the operator."
+  type: String
+- contextPath: Guardian.SocAgent.State.reason
+  description: "The reason passed to the audited kill-switch action."
+  type: String
+script: '-'
+system: false
+tags:
+- indicator-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

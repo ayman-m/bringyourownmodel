@@ -1,0 +1,30 @@
+args:
+- name: message
+  description: >-
+    Your message to the agent, for example an answer to a question it asked or a change of focus.
+  required: true
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Guardian Agent Run layout button. Sends your message to the agent through the existing `guardian-chat`
+  command; it is added to the transcript as an analyst message on the agent's next tick, and it answers a
+  question the agent paused on. If the run has already finished, the result says to re-run the
+  GuardianAgentLoop playbook to resume it. Operator-only: the agent cannot call it.
+commonfields:
+  id: GuardianButtonReply
+  version: -1
+enabled: true
+name: GuardianButtonReply
+outputs: []
+script: '-'
+system: false
+tags:
+- incident-action-button
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

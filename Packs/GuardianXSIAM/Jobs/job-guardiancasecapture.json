@@ -1,0 +1,33 @@
+{
+    "id": "GuardianCaseCapture",
+    "version": -1,
+    "name": "GuardianCaseCapture",
+    "details": "Every four hours, writes one guardian_memory row for each recently closed incident that has a verdict (closed within the last 30 hours), including the unremarkable ones, so a durable case record does not depend on the model choosing to call GuardianMemory. Safe to repeat: each incident is recorded once, keyed on its closed date. Runs a playbook that calls !GuardianCaseCapture.",
+    "type": "##default##",
+    "playbookId": "GuardianCaseCapture",
+    "labels": [
+        {
+            "type": "Instance",
+            "value": "GuardianCaseCapture"
+        }
+    ],
+    "tags": [
+        "guardian",
+        "guardian-memory"
+    ],
+    "scheduled": true,
+    "recurrent": true,
+    "humanCron": {
+        "timePeriodType": "hours",
+        "timePeriod": 4
+    },
+    "cronView": false,
+    "timezone": "UTC",
+    "shouldTriggerNew": false,
+    "closePrevRun": true,
+    "notifyOwner": false,
+    "isFeed": false,
+    "selectedFeeds": [],
+    "isAllFeeds": false,
+    "fromVersion": "6.10.0"
+}
