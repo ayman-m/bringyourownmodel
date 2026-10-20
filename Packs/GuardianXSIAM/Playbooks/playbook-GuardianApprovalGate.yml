@@ -93,6 +93,7 @@ view: |-
       }
     }
   }
+
 inputs: []
 outputs: []
 adopted: true

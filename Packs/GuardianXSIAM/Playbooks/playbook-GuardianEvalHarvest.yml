@@ -25,7 +25,7 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
+          "x": 50,
           "y": 50
         }
       }
@@ -54,8 +54,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 195
+          "x": 50,
+          "y": 220
         }
       }
   "3":
@@ -87,8 +87,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 285
+          "x": 50,
+          "y": 405
         }
       }
   "2":
@@ -106,8 +106,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 370
+          "x": 50,
+          "y": 590
         }
       }
 view: |-
@@ -115,13 +115,14 @@ view: |-
     "linkLabelsPosition": {},
     "paper": {
       "dimensions": {
-        "height": 385,
+        "height": 600,
         "width": 380,
-        "x": 450,
+        "x": 50,
         "y": 50
       }
     }
   }
+
 inputs: []
 outputs: []
 adopted: true

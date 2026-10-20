@@ -33,7 +33,7 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
+          "x": 265,
           "y": 50
         }
       }
@@ -61,8 +61,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 195
+          "x": 265,
+          "y": 220
         }
       }
   "2":
@@ -99,8 +99,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 340
+          "x": 265,
+          "y": 405
         }
       }
   "3":
@@ -129,8 +129,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 485
+          "x": 50,
+          "y": 590
         }
       }
   "4":
@@ -158,8 +158,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 630
+          "x": 50,
+          "y": 775
         }
       }
   "5":
@@ -189,8 +189,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 775
+          "x": 50,
+          "y": 960
         }
       }
   "6":
@@ -208,8 +208,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 450,
-          "y": 920
+          "x": 50,
+          "y": 1145
         }
       }
   "90":
@@ -230,8 +230,8 @@ tasks:
     view: |-
       {
         "position": {
-          "x": 800,
-          "y": 340
+          "x": 480,
+          "y": 597.5
         }
       }
 view: |-
@@ -239,13 +239,14 @@ view: |-
     "linkLabelsPosition": {},
     "paper": {
       "dimensions": {
-        "height": 920,
-        "width": 800,
-        "x": 450,
+        "height": 1155,
+        "width": 810,
+        "x": 50,
         "y": 50
       }
     }
   }
+
 inputs: []
 outputs: []
 adopted: true

@@ -53,6 +53,10 @@ This repository ships a final product. It is public.
   `Guardian.LLM.Completion` shape (`docs/GUARDIAN_LLM_CHAT_CONTRACT.md`). Enable one provider integration at a time.
 - **Platform-neutral fixes go into both editions.** `Packs/GuardianXSIAM/DIVERGENCE.md` lists how they differ. Do not
   bring Cortex-platform-only patterns into the XSOAR 6 pack or the other way round.
+- **Playbook layout belongs to the operator.** People rearrange playbooks in the editor, and that layout (the `view:`
+  blocks) is part of the file. Before pushing playbooks to a tenant, pull that tenant's copy and keep its layout: copy the
+  `view:` blocks into the repository file first (logic never changes while doing so), and push only the playbooks whose logic
+  changed. A push of a playbook the operator rearranged would undo their work.
 - **Jobs are not created by a pack upload alone.** `scripts/deploy_jobs.py` creates them by name on XSOAR 6.
 
 ## Live tenants
