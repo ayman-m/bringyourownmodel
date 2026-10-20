@@ -82,8 +82,8 @@ configuration:
   additionalinfo: >-
     Optional. The model name sent to North with every request (as `model`). Leave empty and North uses the agent's
     own model, which on some deployments is a name the deployment does not have (error MODEL_NOT_FOUND, model_id
-    "command"). Run `!guardian-cohere-list-models` to see the names this endpoint offers, then enter one here, and
-    set the Model label to the same name.
+    "command"). Run `!guardian-cohere-list-models` to see the models this endpoint offers, then enter the model's name
+    here (if North refuses it, try the Id), and set the Model label to the same value.
 - display: Model size
   name: model_tier
   type: 15
@@ -245,23 +245,37 @@ script:
       type: Number
   - name: guardian-cohere-list-models
     description: >-
-      Lists the models this Cohere North endpoint offers, so a model name can be checked before it is configured.
-      Read-only. North's models route is not public: the command tries /api/v1/models and then /v1/models, and
-      reports what each answered when neither works.
+      Lists the models this Cohere North endpoint offers to the token's user (GET /api/v2/models, paged; falls
+      back to /api/v1/models), so a model name can be checked before it is entered as the Model ID. Read-only.
     arguments: []
     outputs:
     - contextPath: GuardianCohere.Model.id
-      description: Model identifier as North reports it.
+      description: Model id as North reports it.
       type: String
     - contextPath: GuardianCohere.Model.name
-      description: Display name (the identifier when North gives none).
+      description: Model name (the identifier North's agents use).
       type: String
-    - contextPath: GuardianCohere.Model.default
-      description: True for the model North marks as its default.
-      type: Boolean
-    - contextPath: GuardianCohere.Model.capabilities
-      description: Capabilities North reports for the model (for example Reasoning, Vision).
+    - contextPath: GuardianCohere.Model.display_name
+      description: Name shown in the North model picker.
+      type: String
+    - contextPath: GuardianCohere.Model.provider
+      description: Provider type behind the model (for example single_container).
+      type: String
+    - contextPath: GuardianCohere.Model.instance
+      description: Provider instance, when North reports one.
+      type: String
+    - contextPath: GuardianCohere.Model.context_length
+      description: Context window in tokens, when North reports it.
+      type: Number
+    - contextPath: GuardianCohere.Model.max_tokens
+      description: Maximum output tokens, when North reports it.
+      type: Number
+    - contextPath: GuardianCohere.Model.supported_parameters
+      description: Features North reports for the model (thinking, vision, json_schema, strict_tools, logprobs, safety_mode, json_object).
       type: Unknown
+    - contextPath: GuardianCohere.Model.default
+      description: True when North marks the model as the default.
+      type: Boolean
 fromversion: 6.10.0
 marketplaces:
 - xsoar

@@ -837,7 +837,9 @@ def guardian_llm_chat_command(client: CohereNorthClient, args: Dict[str, Any]) -
     )
 
 
-MODELS_PATHS = ("/api/v1/models", "/v1/models")
+MODELS_PATHS = ("/api/v2/models", "/api/v1/models")
+MODELS_PAGE_SIZE = 100
+MODELS_MAX_PAGES = 5
 
 
 def _model_entries(payload: Any) -> List[Any]:
@@ -845,77 +847,112 @@ def _model_entries(payload: Any) -> List[Any]:
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict):
-        for key in ("models", "data", "items", "results"):
+        for key in ("data", "models", "items", "results"):
             if isinstance(payload.get(key), list):
                 return payload[key]
     return []
 
 
 def _model_row(entry: Any) -> Optional[Dict[str, Any]]:
-    """One normalized row (id, name, default, capabilities) from a models-list entry, or None when it names nothing."""
+    """One normalized row from a models-list entry, or None when it names nothing.
+
+    North's v2 entries carry ``id``, ``name``, ``display_name``, ``provider`` (``name`` and ``instance``),
+    ``context_length``, ``max_tokens`` and ``supported_parameters``; v1 entries carry at least ``id``."""
     if isinstance(entry, str):
-        return {"id": entry, "name": entry, "default": False, "capabilities": []} if entry.strip() else None
+        entry = entry.strip()
+        return _model_row({"id": entry}) if entry else None
     if not isinstance(entry, dict):
         return None
-    model_id = next((str(entry[k]) for k in ("id", "model_id", "model", "name") if entry.get(k)), "")
+    model_id = next((str(entry[k]) for k in ("id", "model_id", "name", "model") if entry.get(k)), "")
     if not model_id:
         return None
-    name = next((str(entry[k]) for k in ("display_name", "name", "label") if entry.get(k)), model_id)
-    capabilities = entry.get("capabilities") or entry.get("features") or entry.get("tags") or []
-    if isinstance(capabilities, dict):
-        capabilities = [k for k, v in capabilities.items() if v]
-    if not isinstance(capabilities, list):
-        capabilities = [capabilities]
+    provider = entry.get("provider")
+    provider_name = provider.get("name") if isinstance(provider, dict) else provider
+    instance = provider.get("instance") if isinstance(provider, dict) else None
+    supported = entry.get("supported_parameters") or entry.get("capabilities") or []
+    if not isinstance(supported, list):
+        supported = [supported]
     return {
         "id": model_id,
-        "name": name,
+        "name": str(entry.get("name") or model_id),
+        "display_name": str(entry.get("display_name") or entry.get("name") or model_id),
+        "provider": str(provider_name or ""),
+        "instance": str(instance or ""),
+        "context_length": entry.get("context_length"),
+        "max_tokens": entry.get("max_tokens"),
+        "supported_parameters": [str(c) for c in supported],
         "default": bool(entry.get("default") or entry.get("is_default")),
-        "capabilities": [str(c) for c in capabilities],
     }
+
+
+def _fetch_models(client: CohereNorthClient, path: str) -> List[Any]:
+    """Every model entry at one path, following North's ``next_token`` paging (bounded)."""
+    entries: List[Any] = []
+    next_token = ""
+    for _ in range(MODELS_MAX_PAGES):
+        params: Dict[str, Any] = {"limit": MODELS_PAGE_SIZE} if path.endswith("/v2/models") else {}
+        if next_token:
+            params["next_token"] = next_token
+        payload = client._http_request(
+            method="GET",
+            full_url=f"{client.endpoint}{path}",
+            headers=client._auth_headers(),
+            params=params or None,
+            timeout=min(client.request_timeout, POLL_GET_TIMEOUT_CAP),
+            ok_codes=(200,),
+            resp_type="json",
+        )
+        entries.extend(_model_entries(payload))
+        next_token = str(payload.get("next_token") or "") if isinstance(payload, dict) else ""
+        if not next_token:
+            break
+    return entries
 
 
 def guardian_cohere_list_models_command(client: CohereNorthClient, args: Dict[str, Any]) -> CommandResults:
     """List the models this Cohere North deployment offers, so a model name can be checked before it is configured.
 
-    Read-only: one GET per candidate path, stopping at the first that answers. North's models route is not public,
-    so the command tries ``/api/v1/models`` and then ``/v1/models`` and reports the status of each when none answers.
+    Read-only. Calls North's ``GET /api/v2/models`` (paged), and ``GET /api/v1/models`` when v2 is not there.
     """
     tried: List[str] = []
-    payload: Any = None
+    entries: List[Any] = []
     found_path = ""
     for path in MODELS_PATHS:
         try:
-            payload = client._http_request(
-                method="GET",
-                full_url=f"{client.endpoint}{path}",
-                headers=client._auth_headers(),
-                timeout=min(client.request_timeout, POLL_GET_TIMEOUT_CAP),
-                ok_codes=(200,),
-                resp_type="json",
-            )
+            entries = _fetch_models(client, path)
             found_path = path
             break
         except DemistoException as exc:
             tried.append(f"{path}: {str(exc).splitlines()[0][:160]}")
     if not found_path:
         raise DemistoException(
-            "This North endpoint did not answer a models request. Tried " + "; ".join(tried) + ". Pick the model in the "
-            "North model picker and set the instance's Model ID to its name."
+            "This North endpoint did not answer a models request. Tried " + "; ".join(tried) + ". Read the model name "
+            "from the North model picker instead and enter it as the instance's Model ID."
         )
-    rows = [row for row in (_model_row(e) for e in _model_entries(payload)) if row]
+    rows = [row for row in (_model_row(e) for e in entries) if row]
     if not rows:
-        shape = sorted(payload.keys()) if isinstance(payload, dict) else type(payload).__name__
-        raise DemistoException(f"{found_path} answered, but no model names could be read from it (response shape: {shape}).")
+        raise DemistoException(f"{found_path} answered, but it lists no models this user may use.")
     return CommandResults(
         outputs_prefix="GuardianCohere.Model",
         outputs_key_field="id",
         outputs=rows,
         readable_output=tableToMarkdown(
             f"Models available on this North endpoint ({found_path})",
-            [{"Model": r["id"], "Name": r["name"], "Default": "yes" if r["default"] else "", "Capabilities": ", ".join(r["capabilities"])} for r in rows],
-            headers=["Model", "Name", "Default", "Capabilities"],
+            [
+                {
+                    "Name": r["name"],
+                    "Id": r["id"],
+                    "Display name": r["display_name"],
+                    "Provider": r["provider"],
+                    "Context": r["context_length"],
+                    "Max output": r["max_tokens"],
+                    "Supports": ", ".join(r["supported_parameters"]),
+                }
+                for r in rows
+            ],
+            headers=["Name", "Id", "Display name", "Provider", "Context", "Max output", "Supports"],
         ),
-        raw_response=payload,
+        raw_response=entries,
     )
 
 

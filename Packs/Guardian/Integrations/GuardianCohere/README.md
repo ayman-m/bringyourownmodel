@@ -69,9 +69,10 @@ The client is built for a stateful, sometimes-async North endpoint:
 
 ### guardian-cohere-list-models
 
-Lists the models the North endpoint offers (read-only), so a model name can be checked before it is configured.
-North's models route is not public: the command tries `/api/v1/models`, then `/v1/models`, and shows what each
-answered when neither works. Output: `GuardianCohere.Model` (`id`, `name`, `default`, `capabilities`).
+Lists the models the North endpoint offers to the token's user (read-only): `GET /api/v2/models` (paged), with
+`GET /api/v1/models` as the fallback. Output `GuardianCohere.Model`: `id`, `name`, `display_name`, `provider`,
+`instance`, `context_length`, `max_tokens`, `supported_parameters`, `default`. Use it to pick the instance's
+**Model ID** (sent to North as `model` on every request; empty leaves the choice to the agent).
 
 ```
 !guardian-cohere-list-models
