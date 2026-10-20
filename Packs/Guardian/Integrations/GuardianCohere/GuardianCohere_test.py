@@ -276,7 +276,7 @@ def test_build_request_body_includes_tools_and_temperature():
         "sess-123",
     )
     assert body["tools"] == tools
-    assert body["tool_choice"] == "auto"
+    assert "tool_choice" not in body  # "auto" is North's default; it only accepts REQUIRED or NONE
     assert body["temperature"] == 0.3
 
 
@@ -880,3 +880,23 @@ def test_yml_declares_the_list_models_command_and_the_model_id_param():
     import pathlib
     text = (pathlib.Path(__file__).with_name("GuardianCohere.yml")).read_text()
     assert "- name: guardian-cohere-list-models" in text and "name: model_id" in text
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (None, None), ("", None), ("auto", None), ("AUTO", None),
+        ("required", "REQUIRED"), ("REQUIRED", "REQUIRED"), ("any", "REQUIRED"),
+        ({"type": "function", "function": {"name": "x"}}, "REQUIRED"),
+        ("none", "NONE"), ("None", "NONE"), ("NONE", "NONE"),
+        ("something-else", None),
+    ],
+)
+def test_tool_choice_is_sent_to_north_only_as_required_or_none(raw, expected):
+    body = _client().build_request_body(
+        {"messages": [{"role": "user", "content": "hi"}], "tool_choice": raw}, "c1"
+    )
+    if expected is None:
+        assert "tool_choice" not in body
+    else:
+        assert body["tool_choice"] == expected

@@ -366,6 +366,22 @@ def _parse_tool_choice(raw: Optional[Any]) -> Optional[Any]:
     return stripped  # plain string: "auto" | "none" | "required"
 
 
+def _to_north_tool_choice(raw: Optional[Any]) -> Optional[str]:
+    """Translate an OpenAI-style ``tool_choice`` into what North accepts: exactly ``REQUIRED`` or ``NONE``.
+
+    ``auto`` (and an empty value) is North's default, so the key is left out. ``required``/``any`` and a call that
+    names one function become ``REQUIRED`` (North cannot name the function); ``none`` becomes ``NONE``.
+    Anything else is left out rather than sent and rejected with a 422."""
+    if isinstance(raw, dict):
+        return "REQUIRED"
+    value = str(raw or "").strip().lower()
+    if value in ("required", "any"):
+        return "REQUIRED"
+    if value == "none":
+        return "NONE"
+    return None
+
+
 def _arg_to_float(args: Dict[str, Any], name: str) -> Optional[float]:
     raw = args.get(name)
     if raw in (None, ""):
@@ -479,9 +495,9 @@ class CohereNorthClient(BaseClient):
         if tools:
             body["tools"] = tools
 
-        tool_choice = request.get("tool_choice")
-        if tool_choice not in (None, ""):
-            body["tool_choice"] = tool_choice  # OpenAI semantics; North ignores it if unsupported.
+        tool_choice = _to_north_tool_choice(request.get("tool_choice"))
+        if tool_choice:
+            body["tool_choice"] = tool_choice  # North accepts only "REQUIRED" or "NONE"; "auto" is its default
 
         temperature = request.get("temperature")
         if temperature is not None:
