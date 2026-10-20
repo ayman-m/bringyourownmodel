@@ -118,13 +118,15 @@ self-modification, the eight-step investigation workflow, how to treat untrusted
 ### 10. `guardian_skills_index` and 11-14. the four `guardian_skill_*` lists: skills
 
 **Role.** A *skill* is a long reference document the agent loads only when it needs it, so it does not fill every prompt. The **index** is the menu: `GuardianPromptBuilder` puts it in the system prompt, which is built once per run; the agent then calls
-`GuardianSkillRead name=<skill>` to open one. The four skills are:
+`GuardianSkillRead name=<skill>` to open one. The XSOAR 6 pack ships four skills, and the Cortex platform pack ships ten: the four below plus six more:
+`cortex_xql`, `cortex_detection_investigation`, `cortex_posture_misconfiguration`, `cortex_identity_risk`,
+`cortex_vulnerability_triage` and `cortex_attack_path`.
 
 | List (XSOAR 6 / Cortex platform) | Skill (XSOAR 6 / Cortex platform) | What it teaches |
 |---|---|---|
-| `guardian_skill_xsoar_case_triage` / `guardian_skill_cortex_case_triage` | `xsoar_case_triage` / `cortex_case_triage` | Triage reference: severity and status codes, close reasons, how to rank a queue |
+| `guardian_skill_xsoar_case_triage` / `guardian_skill_cortex_triage` | `xsoar_case_triage` / `cortex_triage` | Triage reference: severity and status codes, close reasons, how to rank a queue |
 | `guardian_skill_xsoar_case_investigation` / `guardian_skill_cortex_case_investigation` | `xsoar_case_investigation` / `cortex_case_investigation` | The end-to-end procedure for investigating a case |
-| `guardian_skill_xsoar_platform_reference` / `guardian_skill_cortex_platform_reference` | `xsoar_platform_reference` / `cortex_platform_reference` | The War Room, commands and query syntax |
+| `guardian_skill_xsoar_platform_reference` / `guardian_skill_cortex_issue_reference` | `xsoar_platform_reference` / `cortex_issue_reference` | The War Room, commands and query syntax |
 | `guardian_skill_build_xsoar_playbook` / `guardian_skill_build_cortex_playbook` | `build_xsoar_playbook` / `build_cortex_playbook` | How to build a playbook from examples |
 
 A playbook input can preload a skill; by default skills are loaded on demand.
