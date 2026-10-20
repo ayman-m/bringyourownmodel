@@ -32,7 +32,9 @@ All HTTP goes through ``BaseClient._http_request`` (proxy/verify/retry/backoff h
 uniformly for every provider); adapters only ever supply URL/headers/body translation.
 """
 
+import copy
 import json
+import re
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import demistomock as demisto
@@ -100,6 +102,16 @@ class BaseChatAdapter:
         self.api_key = api_key or ""
         self.auth_style = auth_style or DEFAULT_AUTH_STYLE
         self.api_version = api_version
+
+    def with_model(self, model: Optional[str]) -> "BaseChatAdapter":
+        """This adapter for another model (the Gemini model id, the Azure deployment name or the server's model name);
+        the URL and the request body are built from it. Everything else is unchanged."""
+        model = (model or "").strip()
+        if not model or model == self.model:
+            return self
+        clone = copy.copy(self)
+        clone.model = model
+        return clone
 
     def build_url(self) -> str:
         """Chat-completions endpoint. Avoids double-appending /v1 if the configured
@@ -727,6 +739,22 @@ ADAPTERS_BY_PROVIDER: Dict[str, Type[BaseChatAdapter]] = {
 }
 
 
+#: The start of the error text for a model the caller asked for (the `model` argument) that the provider does not have.
+MODEL_NOT_AVAILABLE_PREFIX = "MODEL_NOT_AVAILABLE:"
+MODEL_ERROR_PREFIXES = (MODEL_NOT_AVAILABLE_PREFIX, "MODEL_SELECTION_UNSUPPORTED:")
+
+_MODEL_MISSING_RE = re.compile(
+    r"DeploymentNotFound|model_not_found|NOT_FOUND|unknown[ _]model|invalid[ _]model"
+    r"|(deployment|model)\b[^.]{0,80}(does not exist|not found|not exist|not supported|not available|not deployed)",
+    re.IGNORECASE,
+)
+
+_MODEL_MISSING_WHERE = {
+    "vertex": "is not available in this Vertex project and region; check the Gemini model id.",
+    "azure": "is not deployed in this Azure OpenAI resource; check the deployment name.",
+}
+
+
 def get_adapter_class(provider: str) -> Type[BaseChatAdapter]:
     try:
         return ADAPTERS_BY_PROVIDER[provider]
@@ -817,6 +845,19 @@ def _arg_to_optional_bool(args: Dict[str, Any], name: str) -> Optional[bool]:
     return argToBoolean(raw)
 
 
+def _model_missing(exc: "DemistoException") -> bool:
+    """Whether the provider answered that the model or deployment it was asked for does not exist: HTTP 404, or HTTP 400
+    whose error body names the model or deployment."""
+    status_code = _status_code_of(exc)
+    if status_code == 404:
+        return True
+    if status_code != 400:
+        return False
+    body = _extract_error_body(exc)
+    text = json.dumps(body) if body is not None else str(getattr(exc, "message", "") or "")
+    return bool(_MODEL_MISSING_RE.search(text))
+
+
 def _arg_to_call_timeout(args: Dict[str, Any]) -> Optional[float]:
     """The contract's optional per-call ``timeout`` (seconds): a hard wall-clock bound for this one
     call, capped by the instance's own request timeout. ``None`` when unset."""
@@ -844,9 +885,14 @@ class Client(BaseClient):
         super().__init__(base_url=adapter.base_url, verify=verify, proxy=proxy, timeout=timeout)
         self.adapter = adapter
 
-    def chat_completion(self, request: Dict[str, Any], call_timeout: Optional[float] = None) -> Dict[str, Any]:
+    def chat_completion(
+        self, request: Dict[str, Any], call_timeout: Optional[float] = None, model: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Execute one chat-completion round-trip through the configured provider
         adapter and return the canonical, normalized Guardian.LLM.Completion dict.
+
+        ``model`` (the contract's optional argument) runs this call on another model than the configured one; a model
+        the provider does not know is an error that starts with ``MODEL_NOT_AVAILABLE:``.
 
         ``call_timeout`` (the contract's per-call ``timeout``) makes this a hard wall-clock bound:
         one attempt, no transparent retries, never longer than the instance's own timeout.
@@ -856,10 +902,12 @@ class Client(BaseClient):
         a clearer, rate-limit-specific message. A content-filter rejection recognized by
         the active adapter is returned as a structured result rather than raised.
         """
-        url = self.adapter.build_url()
-        params = self.adapter.build_params()
-        headers = self.adapter.build_headers()
-        body = self.adapter.build_request_body(request)
+        adapter = self.adapter.with_model(model)
+        routed = adapter is not self.adapter
+        url = adapter.build_url()
+        params = adapter.build_params()
+        headers = adapter.build_headers()
+        body = adapter.build_request_body(request)
 
         try:
             raw_response = self._http_request(
@@ -875,9 +923,15 @@ class Client(BaseClient):
                 backoff_factor=RETRY_BACKOFF_FACTOR,
             )
         except DemistoException as exc:
-            content_filter_result = self.adapter.handle_input_content_filter(exc)
+            content_filter_result = adapter.handle_input_content_filter(exc)
             if content_filter_result is not None:
                 return content_filter_result
+            if routed and _model_missing(exc):
+                where = _MODEL_MISSING_WHERE.get(adapter.provider_name, "is not known to this server; check the model name.")
+                raise DemistoException(
+                    f"{MODEL_NOT_AVAILABLE_PREFIX} model '{adapter.model}' {where} Original error: {exc.message}",
+                    exception=exc,
+                )
             if _status_code_of(exc) == 429:
                 raise DemistoException(
                     "Guardian LLM provider rate-limited the request (HTTP 429) and the "
@@ -886,7 +940,7 @@ class Client(BaseClient):
                 )
             raise
 
-        return self.adapter.normalize_response(raw_response)
+        return adapter.normalize_response(raw_response)
 
 
 def build_adapter(params: Dict[str, Any]) -> BaseChatAdapter:
@@ -1012,7 +1066,7 @@ def guardian_llm_chat_command(client: Client, args: Dict[str, Any]) -> CommandRe
         "parallel_tool_calls": parallel_tool_calls,
     }
 
-    result = client.chat_completion(request, call_timeout=call_timeout)
+    result = client.chat_completion(request, call_timeout=call_timeout, model=(args.get("model") or "").strip() or None)
 
     if result.get("content_filter"):
         detail = (result.get("content_filter_detail") or {}).get("message")
@@ -1072,7 +1126,10 @@ def main() -> None:
         else:
             raise NotImplementedError(f"Command {command} is not implemented.")
     except Exception as e:
-        return_error(f"Failed to execute {command} command.\nError:\n{str(e)}")
+        if str(e).startswith(MODEL_ERROR_PREFIXES):
+            return_error(str(e))  # the caller matches on the start of the text
+        else:
+            return_error(f"Failed to execute {command} command.\nError:\n{str(e)}")
 
 
 if __name__ in ("__main__", "__builtin__", "builtins"):  # pragma: no cover

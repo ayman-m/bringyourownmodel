@@ -38,6 +38,7 @@ identically.** That is the only thing the rest of the pack depends on.
 | `reasoning_effort` | no | `low` \| `medium` \| `high` — hint for reasoning-capable models. |
 | `parallel_tool_calls` | no | `true`/`false` — may the model emit multiple tool calls in one turn. |
 | `timeout` | no | Per-call time limit in seconds (see below). |
+| `model` | no | Run this call on another model than the instance's configured one (see below). |
 
 **`timeout` is a hard bound, and every integration MUST honor it.** When given, the whole call —
 every HTTP step it makes, including a submit-then-poll flow like North's — finishes or fails within
@@ -47,6 +48,20 @@ When omitted, the call behaves exactly as before: the instance's own timeout per
 integration's normal retry policy. Callers with their own wall-clock budget use it — today
 `GuardianProbeModel`, so one slow call can't outlive XSOAR's script timeout. It is a transport bound,
 never sent to the provider.
+
+**`model` is optional, and empty or absent means the instance's configured model, exactly as before.** When given
+and different from the configured one, the call runs on that model, and `Guardian.LLM.Completion.model` reports the model
+that served it. Only the caller that routes models passes it (today `GuardianReasoningTick`, when the operator set
+`guardian_model_routing`). The value is the provider's own name for the model:
+
+| Provider | `model` means | Unknown model |
+|---|---|---|
+| Foundry | the deployment name, sent as the request's `model`; the model family ("auto") is decided from this name | error text starting `MODEL_NOT_AVAILABLE:` (HTTP 404 `DeploymentNotFound`, or an HTTP 400 that names the model or deployment) |
+| Vertex | the Gemini model id, built into the request URL (an Azure instance: the deployment name; an OpenAI-compatible server: the model name) | error text starting `MODEL_NOT_AVAILABLE:` |
+| Cohere North | cannot be chosen per call: the agent is fixed. Empty, or equal to the instance's Model label, is accepted | error text starting `MODEL_SELECTION_UNSUPPORTED:` for any other value, with no call made |
+
+A caller that routes models treats both prefixes as "use the instance default instead" and carries on; they are
+ordinary error entries, so they are matched on the start of their text.
 
 Each integration translates these to/from its provider's native wire format internally (e.g. the Vertex
 integration maps `messages`→Gemini `contents`, `tools`→`functionDeclarations`, `tool_calls`↔`functionCall`).

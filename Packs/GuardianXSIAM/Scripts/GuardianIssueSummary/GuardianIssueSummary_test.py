@@ -416,3 +416,53 @@ def test_the_audit_row_is_written_for_every_outcome(tenant):
     rows = fake.of("GuardianAuditWrite")
     assert [r["status"] for r in rows] == ["skipped", "ok", "ok"] and all(r["action"] == "GuardianIssueSummary" for r in rows)
     assert json.loads(rows[2]["detail"])["status"] == "written"
+
+
+# --- the investigation's model choice -------------------------------------------------------------------------------
+
+CHOICE = {"stage": "investigation", "level": "high", "model": "gpt-5", "max_ticks": "", "warnings": [],
+          "reason": "level high (complexity high); routing.complexity.high.model is `gpt-5`"}
+
+
+def test_the_investigation_note_and_line_name_the_model_level_and_reason(tenant):
+    fake = tenant(description="Original.")
+    _run_choice = su.guardian_summary_run("investigation", True, {"id": "1001"}, _triage(), _applied(), _loop(), CHOICE)
+    assert _run_choice["status"] == "written"
+    note = fake.of("addEntries")[0]["entries"][0]["Contents"]
+    assert "- Model: `gpt-5` (level high) -- level high (complexity high)" in note
+    line = fake.of("core-update-issue")[0]["description"].split("\nInvestigation: ", 1)[1]
+    assert "Model: gpt-5 (level high)." in line and line.index("Model:") < line.index("Summary:")
+
+
+def test_a_default_model_is_called_default(tenant):
+    fake = tenant()
+    choice = dict(CHOICE, model="", level="medium", reason="level medium (no complexity rating, so medium); routing.complexity.medium.model is empty, so the provider instance's configured model is used")
+    su.guardian_summary_run("investigation", True, {"id": "1001"}, _triage(), _applied(), _loop(), choice)
+    assert "the provider's configured model (level medium)" in fake.of("addEntries")[0]["entries"][0]["Contents"]
+    assert "Model: the provider's configured model (level medium)." in fake.of("core-update-issue")[0]["description"]
+
+
+def test_without_an_investigation_choice_nothing_about_the_model_is_written(tenant):
+    fake = tenant()
+    for choice in (None, {}, dict(CHOICE, stage="triage"), "junk"):
+        su.guardian_summary_run("investigation", True, {"id": "1001"}, _triage(), _applied(), _loop(), choice)
+    for call in fake.of("addEntries"):
+        assert "Model:" not in call["entries"][0]["Contents"]
+    for call in fake.of("core-update-issue"):
+        assert "Model:" not in call["description"]
+
+
+def test_main_reads_the_current_choice_from_the_context(monkeypatch, tenant):
+    fake = tenant()
+    results, _e = _wire_main(monkeypatch, {"stage": "investigation"}, {"Loop": _loop(), "ModelChoiceCurrent": CHOICE})
+    su.main()
+    assert results[0].outputs["status"] == "written" and "Model: gpt-5" in fake.of("core-update-issue")[0]["description"]
+
+
+def test_a_dropped_routed_model_is_reported_as_the_configured_model():
+    choice = {"stage": "investigation", "model": "gpt-x-typo", "level": "high", "reason": "level high"}
+    loop = dict(_loop(), model_route_dropped="MODEL_NOT_AVAILABLE: model 'gpt-x-typo' is not deployed")
+    note = su.guardian_summary_investigation_note(loop, choice)
+    part = su.guardian_summary_investigation_part(loop, choice)
+    assert "the provider's configured model" in note and "`gpt-x-typo` was not available" in note
+    assert "Model: the provider's configured model (level high)." in part and "gpt-x-typo" not in part

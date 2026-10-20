@@ -758,3 +758,41 @@ def test_the_model_size_dropdown_offers_auto_first_and_defaults_to_it():
     spec = yaml.safe_load((pathlib.Path(__file__).resolve().parent / "GuardianCohere.yml").read_text())
     param = next(p for p in spec["configuration"] if p["name"] == "model_tier")
     assert param["options"] == ["auto", "small", "medium", "large"] and param["defaultvalue"] == "auto"
+
+
+# --- the optional `model` argument ------------------------------------------------------------------------------------
+
+def test_cohere_without_a_model_arg_or_with_the_configured_one_runs_as_before(mocker):
+    for args in ({}, {"model": ""}, {"model": "cohere-north"}):
+        client = _client(conversation_mode=CONVERSATION_MODE_STATELESS)
+        _wire(mocker, client, _convo(text="hi there"))
+        result = guardian_llm_chat_command(client, dict(args, messages=json.dumps([{"role": "user", "content": "x"}])))
+        assert result.outputs["choices"][0]["message"]["content"] == "hi there"
+
+
+def test_cohere_refuses_a_different_model_without_calling_north(mocker):
+    client = _client(conversation_mode=CONVERSATION_MODE_STATELESS, model_label="command-a")
+    mock_http = _wire(mocker, client, _convo(text="never"))
+    with pytest.raises(DemistoException) as err:
+        guardian_llm_chat_command(client, {"messages": json.dumps([{"role": "user", "content": "x"}]), "model": "gpt-5"})
+    text = str(err.value)
+    assert text.startswith("MODEL_SELECTION_UNSUPPORTED: this provider runs a fixed Cohere North agent; choose the model in Cohere, not per call")
+    assert not mock_http.called
+    same = guardian_llm_chat_command(client, {"messages": json.dumps([{"role": "user", "content": "x"}]), "model": "command-a"})
+    assert same.outputs["model"] == "command-a"
+
+
+def test_cohere_without_a_configured_model_label_refuses_any_named_model(mocker):
+    client = _client(conversation_mode=CONVERSATION_MODE_STATELESS, model_label="")
+    _wire(mocker, client, _convo(text="never"))
+    with pytest.raises(DemistoException) as err:
+        guardian_llm_chat_command(client, {"messages": json.dumps([{"role": "user", "content": "x"}]), "model": "gpt-5"})
+    assert str(err.value).startswith("MODEL_SELECTION_UNSUPPORTED:")
+
+
+def test_cohere_yml_declares_the_model_argument():
+    import pathlib
+    import yaml
+    doc = yaml.safe_load((pathlib.Path(__file__).parent / "GuardianCohere.yml").read_text())
+    args = {a["name"]: a for a in doc["script"]["commands"][0]["arguments"]}
+    assert args["model"]["required"] is False and "MODEL_SELECTION_UNSUPPORTED:" in args["model"]["description"]

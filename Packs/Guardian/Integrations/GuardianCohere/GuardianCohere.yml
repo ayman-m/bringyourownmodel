@@ -180,6 +180,11 @@ script:
       predefined:
       - 'true'
       - 'false'
+    - name: model
+      required: false
+      description: >-
+        Optional. Run this call on another model than the instance's configured one. Empty (the default) uses the
+        configured model, exactly as before. This provider runs a fixed Cohere North agent and cannot choose a model per call: a value that differs from the instance's Model label is refused. An unknown model gives an error that starts with `MODEL_SELECTION_UNSUPPORTED:`.
     - name: timeout
       required: false
       description: Per-call time limit in seconds. One deadline for the whole turn (conversation read, submit and poll; no retries), never longer than the instance's request timeout. Leave empty for the default.

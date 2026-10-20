@@ -1107,3 +1107,64 @@ def test_chat_command_rejects_a_non_positive_timeout(mocker):
     for bad in ("0", "-1", "later"):
         with pytest.raises(DemistoException):
             guardian_llm_chat_command(client, {"messages": json.dumps([{"role": "user", "content": "hi"}]), "timeout": bad})
+
+
+# --- the optional `model` argument ------------------------------------------------------------------------------------
+
+def _routed_error(status, body=None):
+    exc = DemistoException("boom")
+    exc.res = _FakeResponse(status, json_body=body)
+    return exc
+
+
+def test_vertex_model_arg_builds_the_url_from_the_given_model_id(mocker):
+    client, mock_http = _vertex_client(mocker, http_request_return=_gemini_success_body())
+    result = guardian_llm_chat_command(client, {"user_message": "hi", "model": "gemini-2.5-pro"})
+    assert mock_http.call_args.kwargs["full_url"].endswith("/publishers/google/models/gemini-2.5-pro:generateContent")
+    assert result.outputs["model"] == "gemini-2.5-flash-001"  # what the provider reports it served
+    assert client.adapter.model == "gemini-2.5-flash"
+
+
+def test_vertex_without_a_model_arg_uses_the_configured_model(mocker):
+    for args in ({"user_message": "hi"}, {"user_message": "hi", "model": ""}, {"user_message": "hi", "model": "gemini-2.5-flash"}):
+        client, mock_http = _vertex_client(mocker, http_request_return=_gemini_success_body())
+        guardian_llm_chat_command(client, args)
+        assert mock_http.call_args.kwargs["full_url"].endswith("/models/gemini-2.5-flash:generateContent")
+
+
+def test_vertex_unknown_model_is_a_model_not_available_error(mocker):
+    body = {"error": {"code": 404, "status": "NOT_FOUND", "message": "Publisher Model `projects/p/locations/l/publishers/google/models/nope` was not found"}}
+    client, _ = _vertex_client(mocker, http_request_side_effect=_routed_error(404, body))
+    with pytest.raises(DemistoException) as err:
+        guardian_llm_chat_command(client, {"user_message": "hi", "model": "nope"})
+    assert str(err.value).startswith("MODEL_NOT_AVAILABLE: model 'nope' is not available in this Vertex project and region")
+
+
+def test_azure_adapter_routes_the_deployment_through_the_url_and_maps_a_missing_one(mocker):
+    client, mock_http = _azure_client(mocker, http_request_return=_openai_success_body())
+    client.chat_completion({"messages": [{"role": "user", "content": "x"}]}, model="other-deployment")
+    assert mock_http.call_args.kwargs["full_url"].endswith("/openai/deployments/other-deployment/chat/completions")
+    assert "model" not in mock_http.call_args.kwargs["json_data"]
+    client, _ = _azure_client(mocker, http_request_side_effect=_routed_error(404, {"error": {"code": "DeploymentNotFound"}}))
+    with pytest.raises(DemistoException) as err:
+        client.chat_completion({"messages": [{"role": "user", "content": "x"}]}, model="other-deployment")
+    assert str(err.value).startswith("MODEL_NOT_AVAILABLE: model 'other-deployment' is not deployed in this Azure OpenAI resource")
+
+
+def test_an_unrelated_failure_of_a_routed_call_is_not_a_model_error(mocker):
+    client, _ = _vertex_client(mocker, http_request_side_effect=_routed_error(400, {"error": {"message": "bad request"}}))
+    with pytest.raises(DemistoException) as err:
+        client.chat_completion({"messages": [{"role": "user", "content": "x"}]}, model="gemini-2.5-pro")
+    assert not str(err.value).startswith("MODEL_")
+    client, _ = _vertex_client(mocker, http_request_side_effect=_routed_error(404, {"error": {"message": "nope"}}))
+    with pytest.raises(DemistoException) as err:  # a 404 for the configured model keeps its usual text
+        client.chat_completion({"messages": [{"role": "user", "content": "x"}]})
+    assert not str(err.value).startswith("MODEL_")
+
+
+def test_vertex_yml_declares_the_model_argument():
+    import pathlib
+    import yaml
+    doc = yaml.safe_load((pathlib.Path(__file__).parent / "GuardianVertex.yml").read_text())
+    args = {a["name"]: a for a in doc["script"]["commands"][0]["arguments"]}
+    assert args["model"]["required"] is False and "MODEL_NOT_AVAILABLE:" in args["model"]["description"]

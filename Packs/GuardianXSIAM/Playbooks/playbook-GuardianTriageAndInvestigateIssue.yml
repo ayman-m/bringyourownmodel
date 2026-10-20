@@ -216,7 +216,7 @@ tasks:
       brand: ""
     nexttasks:
       '#default#':
-      - "8"
+      - "37"
       nomodel:
       - "7"
     separatecontext: false
@@ -286,7 +286,7 @@ tasks:
         (guardian_model_profile), else guardian_settings. Prints each value with its source and leaves the
         result in context at Guardian.ModelProfile so the evidence packet and the model sessions use the same
         numbers. Warns when the size disagrees with the provider instance's "Model size" dropdown, or a probed
-        profile is old. Never blocks the run.
+        profile is old. With a routing set, the numbers are resolved for the triage model chosen by the task above. Never blocks the run.
       script: 'GuardianModelProfileCheck'
       type: regular
       iscommand: false
@@ -294,6 +294,9 @@ tasks:
     nexttasks:
       '#none#':
       - "9"
+    scriptarguments:
+      model:
+        simple: "${Guardian.ModelChoiceCurrent.model}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -851,7 +854,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -882,7 +885,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -913,7 +916,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -944,7 +947,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -975,7 +978,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -1006,7 +1009,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -1038,7 +1041,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -1069,7 +1072,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -1101,7 +1104,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -1132,7 +1135,7 @@ tasks:
       - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -1164,7 +1167,7 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "20"
+      - "38"
     scriptarguments:
       stage:
         simple: "triage"
@@ -1177,6 +1180,171 @@ tasks:
       {
         "position": {
           "x": 3070,
+          "y": 3365
+        }
+      }
+  "37":
+    id: "37"
+    taskid: 4c185fd6-1cc1-5fbb-88fd-224c5a47f0f4
+    type: regular
+    task:
+      id: 4c185fd6-1cc1-5fbb-88fd-224c5a47f0f4
+      version: -1
+      name: "Choose the triage model"
+      description: >-
+        Chooses the model of the triage session from the control-plane List guardian_model_routing (routing.triage) and leaves
+        it at Guardian.ModelChoiceCurrent. With the List as shipped (empty) the choice is the provider instance's configured
+        model and nothing changes. A Cohere North provider cannot choose a model per call, so it keeps its own. Changes
+        nothing on the issue; the model can never call it.
+      script: 'GuardianModelChoice'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "8"
+    scriptarguments:
+      stage:
+        simple: "triage"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 2425,
+          "y": 1145
+        }
+      }
+  "38":
+    id: "38"
+    taskid: cf23912a-7e94-530e-9572-3c6a61c4ce76
+    type: regular
+    task:
+      id: cf23912a-7e94-530e-9572-3c6a61c4ce76
+      version: -1
+      name: "Choose the investigation model"
+      description: >-
+        Chooses the model and the turn limit of the investigation from the triage result: the level starts at the triage
+        complexity rating (medium without one), is raised to at least medium by an escalate or a high or critical severity,
+        and by one level for a confidence under 60. The level's model and max_ticks come from guardian_model_routing; the input
+        investigate_max_ticks, when set, wins over the level's max_ticks. Leaves the choice at Guardian.ModelChoiceCurrent.
+        Empty (the shipped List) means the provider instance's configured model and the model size's own turn limit.
+      script: 'GuardianModelChoice'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "39"
+    scriptarguments:
+      stage:
+        simple: "investigation"
+      investigate_max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 3500,
+          "y": 3365
+        }
+      }
+  "39":
+    id: "39"
+    taskid: 2de80372-3a47-5afe-955a-4b1a6e0efa97
+    type: regular
+    task:
+      id: 2de80372-3a47-5afe-955a-4b1a6e0efa97
+      version: -1
+      name: "Resolve the investigation model profile"
+      description: >-
+        Works out the model numbers for the investigation (size, input budget, tool-list budget, turn limit) again, for the
+        model chosen above (Guardian.ModelChoiceCurrent.model), and replaces the snapshot at Guardian.ModelProfile. The snapshot
+        records the model and that it was routed, so the investigation session passes that model to the provider. A model
+        that is not in the model catalogue gets guessed limits and a warning. With no model chosen it is the same check as
+        before the triage. Never blocks the run.
+      script: 'GuardianModelProfileCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "40"
+    scriptarguments:
+      model:
+        simple: "${Guardian.ModelChoiceCurrent.model}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 3930,
+          "y": 3365
+        }
+      }
+  "40":
+    id: "40"
+    taskid: 9d1e46e9-f9b1-5064-807a-d6a84288b1ca
+    type: regular
+    task:
+      id: 9d1e46e9-f9b1-5064-807a-d6a84288b1ca
+      version: -1
+      name: "Build the investigation system prompt"
+      description: >-
+        Assembles the agent's system prompt again (persona, action policy, approval mode, skills index) and leaves it in
+        context at Guardian.SystemPrompt, so it is built with the numbers of the investigation model. No model is involved.
+      script: 'GuardianPromptBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "41"
+    scriptarguments:
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 4360,
+          "y": 3365
+        }
+      }
+  "41":
+    id: "41"
+    taskid: a219ea79-b387-55e4-8428-a9a176a56764
+    type: regular
+    task:
+      id: a219ea79-b387-55e4-8428-a9a176a56764
+      version: -1
+      name: "Build the investigation tool list"
+      description: >-
+        Builds the list of tools offered to the model again, trimmed to the tool-list budget of the investigation model (see
+        "Resolve the investigation model profile"), and leaves it in context at Guardian.ToolCatalog. No model is involved.
+      script: 'GuardianToolCatalogBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "20"
+    scriptarguments:
+      use_snapshot:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 4790,
           "y": 3365
         }
       }
@@ -1311,7 +1479,7 @@ view: |-
     "paper": {
       "dimensions": {
         "height": 4115,
-        "width": 4690,
+        "width": 5120,
         "x": 50,
         "y": 50
       }
@@ -1341,7 +1509,8 @@ inputs:
 
       4) END with EXACTLY the triage block from the skill and nothing after it: severity, investigation_type,
       confidence, likely_benign, escalate, summary, key_entities and next_step, and optionally analysis (2-4
-      sentences on what you saw and why you rated it so) and recommendations (up to 5 short next actions). Every
+      sentences on what you saw and why you rated it so), recommendations (up to 5 short next actions) and
+      complexity (low, medium or high: how much investigation the issue needs, by the rubric in the skill). Every
       value comes from the allowed lists in the skill; use `other` for the type when nothing fits.
   required: false
   description: >-
@@ -1369,10 +1538,11 @@ inputs:
     simple: ""
   required: false
   description: >-
-    Optional cap on the model turns of the investigation session of the chosen sub-playbook (passed to its
-    max_ticks input). Empty (the default) gives that session the same limit GuardianInvestigateIssue gets: the model
-    size's limit (25, 40 or 60), or the guardian_settings and model profile override. A number can only lower
-    that limit.
+    Optional cap on the model turns of the investigation session of the chosen sub-playbook. It goes to the task "Choose the
+    investigation model", which hands the effective limit to the branch (passed to its max_ticks input): this input when
+    it is set, else the max_ticks of the level in the guardian_model_routing List, else nothing. Empty (the default) with the
+    List as shipped gives that session the same limit GuardianInvestigateIssue gets: the model size's limit (25, 40 or 60), or
+    the guardian_settings and model profile override. A number can only lower that limit.
   playbookInputQuery: null
 outputs: []
 adopted: true

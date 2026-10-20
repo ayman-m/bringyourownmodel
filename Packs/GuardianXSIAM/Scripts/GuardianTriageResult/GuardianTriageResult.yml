@@ -50,6 +50,9 @@ outputs:
 - contextPath: Guardian.Triage.analysis
   description: "The model's optional analysis: what it saw and why it rated the issue so (at most 800 characters, scrubbed of secrets; empty when the block has none or on fallback)."
   type: String
+- contextPath: Guardian.Triage.complexity
+  description: "The model's optional complexity rating of the investigation the issue needs: low, medium or high (empty when the block has none, the value is invalid, or on fallback). GuardianModelChoice reads it."
+  type: String
 - contextPath: Guardian.Triage.recommendations
   description: "The model's optional recommendations: up to 5 short next actions, each at most 200 characters and scrubbed of secrets (empty when the block has none or on fallback)."
   type: Unknown

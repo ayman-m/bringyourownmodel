@@ -396,7 +396,7 @@ def test_the_record_has_exactly_the_documented_keys():
     record, _n, _c = _run({"triage_block": _block()})
     assert set(record) == {
         "issue_id", "status", "branch", "investigation_type", "severity", "original_severity", "confidence", "likely_benign",
-        "escalate", "summary", "next_step", "analysis", "recommendations", "domain", "assessment_mode", "sub_playbook", "skill",
+        "escalate", "summary", "next_step", "analysis", "recommendations", "complexity", "domain", "assessment_mode", "sub_playbook", "skill",
         "reason", "inputs", "domain_mismatch", "input_sources"}
     json.dumps(record)  # serializable
 
@@ -652,3 +652,19 @@ def test_the_output_keys_are_all_in_the_context_record_and_the_key_matches(monke
     tri.main()
     out, ctx_record = results[0].outputs, written["Guardian.Triage"]
     assert set(out) <= set(ctx_record) and out[results[0].outputs_key_field] == ctx_record[results[0].outputs_key_field] == "1001"
+
+
+def test_complexity_reaches_the_record_and_a_missing_or_invalid_one_is_empty_and_still_structured():
+    block = tri.guardian_triage_validate(_block(complexity="high"), TABLE)
+    record, _n, _c = _run({"triage_block": block})
+    assert record["status"] == "structured" and record["complexity"] == "high"
+    for value in (None, "", "extreme", 4):
+        block = tri.guardian_triage_validate(_block(complexity=value), TABLE)
+        record, _n, _c = _run({"triage_block": block})
+        assert record["status"] == "structured" and record["complexity"] == ""
+    fallback, _n, _c = _run({"conclusion": ""})
+    assert fallback["status"] == "fallback" and fallback["complexity"] == ""
+
+
+def test_the_repair_prompt_asks_for_complexity_too():
+    assert '"complexity"' in tri.guardian_triage_repair_prompt(TABLE)

@@ -38,6 +38,11 @@ If the token request fails, **Test** shows what Entra ID answered. `AADSTS700027
 
 Identical to the other Guardian provider integrations; see `docs/GUARDIAN_LLM_CHAT_CONTRACT.md`.
 
+The optional `model` argument sends one call to another deployment of the same Foundry resource: its value is the
+request's `model` (the deployment name), and the model family (when "auto") is decided from that name. Empty or equal to
+the configured deployment means no change. A deployment the resource does not have (HTTP 404 `DeploymentNotFound`, or an
+HTTP 400 that names the model) gives an error that starts with `MODEL_NOT_AVAILABLE:`.
+
 ## Status
 
 The wire format follows Microsoft's published Foundry v1 API. The unit tests mock the HTTP layer; verify a new resource with **Test** and a short `!guardian-llm-chat user_message="hi"` before enabling it.

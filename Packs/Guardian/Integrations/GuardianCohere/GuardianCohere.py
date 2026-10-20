@@ -52,6 +52,8 @@ urllib3.disable_warnings()
 """ CONSTANTS """
 
 DEFAULT_MODEL_LABEL = "cohere-north"
+MODEL_SELECTION_UNSUPPORTED_PREFIX = "MODEL_SELECTION_UNSUPPORTED:"
+MODEL_ERROR_PREFIXES = (MODEL_SELECTION_UNSUPPORTED_PREFIX, "MODEL_NOT_AVAILABLE:")
 # Default when the "Model size" instance param is absent/blank/unrecognized: "auto", meaning "no size
 # declared here" -- the size a run uses comes from the model catalogue (or guardian_settings.model_tier for a
 # model that is not in it). The value is informational; it never changes which size a run uses. It is its own
@@ -783,6 +785,13 @@ def guardian_llm_chat_command(client: CohereNorthClient, args: Dict[str, Any]) -
         "parallel_tool_calls": parallel_tool_calls,
     }
 
+    requested_model = (args.get("model") or "").strip()
+    if requested_model and requested_model != client.model_label:
+        raise DemistoException(
+            f"{MODEL_SELECTION_UNSUPPORTED_PREFIX} this provider runs a fixed Cohere North agent; choose the model in "
+            f"Cohere, not per call (asked for '{requested_model}', this instance reports '{client.model_label}')."
+        )
+
     result = client.chat_completion(request, call_timeout=call_timeout)
 
     if result.get("content_filter"):
@@ -844,7 +853,10 @@ def main() -> None:
         else:
             raise NotImplementedError(f"Command {command} is not implemented.")
     except Exception as e:
-        return_error(f"Failed to execute {command} command.\nError:\n{str(e)}")
+        if str(e).startswith(MODEL_ERROR_PREFIXES):
+            return_error(str(e))  # the caller matches on the start of the text
+        else:
+            return_error(f"Failed to execute {command} command.\nError:\n{str(e)}")
 
 
 if __name__ in ("__main__", "__builtin__", "builtins"):  # pragma: no cover

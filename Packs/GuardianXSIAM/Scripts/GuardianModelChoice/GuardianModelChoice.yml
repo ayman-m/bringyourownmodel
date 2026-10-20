@@ -1,0 +1,90 @@
+args:
+- name: stage
+  description: >-
+    Which model to choose: "triage" (the short triage session) or "investigation" (the investigation that follows it,
+    chosen by the triage result).
+  required: true
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - triage
+  - investigation
+- name: investigate_max_ticks
+  description: >-
+    The playbook input of the same name. When it is a whole number above zero it is the turn limit of the
+    investigation and wins over the level's max_ticks in the routing; the result carries it as max_ticks, so the branch
+    tasks read one value. Ignored for the triage stage.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Operator-owned: chooses the model of the triage session or of the investigation from the control-plane List
+  `guardian_model_routing`, so the operator can send the first look and the longer investigation to different models. With
+  the List as shipped (every model empty) the choice is the provider instance's configured model and nothing changes. The
+  investigation level starts at the triage result's complexity rating (medium without one), is raised to at least medium by
+  an escalate or a high or critical severity, and by one more level when the triage confidence is under 60; the level's
+  model and max_ticks come from the List. A Cohere North provider cannot choose a model per call, so the default is kept;
+  a model that is not in the model catalogue is kept with a warning that its limits will be guessed. It writes the result
+  to `Guardian.ModelChoice` (one entry per stage) and to `Guardian.ModelChoiceCurrent` (the latest stage, flat), which the
+  playbook reads. It changes nothing on the issue. It is on the denylist: the model can never call it.
+commonfields:
+  id: GuardianModelChoice
+  version: -1
+enabled: true
+name: GuardianModelChoice
+outputs:
+- contextPath: Guardian.ModelChoice.stage
+  description: "triage or investigation. One entry per stage, merged by this key."
+  type: String
+- contextPath: Guardian.ModelChoice.level
+  description: "The investigation level (low, medium or high) the triage result gave; empty for the triage stage."
+  type: String
+- contextPath: Guardian.ModelChoice.model
+  description: "The model chosen, in the provider's own naming. Empty means the provider instance's configured model."
+  type: String
+- contextPath: Guardian.ModelChoice.max_ticks
+  description: "The turn limit for the investigation: the playbook's investigate_max_ticks when set, else the level's max_ticks from the routing. Empty means the model size's own limit."
+  type: Number
+- contextPath: Guardian.ModelChoice.reason
+  description: "How the choice was made, in one line."
+  type: String
+- contextPath: Guardian.ModelChoice.warnings
+  description: "Problems that did not stop the choice: a model missing from the catalogue, an unreadable List or value."
+  type: Unknown
+- contextPath: Guardian.ModelChoice.provider
+  description: "The brand of the enabled provider when a model was chosen (empty when none was, or it could not be looked up)."
+  type: String
+- contextPath: Guardian.ModelChoiceCurrent.stage
+  description: "The stage of the latest choice. The playbook's tasks read the fields of this flat object."
+  type: String
+- contextPath: Guardian.ModelChoiceCurrent.level
+  description: "The level of the latest choice."
+  type: String
+- contextPath: Guardian.ModelChoiceCurrent.model
+  description: "The model of the latest choice (empty: the configured model)."
+  type: String
+- contextPath: Guardian.ModelChoiceCurrent.max_ticks
+  description: "The turn limit of the latest choice (empty: the model size's own limit)."
+  type: Number
+- contextPath: Guardian.ModelChoiceCurrent.reason
+  description: "How the latest choice was made."
+  type: String
+- contextPath: Guardian.ModelChoiceCurrent.warnings
+  description: "The warnings of the latest choice."
+  type: Unknown
+- contextPath: Guardian.ModelChoiceCurrent.provider
+  description: "The provider brand of the latest choice."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

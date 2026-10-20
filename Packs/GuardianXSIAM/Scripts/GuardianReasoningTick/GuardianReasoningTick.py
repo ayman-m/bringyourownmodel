@@ -100,6 +100,15 @@ triage block of the `cortex_triage` skill instead of a verdict or posture block,
 - the `max_ticks` arg lowers the turn limit (it never raises it).
 Verdict and posture runs are unchanged.
 
+MODEL ROUTING
+--------------------------------------------------------------------------
+When the run's model snapshot (`Guardian.ModelProfile`, written by GuardianModelProfileCheck) says the model was
+chosen explicitly (`routed` true, `model` set), every `guardian-llm-chat` call of the run carries `model=<that model>`.
+Without a routed snapshot no call carries it, exactly as before. A provider that cannot serve the model answers with an
+error that starts with `MODEL_NOT_AVAILABLE:` or `MODEL_SELECTION_UNSUPPORTED:`: the same call is repeated at once
+without `model`, `Guardian.Loop.model_route_dropped` records the error so that no later tick asks again, and the
+narration says so. Cost is priced by the model the completion reports, so a routed call is charged at its own rate.
+
 LOOP DEFENSES
 --------------------------------------------------------------------------
 - **Per-tick idempotent-read memo**: if one turn's `tool_calls` repeat an
@@ -2679,6 +2688,9 @@ GUARDIAN_TRIAGE_NEXT_STEP_MAX_CHARS = 300
 GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS = 800
 GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS = 200
 GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS = 5
+#: The optional `complexity` of the investigation the issue needs. GuardianModelChoice picks the investigation model by
+#: it. Any other value is read as absent.
+GUARDIAN_TRIAGE_COMPLEXITIES = ("low", "medium", "high")
 
 GUARDIAN_TRIAGE_DEFAULT_TYPES = [
     {"name": "identity_threat",
@@ -2892,6 +2904,13 @@ def guardian_triage_clean_analysis(raw):
     return guardian_scrub_secrets(" ".join(raw.split()), keep_identifiers=True)[:GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS].strip()
 
 
+def guardian_triage_clean_complexity(raw):
+    """The optional ``complexity``: ``low``, ``medium`` or ``high`` (case and surrounding spaces forgiven), else an empty
+    string."""
+    value = raw.strip().lower() if isinstance(raw, str) else ""
+    return value if value in GUARDIAN_TRIAGE_COMPLEXITIES else ""
+
+
 def guardian_triage_clean_recommendations(raw):
     """The optional ``recommendations`` list: at most GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS non-empty strings,
     each whitespace-collapsed, scrubbed of secrets and cut to GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS. A single
@@ -2919,7 +2938,8 @@ def guardian_triage_validate(raw, table=None):
     present and not a boolean). ``summary`` must be a non-vague string of at least
     GUARDIAN_TRIAGE_SUMMARY_MIN_CHARS characters. ``next_step`` is optional. ``analysis`` and ``recommendations`` are
     optional too (see :func:`guardian_triage_clean_analysis` and :func:`guardian_triage_clean_recommendations`): a
-    block without them is just as valid, and a malformed one is read as absent. ``key_entities`` is cleaned (see
+    block without them is just as valid, and a malformed one is read as absent. So is ``complexity`` (``low``, ``medium``
+    or ``high``; anything else is read as absent and the block stays valid). ``key_entities`` is cleaned (see
     :func:`guardian_triage_clean_entities`). Unknown keys are dropped.
 
     Whether the type fits the issue's domain is NOT decided here: that is GuardianTriageResult's call, not the model's
@@ -2969,6 +2989,7 @@ def guardian_triage_validate(raw, table=None):
         "next_step": next_step,
         "analysis": guardian_triage_clean_analysis(raw.get("analysis")),
         "recommendations": guardian_triage_clean_recommendations(raw.get("recommendations")),
+        "complexity": guardian_triage_clean_complexity(raw.get("complexity")),
     }
 
 
@@ -4752,8 +4773,47 @@ def guardian_tick_call_tool_catalog_builder(model_params=None):
     return guardian_envelope(True, data=catalog)
 
 
+#: The start of the error text of a provider that cannot serve the model a call asked for (`model` argument of
+#: `guardian-llm-chat`): the model is not deployed there, or the provider runs one fixed model.
+GUARDIAN_TICK_MODEL_ERROR_TAGS = ("MODEL_NOT_AVAILABLE:", "MODEL_SELECTION_UNSUPPORTED:")
+
+#: The model this run's `guardian-llm-chat` calls are routed to, for the tick that is executing. It is set only
+#: when the run's model snapshot says the model was chosen explicitly (`routed`), never for the instance's own model.
+#: `dropped` holds the provider's error text once a call has been refused: the run then uses the instance default.
+_GUARDIAN_TICK_ROUTE = {"model": None, "dropped": ""}
+
+
+def guardian_tick_arm_route(loop_state):
+    """Set the model routing for this tick from the run's model snapshot (`loop_state["model_params"]`): the model is
+    passed to `guardian-llm-chat` only when the snapshot says it was routed, and not after a call was refused."""
+    params = loop_state.get("model_params") if isinstance(loop_state, dict) else None
+    model = params.get("model") if isinstance(params, dict) and params.get("routed") is True else None
+    if isinstance(model, str) and model.strip() and not loop_state.get("model_route_dropped"):
+        _GUARDIAN_TICK_ROUTE["model"] = model.strip()
+    else:
+        _GUARDIAN_TICK_ROUTE["model"] = None
+    _GUARDIAN_TICK_ROUTE["dropped"] = ""
+
+
+def guardian_tick_note_route_drop(loop_state, prefix_lines):
+    """After a model call: when the provider refused the routed model, remember it for the rest of the run (so no later
+    tick asks again) and say so in the narration. Returns whether it was newly recorded."""
+    reason = _GUARDIAN_TICK_ROUTE.get("dropped")
+    if not reason or loop_state.get("model_route_dropped"):
+        return False
+    loop_state["model_route_dropped"] = reason
+    prefix_lines.append(
+        "Model routing: the provider could not serve the routed model `{}` ({}). The rest of this run uses the provider's "
+        "configured model.".format((loop_state.get("model_params") or {}).get("model"), reason))
+    return True
+
+
 def guardian_tick_call_llm(messages, tools, tool_choice, parallel_tool_calls=None, response_format=None):
     """Call `guardian-llm-chat` exactly once and normalize its outcome.
+
+    When the run is routed to a model (see :func:`guardian_tick_arm_route`) the call carries it as `model`. A provider
+    that cannot serve it answers with an error that starts with `MODEL_NOT_AVAILABLE:` or `MODEL_SELECTION_UNSUPPORTED:`;
+    the same call is then repeated at once without `model`, and no later call of the run sends it.
 
     `response_format` (optional) is passed straight through -- used only by the verdict-extraction
     fallback (:func:`guardian_tick_extract_verdict`), never by an ordinary reasoning turn.
@@ -4834,7 +4894,15 @@ def guardian_tick_call_llm(messages, tools, tool_choice, parallel_tool_calls=Non
     if response_format is not None:
         call_args["response_format"] = guardian_arg_encode(response_format)
 
+    routed_model = _GUARDIAN_TICK_ROUTE.get("model")
+    if routed_model:
+        call_args["model"] = routed_model
     result = guardian_execute("guardian-llm-chat", call_args)
+    if routed_model and not result["ok"] and any(tag in str(result["error"]) for tag in GUARDIAN_TICK_MODEL_ERROR_TAGS):
+        _GUARDIAN_TICK_ROUTE["model"] = None
+        _GUARDIAN_TICK_ROUTE["dropped"] = guardian_scrub_secrets(str(result["error"]))[:200]
+        call_args.pop("model", None)
+        result = guardian_execute("guardian-llm-chat", call_args)
     if not result["ok"]:
         return {"kind": "error", "error": result["error"]}
 
@@ -7623,7 +7691,9 @@ def guardian_tick_triage_schema_text(table):
         '"likely_benign": true or false, "escalate": true or false, "summary": "one full sentence", '
         '"key_entities": {{"identities": [], "ips": [], "resources": [], "assets": [], "hosts": [], "hashes": []}}, '
         '"next_step": "one line", "analysis": "optional: 2-4 sentences on what you saw and why you rated it so", '
-        '"recommendations": ["optional: up to 5 short next actions"]}}. Use only those values; use "other" when nothing fits.'
+        '"recommendations": ["optional: up to 5 short next actions"], '
+        '"complexity": "optional: low, medium or high, how much investigation the issue needs"}}. '
+        'Use only those values; use "other" when nothing fits.'
     ).format(severities=", ".join(table["severities"]), types=", ".join(row["name"] for row in table["types"]))
 
 
@@ -7945,6 +8015,7 @@ def guardian_reasoning_tick_run(args):
     # The `max_ticks` arg (a triage run's short session) can only lower the limit the model's size / settings gave.
     guardian_tick_apply_turn_cap(settings, args)
     triage_run = guardian_tick_is_triage(loop_state)
+    guardian_tick_arm_route(loop_state)
 
     def _finish(narration, **kwargs):
         if prefix_lines:
@@ -8039,6 +8110,7 @@ def guardian_reasoning_tick_run(args):
         # make the request fit the budget first, exactly as Step 6.5 does for an ordinary turn.
         messages = guardian_tick_compact_for_persist(messages, settings, loop_state)
         final = guardian_tick_call_llm(messages, None, "none", settings["parallel_tool_calls"])
+        guardian_tick_note_route_drop(loop_state, prefix_lines)
         # tick_count=tick + 1: this tick is the LAST one this run will ever
         # execute (terminal branch, no reschedule) -- "ticks completed" once
         # it finishes is tick + 1 (tick is the current, 0-based index).
@@ -8416,6 +8488,7 @@ def guardian_reasoning_tick_run(args):
         messages, catalog, settings["parallel_tool_calls"], settings.get("tier_profile"),
         settings.get("content_filter_retries", 0),
     )
+    guardian_tick_note_route_drop(loop_state, prefix_lines)
     filter_note = ""
     if turn.get("content_filter_retries"):
         filter_note = " [the provider's content filter blocked the request; retried {} time(s) with a reworded request]".format(

@@ -36,6 +36,7 @@ Settings > Configurations > Object Setup > **Lists** > **Add a List**. For each 
 | `guardian_issue_routes` | JSON | `Lists/guardian_issue_routes.json` | Which skill and evidence each kind of issue gets |
 | `guardian_xql_templates` | JSON | `Lists/guardian_xql_templates.json` | Ready-made XQL queries for the common questions |
 | `guardian_triage_types` | JSON | `Lists/guardian_triage_types.json` | The severities and investigation types a triage run may name |
+| `guardian_model_routing` | JSON | `Lists/guardian_model_routing.json` | Which model the triage session and each investigation level uses; every model is empty as shipped (the provider instance's own model) |
 | `guardian_skill_cortex_issue_reference` | Markdown | `Lists/guardian_skill_cortex_issue_reference.md` | Skill: issues, cases and where their data lives |
 | `guardian_skill_cortex_xql` | Markdown | `Lists/guardian_skill_cortex_xql.md` | Skill: write XQL safely and cheaply (templates, fields, cost) |
 | `guardian_skill_cortex_case_investigation` | Markdown | `Lists/guardian_skill_cortex_case_investigation.md` | Skill: investigate an issue end to end |
@@ -58,8 +59,8 @@ A list that shows a wrapper like that was loaded from a pack file: delete it and
 | 2 | Indicator fields | `IndicatorFields/` | nothing | Settings > Configurations > Object Setup > Indicators > **Fields** > New Field. No import documented | `POST /incidentfields/import` |
 | 3 | Lists (what each one does: [`../CONTENT_REFERENCE.md`](../CONTENT_REFERENCE.md#1-lists)) | `Lists/` | nothing | Settings > Configurations > Object Setup > **Lists** > **Add a List**. No import documented | `POST /lists/save` |
 | 4 | Integrations | `Integrations/` | nothing | No console import is documented | `POST /settings/integration-conf/upload` |
-| 5 | Automations | `Scripts/` | nothing (no order among the 78) | No console import is documented (an object created "by importing a file" counts as a custom object) | `POST /automation/import` |
-| 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 22 of the pack's automations, plus commands of the Core, XQL and Attack Surface Management integrations). **Upload the ten `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIssue`**, which calls them | No console import is documented. Their YAML carries `adopted: true`, so a playbook saved through the API is already adopted | `POST /playbook/save/yaml` |
+| 5 | Automations | `Scripts/` | nothing (no order among the 79) | No console import is documented (an object created "by importing a file" counts as a custom object) | `POST /automation/import` |
+| 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 23 of the pack's automations, plus commands of the Core, XQL and Attack Surface Management integrations). **Upload the ten `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIssue`**, which calls them | No console import is documented. Their YAML carries `adopted: true`, so a playbook saved through the API is already adopted | `POST /playbook/save/yaml` |
 | 7 | Layouts | `Layouts/` | the fields | Settings > Configurations > Object Setup > Issues > **Layouts** > **Import** (JSON): documented | `POST /layouts/import` |
 | 8 | Issue types | `IncidentTypes/` | the layout and the playbooks | No page for importing issue types is documented | `POST /incidenttypes/import` |
 | 9 | Indicator type | `IndicatorTypes/` | the indicator layout (step 7) | Settings > Configurations > Object Setup > Indicators > **Types** > New. No import documented | `POST /reputation/import` |

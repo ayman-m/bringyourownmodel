@@ -39,6 +39,8 @@ Investigation: <one line>
 - Each line is one line of plain text, scrubbed of secrets and cut to 700 characters; the section is at most 1500.
 - The current description is read from the platform (`core-get-issues`), with the issue's own `details` or `description`
   as the fallback. If neither shows it, the description is not written and the reason says why.
+- The investigation note and line also name the model the investigation ran on (from `Guardian.ModelChoiceCurrent`: the model or
+  `default`, the level and, in the note, the reason) when the model-routing task ran.
 - `GuardianIssueEvidence`, the issue pin of the reasoning loop and the tool bridge (every tool result) drop the section,
   so the model never reads Guardian's own earlier conclusion back as evidence.
 

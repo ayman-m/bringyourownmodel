@@ -169,6 +169,11 @@ script:
       predefined:
       - 'true'
       - 'false'
+    - name: model
+      required: false
+      description: >-
+        Optional. Run this call on another model than the instance's configured one. Empty (the default) uses the
+        configured model, exactly as before. The model to run: the Gemini model id (Vertex), the deployment name (Azure) or the model name (an OpenAI-compatible server). An unknown model gives an error that starts with `MODEL_NOT_AVAILABLE:`.
     - name: timeout
       required: false
       description: Per-call time limit in seconds. A hard bound for this one call (one attempt, no retries), never longer than the instance's request timeout. Leave empty for the default.

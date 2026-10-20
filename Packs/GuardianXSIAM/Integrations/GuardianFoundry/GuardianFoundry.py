@@ -26,6 +26,7 @@ All HTTP goes through ``BaseClient._http_request`` (proxy / verify / retry / bac
 """
 
 import base64
+import copy
 import hashlib
 import json
 import re
@@ -136,6 +137,30 @@ def _error_hint(status_code: Optional[int]) -> Optional[str]:
             "shown under Models + endpoints in the Foundry portal, not necessarily the model name."
         )
     return None
+
+
+#: The start of the error text for a model the caller asked for (the `model` argument) that the resource does not have.
+MODEL_NOT_AVAILABLE_PREFIX = "MODEL_NOT_AVAILABLE:"
+MODEL_ERROR_PREFIXES = (MODEL_NOT_AVAILABLE_PREFIX, "MODEL_SELECTION_UNSUPPORTED:")
+
+_MODEL_MISSING_RE = re.compile(
+    r"DeploymentNotFound|model_not_found|unknown[ _]model|invalid[ _]model"
+    r"|(deployment|model)\b[^.]{0,80}(does not exist|not found|not exist|not supported|not available|not deployed)",
+    re.IGNORECASE,
+)
+
+
+def _model_missing(exc: "DemistoException") -> bool:
+    """Whether Foundry answered that the deployment or model it was asked for does not exist: HTTP 404 (for example
+    ``DeploymentNotFound``), or HTTP 400 whose error body names the model or deployment."""
+    status_code = _status_code_of(exc)
+    if status_code == 404:
+        return True
+    if status_code != 400:
+        return False
+    body = _extract_error_body(exc)
+    text = json.dumps(body) if body is not None else str(getattr(exc, "message", "") or "")
+    return bool(_MODEL_MISSING_RE.search(text))
 
 
 _AADSTS_RE = re.compile(r"AADSTS(\d+)")
@@ -464,6 +489,16 @@ class FoundryAdapter:
         self.max_output_tokens = max_output_tokens
         self.api_version = api_version or None
 
+    def with_model(self, model: Optional[str]) -> "FoundryAdapter":
+        """This adapter for another deployment name (the request's ``model``). The model family decides from THAT name
+        when it is "auto"; everything else (endpoint, credentials, omitted parameters) is unchanged."""
+        model = (model or "").strip()
+        if not model or model == self.model:
+            return self
+        clone = copy.copy(self)
+        clone.model = model
+        return clone
+
     @property
     def is_reasoning(self) -> bool:
         if self.model_family == FAMILY_REASONING:
@@ -697,14 +732,20 @@ class Client(BaseClient):
         demisto.setIntegrationContext({TOKEN_CACHE_KEY: {"access_token": token, "expires_at": expires_at, "identity": identity}})
         return token
 
-    def chat_completion(self, request: Dict[str, Any], call_timeout: Optional[float] = None) -> Dict[str, Any]:
+    def chat_completion(
+        self, request: Dict[str, Any], call_timeout: Optional[float] = None, model: Optional[str] = None
+    ) -> Dict[str, Any]:
         """One chat-completion round trip, returned as the canonical Guardian.LLM.Completion dict.
+
+        ``model`` (the contract's optional argument) sends this call to another deployment than the configured one; a
+        deployment the resource does not have is an error that starts with ``MODEL_NOT_AVAILABLE:``.
 
         ``call_timeout`` (the contract's per-call ``timeout``) makes this a hard wall-clock bound: one attempt,
         no transparent retries. 429s are otherwise retried with backoff; a content-filter rejection is returned
         as a structured result, not raised.
         """
-        adapter = self.adapter
+        adapter = self.adapter.with_model(model)
+        routed = adapter is not self.adapter
         token = self._entra_token(call_timeout) if adapter.auth_type in ENTRA_AUTH_TYPES else None
         body = adapter.build_request_body(request)
         try:
@@ -725,6 +766,12 @@ class Client(BaseClient):
             if content_filter_result is not None:
                 return content_filter_result
             status_code = _status_code_of(exc)
+            if routed and _model_missing(exc):
+                raise DemistoException(
+                    f"{MODEL_NOT_AVAILABLE_PREFIX} model '{adapter.model}' is not deployed in this Foundry resource; "
+                    f"check the deployment name in the Foundry portal. Original error: {exc.message}",
+                    exception=exc,
+                )
             if status_code == 429:
                 raise DemistoException(
                     "Guardian LLM provider rate-limited the request (HTTP 429) and the configured retries were "
@@ -864,7 +911,7 @@ def guardian_llm_chat_command(client: Client, args: Dict[str, Any]) -> CommandRe
         "parallel_tool_calls": parallel_tool_calls,
     }
 
-    result = client.chat_completion(request, call_timeout=call_timeout)
+    result = client.chat_completion(request, call_timeout=call_timeout, model=(args.get("model") or "").strip() or None)
 
     if result.get("content_filter"):
         detail = (result.get("content_filter_detail") or {}).get("message")
@@ -920,7 +967,10 @@ def main() -> None:
         else:
             raise NotImplementedError(f"Command {command} is not implemented.")
     except Exception as e:
-        return_error(f"Failed to execute {command} command.\nError:\n{str(e)}")
+        if str(e).startswith(MODEL_ERROR_PREFIXES):
+            return_error(str(e))  # the caller matches on the start of the text
+        else:
+            return_error(f"Failed to execute {command} command.\nError:\n{str(e)}")
 
 
 if __name__ in ("__main__", "__builtin__", "builtins"):  # pragma: no cover

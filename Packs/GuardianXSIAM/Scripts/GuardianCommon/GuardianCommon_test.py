@@ -1863,7 +1863,7 @@ def test_triage_valid_block_parses_to_a_normalized_dict():
         "escalate": True, "summary": "A production bucket allows public reads and holds customer exports.",
         "key_entities": {"identities": ["svc-deploy"], "ips": ["203.0.113.9"], "resources": ["bucket-1"],
                          "assets": ["asset-1"], "hosts": ["web-01"], "hashes": []},
-        "next_step": "Ask the owner to close public access.", "analysis": "", "recommendations": []}
+        "next_step": "Ask the owner to close public access.", "analysis": "", "recommendations": [], "complexity": ""}
 
 
 @pytest.mark.parametrize("fence", ["json", "", "JSON"])
@@ -2187,3 +2187,16 @@ def test_deep_strip_removes_the_section_from_json_text_with_escaped_line_breaks(
     stripped = gc.guardian_strip_issue_section_deep(text)
     assert MARK not in stripped and "Triage" not in stripped and "quoted" not in stripped
     assert json.loads(stripped) == {"description": "Original.", "id": "9"}
+
+
+# --- the optional complexity of a triage block ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("value, expected", [("low", "low"), ("Medium", "medium"), (" HIGH ", "high"), ("", ""), (None, ""), (3, ""),
+                                             ("extreme", ""), (["low"], ""), (True, "")])
+def test_triage_complexity_is_low_medium_or_high_and_anything_else_is_absent(value, expected):
+    parsed = gc.guardian_triage_validate(_block(complexity=value))
+    assert parsed is not None and parsed["complexity"] == expected
+
+
+def test_triage_block_without_complexity_is_valid_with_an_empty_value():
+    assert gc.guardian_triage_validate(_block())["complexity"] == ""

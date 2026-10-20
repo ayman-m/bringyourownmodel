@@ -866,3 +866,85 @@ def test_build_adapter_reads_the_certificate_params(cert_material):
     assert adapter.entra_certificate_thumbprint == "AB:CD"
     assert adapter.entra_tenant_id == "t" and adapter.entra_client_id == "c"
     assert adapter.build_headers("tok")["Authorization"] == "Bearer tok"
+
+
+# --- the optional `model` argument ------------------------------------------------------------------------------------
+
+def test_model_arg_is_sent_as_the_requests_model_and_reported_back(mocker):
+    client, mock_http = _client(mocker, model="gpt-4o", return_value=dict(_success_body(), model="gpt-5-mini-2025"))
+    result = guardian_llm_chat_command(client, {"user_message": "hi", "model": "gpt-5-mini"})
+    assert mock_http.call_args.kwargs["json_data"]["model"] == "gpt-5-mini"
+    assert result.outputs["model"] == "gpt-5-mini-2025"
+    assert client.adapter.model == "gpt-4o"  # the instance itself is not changed
+
+
+def test_an_empty_or_equal_model_arg_is_todays_behaviour(mocker):
+    for args in ({"user_message": "hi"}, {"user_message": "hi", "model": ""}, {"user_message": "hi", "model": "  "},
+                 {"user_message": "hi", "model": "gpt-4o"}):
+        client, mock_http = _client(mocker, model="gpt-4o", return_value=_success_body())
+        guardian_llm_chat_command(client, args)
+        assert mock_http.call_args.kwargs["json_data"]["model"] == "gpt-4o"
+
+
+def test_model_family_auto_decides_from_the_routed_name(mocker):
+    # the configured deployment is a standard model; the routed one is a reasoning model, so its parameters follow
+    client, mock_http = _client(mocker, model="gpt-4o", return_value=_success_body())
+    client.chat_completion({"messages": [{"role": "user", "content": "x"}], "temperature": 0.2, "max_tokens": 50}, model="o3-mini")
+    body = mock_http.call_args.kwargs["json_data"]
+    assert body["model"] == "o3-mini" and "temperature" not in body and body["max_completion_tokens"] == 50 and "max_tokens" not in body
+    client, mock_http = _client(mocker, model="o3-mini", return_value=_success_body())
+    client.chat_completion({"messages": [{"role": "user", "content": "x"}], "temperature": 0.2}, model="gpt-4o")
+    assert mock_http.call_args.kwargs["json_data"]["temperature"] == 0.2
+
+
+@pytest.mark.parametrize("status, body", [
+    (404, {"error": {"code": "DeploymentNotFound", "message": "The API deployment for this resource does not exist."}}),
+    (404, None),
+    (400, {"error": {"code": "unknown_model", "message": "Unknown model: nope"}}),
+    (400, {"error": {"message": "The model `nope` does not exist or you do not have access to it."}}),
+])
+def test_an_unknown_routed_deployment_is_a_model_not_available_error(mocker, status, body):
+    client, _ = _client(mocker, side_effect=_http_error(status, body))
+    with pytest.raises(DemistoException) as err:
+        guardian_llm_chat_command(client, {"user_message": "hi", "model": "nope"})
+    text = str(err.value)
+    assert text.startswith("MODEL_NOT_AVAILABLE: model 'nope' is not deployed in this Foundry resource")
+    assert "check the deployment name in the Foundry portal" in text
+
+
+def test_other_failures_of_a_routed_call_keep_their_usual_messages(mocker):
+    client, _ = _client(mocker, side_effect=_http_error(401, {"error": {"message": "bad key"}}))
+    with pytest.raises(DemistoException) as err:
+        guardian_llm_chat_command(client, {"user_message": "hi", "model": "gpt-5-mini"})
+    assert not str(err.value).startswith("MODEL_") and "API key" in str(err.value)
+    client, _ = _client(mocker, side_effect=_http_error(400, {"error": {"message": "max_tokens is too large"}}))
+    with pytest.raises(DemistoException) as err:
+        guardian_llm_chat_command(client, {"user_message": "hi", "model": "gpt-5-mini"})
+    assert not str(err.value).startswith("MODEL_")
+
+
+def test_a_404_for_the_configured_model_is_not_rewritten(mocker):
+    client, _ = _client(mocker, side_effect=_http_error(404, {"error": {"code": "DeploymentNotFound"}}))
+    with pytest.raises(DemistoException) as err:
+        guardian_llm_chat_command(client, {"user_message": "hi"})
+    assert not str(err.value).startswith("MODEL_") and "deployment name" in str(err.value)
+
+
+def test_main_reports_a_model_error_with_its_prefix_first(mocker, monkeypatch):
+    errors = []
+    monkeypatch.setattr(gf, "return_error", errors.append)
+    monkeypatch.setattr(gf.demisto, "params", lambda: {"endpoint": RESOURCE, "model": "gpt-4o", "api_key": "k"})
+    monkeypatch.setattr(gf.demisto, "args", lambda: {"user_message": "hi", "model": "nope"})
+    monkeypatch.setattr(gf.demisto, "command", lambda: "guardian-llm-chat")
+    monkeypatch.setattr(gf.Client, "chat_completion", lambda self, *a, **k: (_ for _ in ()).throw(
+        DemistoException("MODEL_NOT_AVAILABLE: model 'nope' is not deployed in this Foundry resource; check it.")))
+    gf.main()
+    assert errors and errors[0].startswith("MODEL_NOT_AVAILABLE:")
+
+
+def test_the_yml_declares_the_model_argument():
+    import pathlib
+    import yaml
+    doc = yaml.safe_load((pathlib.Path(__file__).parent / "GuardianFoundry.yml").read_text())
+    args = {a["name"]: a for a in doc["script"]["commands"][0]["arguments"]}
+    assert args["model"]["required"] is False and "MODEL_NOT_AVAILABLE:" in args["model"]["description"]

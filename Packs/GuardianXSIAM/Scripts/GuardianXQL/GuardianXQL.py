@@ -2378,6 +2378,9 @@ GUARDIAN_TRIAGE_NEXT_STEP_MAX_CHARS = 300
 GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS = 800
 GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS = 200
 GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS = 5
+#: The optional `complexity` of the investigation the issue needs. GuardianModelChoice picks the investigation model by
+#: it. Any other value is read as absent.
+GUARDIAN_TRIAGE_COMPLEXITIES = ("low", "medium", "high")
 
 GUARDIAN_TRIAGE_DEFAULT_TYPES = [
     {"name": "identity_threat",
@@ -2591,6 +2594,13 @@ def guardian_triage_clean_analysis(raw):
     return guardian_scrub_secrets(" ".join(raw.split()), keep_identifiers=True)[:GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS].strip()
 
 
+def guardian_triage_clean_complexity(raw):
+    """The optional ``complexity``: ``low``, ``medium`` or ``high`` (case and surrounding spaces forgiven), else an empty
+    string."""
+    value = raw.strip().lower() if isinstance(raw, str) else ""
+    return value if value in GUARDIAN_TRIAGE_COMPLEXITIES else ""
+
+
 def guardian_triage_clean_recommendations(raw):
     """The optional ``recommendations`` list: at most GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS non-empty strings,
     each whitespace-collapsed, scrubbed of secrets and cut to GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS. A single
@@ -2618,7 +2628,8 @@ def guardian_triage_validate(raw, table=None):
     present and not a boolean). ``summary`` must be a non-vague string of at least
     GUARDIAN_TRIAGE_SUMMARY_MIN_CHARS characters. ``next_step`` is optional. ``analysis`` and ``recommendations`` are
     optional too (see :func:`guardian_triage_clean_analysis` and :func:`guardian_triage_clean_recommendations`): a
-    block without them is just as valid, and a malformed one is read as absent. ``key_entities`` is cleaned (see
+    block without them is just as valid, and a malformed one is read as absent. So is ``complexity`` (``low``, ``medium``
+    or ``high``; anything else is read as absent and the block stays valid). ``key_entities`` is cleaned (see
     :func:`guardian_triage_clean_entities`). Unknown keys are dropped.
 
     Whether the type fits the issue's domain is NOT decided here: that is GuardianTriageResult's call, not the model's
@@ -2668,6 +2679,7 @@ def guardian_triage_validate(raw, table=None):
         "next_step": next_step,
         "analysis": guardian_triage_clean_analysis(raw.get("analysis")),
         "recommendations": guardian_triage_clean_recommendations(raw.get("recommendations")),
+        "complexity": guardian_triage_clean_complexity(raw.get("complexity")),
     }
 
 

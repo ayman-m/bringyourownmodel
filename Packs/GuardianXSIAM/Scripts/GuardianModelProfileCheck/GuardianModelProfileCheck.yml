@@ -1,4 +1,12 @@
-args: []
+args:
+- name: model
+  required: false
+  isArray: false
+  description: >-
+    Optional. Resolve the profile for THIS model instead of the provider instance's configured one (the model the
+    routing chose: `${Guardian.ModelChoiceCurrent.model}`). The size and the limits come from the model catalogue, the
+    snapshot records the model and that it was routed, and the profile List is not written. Empty, or the configured
+    model itself, is the check it has always been.
 comment: >-
   Playbook task "Resolve model profile". Works out the model size, input budget and tool-list budget this run
   will use, in this order of precedence: operator override, `guardian_model_profile`, `guardian_settings`,
@@ -27,6 +35,12 @@ outputs:
 - contextPath: Guardian.Preflight.ModelProfile.tier
   description: The model size this run uses (small, medium or large).
   type: String
+- contextPath: Guardian.Preflight.ModelProfile.model
+  description: The model the numbers were resolved for (the routed model, else the instance's configured one; empty when unknown).
+  type: String
+- contextPath: Guardian.Preflight.ModelProfile.routed
+  description: True when the model was chosen explicitly through the model argument, so the model session passes it to every chat call.
+  type: Boolean
 - contextPath: Guardian.Preflight.ModelProfile.tier_source
   description: Where the model size comes from (override, catalogue (<model id>), guardian_settings or default).
   type: String

@@ -7604,7 +7604,7 @@ def test_the_triage_pin_overrides_the_shared_prompts_block_note_and_memory_steps
     for row in tick.guardian_triage_default_table()["types"]:
         assert row["name"] in pinned
     for key in ("severity", "investigation_type", "confidence", "likely_benign", "escalate", "summary", "key_entities", "next_step",
-                "analysis", "recommendations"):
+                "analysis", "recommendations", "complexity"):
         assert key in pinned
     assert "critical" in pinned and pinned.index("YOU ARE ALREADY WORKING") == 0  # still the protected pin message
 
@@ -7990,3 +7990,98 @@ def test_a_triage_block_with_analysis_and_recommendations_is_stored_whole_and_a_
                                 route={"family": "misconfiguration", "assessment_mode": "posture"})
     tick.guardian_reasoning_tick_run(dict(TRIAGE_ARGS))
     assert ctx["Guardian"]["Loop"]["triage_block"]["analysis"] == "" and ctx["Guardian"]["Loop"]["status"] == "done"
+
+
+# --- model routing: the `model` argument of guardian-llm-chat -----------------------------------------------------------
+
+def _snapshot(**extra):
+    snap = {"tier": "medium", "tier_source": "guardian_settings", "max_input_tokens": 5000, "max_input_tokens_source": "measured",
+            "max_tool_def_tokens": 3000, "max_tool_def_tokens_source": "tier", "profile": None, "max_ticks": 40, "max_ticks_source": "tier",
+            "limits": tick.guardian_derive_limits(5000)}
+    snap.update(extra)
+    return snap
+
+
+def _routing_run(monkeypatch, snapshot, handler, ctx_extra=None, args=None, tick_no=0):
+    monkeypatch.setattr(tick, "guardian_tick_check_model_tier_consistency", lambda t, *a, **k: None)
+    ledger_calls = []
+
+    def ledger(call_args):
+        ledger_calls.append(call_args)
+        return _default_cost_ledger_handler(call_args)
+
+    ctx = _install(monkeypatch, settings=_MEDIUM_SETTINGS, command_handlers={
+        "guardian-llm-chat": handler, "GuardianPromptBuilder": _prompt_builder_handler(),
+        "GuardianToolCatalogBuilder": _catalog_builder_handler(_PREBUILT_TOOLS), "GuardianCostLedger": ledger})
+    guardian = {"SystemPrompt": "P", "ToolCatalog": _PREBUILT_TOOLS, "ModelProfile": snapshot}
+    guardian.update(ctx_extra or {})
+    ctx["Guardian"] = guardian
+    outcome = tick.guardian_reasoning_tick_run(args or {"prompt": "Investigate", "use_prebuilt": "true"})
+    return outcome, ctx, ledger_calls
+
+
+def test_a_routed_snapshot_makes_every_chat_call_carry_the_model(monkeypatch):
+    llm = _llm_handler_sequence([dict(_CONCLUSION, model="gpt-5-mini-2025")])
+    outcome, ctx, ledger = _routing_run(monkeypatch, _snapshot(model="gpt-5-mini", routed=True), llm)
+    assert [call.get("model") for call in llm.calls] == ["gpt-5-mini"]
+    assert ctx["Guardian"]["Loop"]["model_params"]["model"] == "gpt-5-mini"
+    assert ledger[0]["model"] == "gpt-5-mini-2025"  # the cost is priced by the model that served the call
+
+
+def test_an_unrouted_or_old_snapshot_never_sends_a_model(monkeypatch):
+    for extra in ({}, {"model": "gpt-4o", "routed": False}, {"model": "gpt-4o"}, {"model": "", "routed": True}):
+        llm = _llm_handler_sequence([_CONCLUSION])
+        _routing_run(monkeypatch, _snapshot(**extra), llm)
+        assert "model" not in llm.calls[0], extra
+
+
+def test_a_run_started_by_hand_without_the_snapshot_never_sends_a_model(monkeypatch):
+    llm = _llm_handler_sequence([_CONCLUSION])
+    _routing_run(monkeypatch, _snapshot(model="gpt-5-mini", routed=True), llm, args={"prompt": "Investigate", "use_prebuilt": "false"})
+    assert "model" not in llm.calls[0]
+
+
+class _RefusingProvider:
+    """guardian-llm-chat that refuses any call carrying `model` with the given error, and answers the others."""
+
+    def __init__(self, tag, completions):
+        self.tag, self.completions, self.calls = tag, completions, []
+
+    def __call__(self, args):
+        self.calls.append(dict(args))
+        if args.get("model"):
+            return [{"Type": 4, "Contents": "{} model '{}' is not deployed in this Foundry resource.".format(self.tag, args["model"])}]
+        index = len([c for c in self.calls if not c.get("model")]) - 1
+        return [{"Type": 1, "Contents": self.completions[min(index, len(self.completions) - 1)]}]
+
+
+@pytest.mark.parametrize("tag", ["MODEL_NOT_AVAILABLE:", "MODEL_SELECTION_UNSUPPORTED:"])
+def test_a_refused_model_falls_back_once_to_the_instance_default_and_says_so(monkeypatch, tag):
+    llm = _RefusingProvider(tag, [_CONCLUSION])
+    outcome, ctx, _ledger = _routing_run(monkeypatch, _snapshot(model="gpt-5-mini", routed=True), llm)
+    assert [c.get("model") for c in llm.calls] == ["gpt-5-mini", None]  # the same call is repeated without the model
+    assert "Model routing" in outcome["narration"] and "gpt-5-mini" in outcome["narration"] and "configured model" in outcome["narration"]
+    assert ctx["Guardian"]["Loop"]["model_route_dropped"].startswith(tag)
+    assert ctx["Guardian"]["Loop"]["status"] == "done"  # the run carries on and concludes
+
+
+def test_after_a_fallback_no_later_tick_asks_for_the_model_again(monkeypatch):
+    loop = _running_loop(model_params=_snapshot(model="gpt-5-mini", routed=True), model_route_dropped="MODEL_NOT_AVAILABLE: x")
+    llm = _RefusingProvider("MODEL_NOT_AVAILABLE:", [_CONCLUSION])
+    _routing_run(monkeypatch, _snapshot(), llm, ctx_extra=loop, args={"prompt": "x"})
+    assert [c.get("model") for c in llm.calls] == [None]
+
+
+def test_a_routed_later_tick_keeps_sending_the_model_until_it_is_refused(monkeypatch):
+    loop = _running_loop(model_params=_snapshot(model="gpt-5-mini", routed=True))
+    llm = _llm_handler_sequence([_CONCLUSION])
+    _routing_run(monkeypatch, _snapshot(), llm, ctx_extra=loop, args={"prompt": "x"})
+    assert llm.calls[0]["model"] == "gpt-5-mini"
+
+
+def test_an_unrelated_chat_failure_is_not_taken_for_a_refused_model(monkeypatch):
+    def failing(args):
+        return [{"Type": 4, "Contents": "HTTP 500 server error"}]
+    calls = []
+    outcome, ctx, _l = _routing_run(monkeypatch, _snapshot(model="gpt-5-mini", routed=True), lambda a: calls.append(a) or failing(a))
+    assert len(calls) == 1 and "model_route_dropped" not in ctx["Guardian"]["Loop"]

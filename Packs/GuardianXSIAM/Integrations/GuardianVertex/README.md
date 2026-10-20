@@ -43,6 +43,7 @@ Provider-independent chat completion. Sends OpenAI-Chat-Completions-shaped messa
 | temperature | Sampling temperature (provider-dependent range, typically 0-2). | Optional | 
 | reasoning_effort | Reasoning effort hint for reasoning-capable models: low \| medium \| high. Possible values are: low, medium, high. | Optional | 
 | parallel_tool_calls | Whether the model may return multiple tool calls in one response (true/false). Possible values are: true, false. | Optional | 
+| model | Run this call on another model than the instance's configured one: the Gemini model id (Vertex), the deployment name (Azure) or the model name (an OpenAI-compatible server). Empty uses the configured model. A model the provider does not know gives an error that starts with `MODEL_NOT_AVAILABLE:`. | Optional | 
 
 #### Command Example
 

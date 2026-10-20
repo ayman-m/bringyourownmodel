@@ -1,0 +1,9 @@
+{
+    "id": "guardian_model_routing",
+    "version": -1,
+    "name": "guardian_model_routing",
+    "description": "Model routing: the model of the triage session and of the investigation by complexity level. Seeded empty (every call uses the provider instance's configured model). Read by GuardianModelChoice.",
+    "data": "{\n \"_comment\": \"Model routing: which model each model call of a triage-and-investigate run uses. An empty model means the model the provider instance is configured with, which is what Guardian does when this List holds no model (the shipped state). `triage` is the model of the short triage session. `complexity` holds the model of the investigation for each level: the triage rates the issue low, medium or high, and the level is raised to at least medium when triage says escalate or rates the severity high or critical, and by one more level when its confidence is under 60; with no rating it is medium. A level entry may also carry `max_ticks` (a whole number): it lowers the investigation's turn limit for that level (for example {\\\"model\\\": \\\"\\\", \\\"max_ticks\\\": 15} on `low`). The playbook input investigate_max_ticks, when set, wins over it. Use each provider's own model name (a Foundry deployment name, a Gemini model id). A Cohere North instance runs a fixed agent and cannot route: the choice is ignored there. A model the provider does not know is dropped at run time and the instance's model is used. A model that is not in guardian_model_catalog is kept, with a warning, and its limits are guessed. Control-plane List: pack-seeded, read-only once installed; change it by editing this file and redeploying.\",\n \"triage\": \"\",\n \"complexity\": {\n  \"low\": {\n   \"model\": \"\"\n  },\n  \"medium\": {\n   \"model\": \"\"\n  },\n  \"high\": {\n   \"model\": \"\"\n  }\n }\n}",
+    "type": "json",
+    "fromVersion": "6.10.0"
+}

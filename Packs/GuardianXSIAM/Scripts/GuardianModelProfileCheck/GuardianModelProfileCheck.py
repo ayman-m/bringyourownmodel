@@ -2381,6 +2381,9 @@ GUARDIAN_TRIAGE_NEXT_STEP_MAX_CHARS = 300
 GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS = 800
 GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS = 200
 GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS = 5
+#: The optional `complexity` of the investigation the issue needs. GuardianModelChoice picks the investigation model by
+#: it. Any other value is read as absent.
+GUARDIAN_TRIAGE_COMPLEXITIES = ("low", "medium", "high")
 
 GUARDIAN_TRIAGE_DEFAULT_TYPES = [
     {"name": "identity_threat",
@@ -2594,6 +2597,13 @@ def guardian_triage_clean_analysis(raw):
     return guardian_scrub_secrets(" ".join(raw.split()), keep_identifiers=True)[:GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS].strip()
 
 
+def guardian_triage_clean_complexity(raw):
+    """The optional ``complexity``: ``low``, ``medium`` or ``high`` (case and surrounding spaces forgiven), else an empty
+    string."""
+    value = raw.strip().lower() if isinstance(raw, str) else ""
+    return value if value in GUARDIAN_TRIAGE_COMPLEXITIES else ""
+
+
 def guardian_triage_clean_recommendations(raw):
     """The optional ``recommendations`` list: at most GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS non-empty strings,
     each whitespace-collapsed, scrubbed of secrets and cut to GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS. A single
@@ -2621,7 +2631,8 @@ def guardian_triage_validate(raw, table=None):
     present and not a boolean). ``summary`` must be a non-vague string of at least
     GUARDIAN_TRIAGE_SUMMARY_MIN_CHARS characters. ``next_step`` is optional. ``analysis`` and ``recommendations`` are
     optional too (see :func:`guardian_triage_clean_analysis` and :func:`guardian_triage_clean_recommendations`): a
-    block without them is just as valid, and a malformed one is read as absent. ``key_entities`` is cleaned (see
+    block without them is just as valid, and a malformed one is read as absent. So is ``complexity`` (``low``, ``medium``
+    or ``high``; anything else is read as absent and the block stays valid). ``key_entities`` is cleaned (see
     :func:`guardian_triage_clean_entities`). Unknown keys are dropped.
 
     Whether the type fits the issue's domain is NOT decided here: that is GuardianTriageResult's call, not the model's
@@ -2671,6 +2682,7 @@ def guardian_triage_validate(raw, table=None):
         "next_step": next_step,
         "analysis": guardian_triage_clean_analysis(raw.get("analysis")),
         "recommendations": guardian_triage_clean_recommendations(raw.get("recommendations")),
+        "complexity": guardian_triage_clean_complexity(raw.get("complexity")),
     }
 
 
@@ -3594,8 +3606,78 @@ def guardian_tiercheck_profile_age_days(probed_at):
     return max(0, (datetime.now(timezone.utc) - then).days)
 
 
-def guardian_tiercheck_run():
+def guardian_tiercheck_routed_run(settings, response, loaded, model):
+    """The profile of a run that is routed to ``model`` (not the instance's configured model): resolved from the model
+    catalogue and written to the snapshot, and nothing else. It reads ``guardian_model_profile`` only for the operator's
+    ``overrides`` and never writes that List: the measured and documented records on it describe the configured model, so
+    they are not applied to another one, and a routed run must not change which record is the active one.
+
+    A model the catalogue does not know gets the size from ``guardian_settings`` (else small): its limits are guessed, and
+    the result says so.
+
+    :return: the same dict as :func:`guardian_tiercheck_run`.
+    """
+    provider = guardian_tiercheck_enabled_provider(response)
+    overrides = loaded["data"].get("overrides") if loaded["ok"] and isinstance(loaded["data"].get("overrides"), dict) else {}
+    plist = {"overrides": overrides}
+    warnings, record, catalog, plan = [], None, None, {"model_id": None, "reason": ""}
+    try:
+        catalog = guardian_catalog_load()
+        if catalog is not None and provider:
+            plan = guardian_tiercheck_documented_plan(catalog, dict(provider, configured_model=model), {}, settings)
+            if plan["action"] == "write":
+                record = plan["record"]
+                plist.update(active=plan["key"], profiles={plan["key"]: record})
+    except Exception as ex:  # the catalogue only refines the numbers; a failure there is a warning
+        warnings.append("**Model catalogue WARNING**: the catalogue check for `{}` failed ({}); the run continues "
+                        "without it.".format(model, ex))
+    size = None
+    try:
+        size = guardian_catalog_size_for_run(plist, model, catalog)
+    except Exception:
+        size = None
+    params = guardian_resolve_model_params(settings, plist, size)
+    params = guardian_catalog_apply_source(params, record)
+    source = guardian_catalog_record_source(record) if record else None
+    if record and params.get("profile"):
+        params["profile"] = dict(params["profile"], source=source, catalog_checked=record.get("catalog_checked"))
+    if catalog is None:
+        warnings.append("**Model routing WARNING**: the model catalogue could not be read, so the limits of the routed "
+                        "model `{}` are guessed.".format(model))
+    elif guardian_catalog_lookup(catalog, model) is None:
+        warnings.append("**Model routing WARNING**: the routed model `{}` is not in the model catalogue, so its limits are "
+                        "guessed (size {} from {}). Add it to the catalogue, or probe it.".format(
+                            model, params["tier"], params["tier_source"]))
+    lines = ["Routed model `{}`: this run's numbers are resolved for it, not for the instance's configured model{}.".format(
+        model, " (`{}`)".format(provider["configured_model"]) if provider and provider.get("configured_model") else "")]
+    lines.extend(guardian_catalog_describe(params, record))
+    params = dict(params, model=model, routed=True)
+    guardian_ctx_write(GUARDIAN_MODEL_PROFILE_SNAPSHOT_KEY, params)
+    return {
+        "tier": params["tier"],
+        "tier_source": params["tier_source"],
+        "max_input_tokens": params["max_input_tokens"],
+        "max_tool_def_tokens": params["max_tool_def_tokens"],
+        "limits": params["limits"],
+        "mismatch": False,
+        "warning": None,
+        "profile_age_days": None,
+        "profile_source": source,
+        "catalog_action": "none",
+        "catalog_model": plan.get("model_id"),
+        "model": model,
+        "routed": True,
+        "lines": lines,
+        "warnings": warnings,
+    }
+
+
+def guardian_tiercheck_run(model=None):
     """Resolve the run's model numbers, snapshot them into context and collect the warnings.
+
+    With ``model`` (the investigation model the routing chose) that differs from the instance's configured one, the
+    numbers are resolved for THAT model instead (:func:`guardian_tiercheck_routed_run`) and the snapshot says it was
+    routed. Empty, or equal to the configured model, is the run it has always been.
 
     Before it resolves, the model catalogue step may write a ``documented`` profile record for a known model
     (see :func:`guardian_tiercheck_catalog_sync`); the numbers are then resolved exactly as they always were.
@@ -3607,6 +3689,9 @@ def guardian_tiercheck_run():
     settings = guardian_tiercheck_settings_data()
     response = guardian_tiercheck_search()
     loaded = guardian_tiercheck_profile_read()
+    requested = (model or "").strip()
+    if requested and requested.lower() != str((guardian_tiercheck_enabled_provider(response) or {}).get("configured_model") or "").lower():
+        return guardian_tiercheck_routed_run(settings, response, loaded, requested)
     sync = guardian_tiercheck_catalog_sync(settings, response, loaded)
     configured = sync["configured_model"] or (guardian_tiercheck_enabled_provider(response) or {}).get("configured_model")
     if loaded["ok"]:
@@ -3656,6 +3741,7 @@ def guardian_tiercheck_run():
                 "to investigate." if source == "documented" else
                 "the probe found that this model does not honor tool calls. The agent needs tool calling "
                 "to investigate."))
+    params = dict(params, model=configured, routed=False)
     guardian_ctx_write(GUARDIAN_MODEL_PROFILE_SNAPSHOT_KEY, params)
     return {
         "tier": params["tier"],
@@ -3663,6 +3749,8 @@ def guardian_tiercheck_run():
         "max_input_tokens": params["max_input_tokens"],
         "max_tool_def_tokens": params["max_tool_def_tokens"],
         "limits": params["limits"],
+        "model": configured,
+        "routed": False,
         "mismatch": is_warning,
         "warning": mismatch,
         "profile_age_days": age,
@@ -3676,7 +3764,7 @@ def guardian_tiercheck_run():
 
 def main():
     try:
-        result = guardian_tiercheck_run()
+        result = guardian_tiercheck_run(demisto.args().get("model"))
     except Exception as ex:  # a preflight check must never surface a traceback
         return_error("GuardianModelProfileCheck failed unexpectedly: {}".format(ex))
         return

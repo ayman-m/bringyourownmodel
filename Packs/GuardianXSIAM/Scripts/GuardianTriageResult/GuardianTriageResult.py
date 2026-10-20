@@ -29,13 +29,15 @@ Result -- written with `setContext` (a re-run overwrites, it never appends) unde
      investigation_type: <the model's value or "">,
      severity: <low|medium|high|critical or "">, original_severity: <low|medium|high|critical|informational|unknown>,
      confidence: int, likely_benign: bool, escalate: bool, summary: str, next_step: str,
-     analysis: str, recommendations: [str], domain: str,
+     analysis: str, recommendations: [str], complexity: low|medium|high or "", domain: str,
      assessment_mode: verdict|posture, sub_playbook: str, skill: str, reason: str,
      inputs: {identity, ip, resource, asset_id, rule_id, host, hash, cve},
      domain_mismatch: bool, input_sources: {<input>: "issue"|"model"|""}}
 
 `analysis` (at most 800 characters) and `recommendations` (at most 5, each at most 200 characters) are the block's
-optional keys: empty when the block has none, scrubbed of secrets when it has. The record is also returned as the
+optional keys: empty when the block has none, scrubbed of secrets when it has. `complexity` (low, medium or high) is optional
+too: GuardianModelChoice picks the investigation model by it, and a missing or invalid value is read as absent, never as a
+reason to reject the block. The record is also returned as the
 command's outputs, keyed by `issue_id` (the same on a re-run), so the task shows it and a re-run merges into one object.
 
 Nothing here changes the issue. `GuardianTriageApply` does that, and it is operator-owned.
@@ -2395,6 +2397,9 @@ GUARDIAN_TRIAGE_NEXT_STEP_MAX_CHARS = 300
 GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS = 800
 GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS = 200
 GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS = 5
+#: The optional `complexity` of the investigation the issue needs. GuardianModelChoice picks the investigation model by
+#: it. Any other value is read as absent.
+GUARDIAN_TRIAGE_COMPLEXITIES = ("low", "medium", "high")
 
 GUARDIAN_TRIAGE_DEFAULT_TYPES = [
     {"name": "identity_threat",
@@ -2608,6 +2613,13 @@ def guardian_triage_clean_analysis(raw):
     return guardian_scrub_secrets(" ".join(raw.split()), keep_identifiers=True)[:GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS].strip()
 
 
+def guardian_triage_clean_complexity(raw):
+    """The optional ``complexity``: ``low``, ``medium`` or ``high`` (case and surrounding spaces forgiven), else an empty
+    string."""
+    value = raw.strip().lower() if isinstance(raw, str) else ""
+    return value if value in GUARDIAN_TRIAGE_COMPLEXITIES else ""
+
+
 def guardian_triage_clean_recommendations(raw):
     """The optional ``recommendations`` list: at most GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS non-empty strings,
     each whitespace-collapsed, scrubbed of secrets and cut to GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS. A single
@@ -2635,7 +2647,8 @@ def guardian_triage_validate(raw, table=None):
     present and not a boolean). ``summary`` must be a non-vague string of at least
     GUARDIAN_TRIAGE_SUMMARY_MIN_CHARS characters. ``next_step`` is optional. ``analysis`` and ``recommendations`` are
     optional too (see :func:`guardian_triage_clean_analysis` and :func:`guardian_triage_clean_recommendations`): a
-    block without them is just as valid, and a malformed one is read as absent. ``key_entities`` is cleaned (see
+    block without them is just as valid, and a malformed one is read as absent. So is ``complexity`` (``low``, ``medium``
+    or ``high``; anything else is read as absent and the block stays valid). ``key_entities`` is cleaned (see
     :func:`guardian_triage_clean_entities`). Unknown keys are dropped.
 
     Whether the type fits the issue's domain is NOT decided here: that is GuardianTriageResult's call, not the model's
@@ -2685,6 +2698,7 @@ def guardian_triage_validate(raw, table=None):
         "next_step": next_step,
         "analysis": guardian_triage_clean_analysis(raw.get("analysis")),
         "recommendations": guardian_triage_clean_recommendations(raw.get("recommendations")),
+        "complexity": guardian_triage_clean_complexity(raw.get("complexity")),
     }
 
 
@@ -2804,7 +2818,8 @@ GUARDIAN_TRIAGE_REPAIR_PROMPT = (
     "weakness on a privileged account: delegatable, admin rights, unused permissions), and neither is a high severity on its own. An attempt that was blocked or failed, with no sign it succeeded (for example a blocked phishing email or a denied sign-in), does not escalate on its own; \"summary\": one full sentence with what this is and why this severity; "
     "\"analysis\": 2-4 sentences with what the conclusion says was seen and why it rates the issue so (an empty string "
     "if it says nothing beyond the summary); \"recommendations\": a list of up to 5 short next actions the conclusion "
-    "recommends (an empty list if it names none); "
+    "recommends (an empty list if it names none); \"complexity\": low, medium or high, how much work the issue needs to "
+    "investigate as the conclusion states it (an empty string if it states none); "
     "\"key_entities\": {{\"identities\": [], \"ips\": [], \"resources\": [], \"assets\": [], \"hosts\": [], "
     "\"hashes\": []}} holding only values the conclusion names; \"next_step\": one line. Add nothing that is not "
     "in the conclusion.\nInvestigation types:\n{types}"
@@ -3212,6 +3227,7 @@ def guardian_triage_result_run(incident, route, loop, table, run_id=None, repair
         "next_step": block["next_step"] if block else "Review the issue manually.",
         "analysis": block["analysis"] if block else "",
         "recommendations": list(block["recommendations"]) if block else [],
+        "complexity": block["complexity"] if block else "",
         "domain": domain,
         "assessment_mode": guardian_triage_assessment_mode(route, domain, branch),
         "sub_playbook": row["sub_playbook"] if row else "GuardianTriageOther",

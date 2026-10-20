@@ -165,7 +165,7 @@ def test_no_triage_automation_is_allowlisted_and_core_update_issue_is_still_not(
     assert "core-update-issue" in policy  # still gated by the policy list for the model
 
 
-@pytest.mark.parametrize("name", ["GuardianTriageResult", "GuardianTriageApply", "GuardianIssueSummary"])
+@pytest.mark.parametrize("name", ["GuardianTriageResult", "GuardianTriageApply", "GuardianIssueSummary", "GuardianModelChoice"])
 def test_the_new_scripts_are_well_formed(name):
     folder = SCRIPTS / name
     doc = yaml.safe_load((folder / (name + ".yml")).read_text())
@@ -361,7 +361,7 @@ def test_no_triage_playbook_uses_a_write_command():
             assert command != "asm-start-remediation-confirmation-scan"
             if command in denied:
                 # the only denylisted automations a triage playbook may run are the parent's own operator steps
-                assert name == PARENT and command in ("GuardianTriageResult", "GuardianTriageApply", "GuardianIssueSummary"), (name, command)
+                assert name == PARENT and command in ("GuardianTriageResult", "GuardianTriageApply", "GuardianIssueSummary", "GuardianModelChoice"), (name, command)
             for blocked in ("core-update", "setIncident", "setList", "addToList", "xdr-", "isolate", "quarantine", "delete"):
                 assert blocked not in command.lower() or command == "DeleteContext", (name, command)
 
@@ -758,7 +758,8 @@ def test_the_parent_hands_the_turn_cap_to_every_branch_including_other():
     doc = _playbook(PARENT)
     branches = _tasks(doc, "playbook")
     assert len(branches) == 10
-    assert all(_arg(sub, "max_ticks") == "${inputs.investigate_max_ticks}" for sub in branches)
+    # the investigation model choice folds investigate_max_ticks into the effective limit, so the branches read one value
+    assert all(_arg(sub, "max_ticks") == "${Guardian.ModelChoiceCurrent.max_ticks}" for sub in branches)
 
 
 def test_the_parent_flow_runs_the_preparation_then_triage_then_apply_then_the_branch():
@@ -796,7 +797,7 @@ def test_the_parent_flow_runs_the_preparation_then_triage_then_apply_then_the_br
     assert _arg(doc["tasks"][by_command["GuardianSkillRead"][0]], "name") == "cortex_triage"
     assert _arg(doc["tasks"][by_command["GuardianTriageApply"][0]], "apply_changes") == "${inputs.apply_changes}"
     for sub in _tasks(doc, "playbook"):
-        assert _arg(sub, "max_ticks") == "${inputs.investigate_max_ticks}"
+        assert _arg(sub, "max_ticks") == "${Guardian.ModelChoiceCurrent.max_ticks}"
         assert sub["separatecontext"] is False  # the sub-playbook shares Guardian.Triage, Guardian.Evidence and the prompt
 
 
@@ -864,7 +865,7 @@ def test_every_continue_on_error_value_is_continue():
         text = (PLAYBOOKS / "playbook-{}.yml".format(name)).read_text()
         assert 'continueonerrortype: ""' not in text
         total += text.count("continueonerrortype: continue")
-    assert total == 113  # every task that continues on error, in all eleven playbooks
+    assert total == 118  # every task that continues on error, in all eleven playbooks
 
 
 def test_the_ten_investigation_sessions_continue_the_run_totals_and_the_other_sessions_do_not():
@@ -912,7 +913,12 @@ def test_the_parent_writes_the_triage_summary_after_apply_and_the_conclusion_bef
     assert tasks[summaries["investigation"]]["task"]["name"] == "Write the investigation conclusion"
     apply_key = [k for k, t in tasks.items() if t["type"] == "regular" and _command_of(t) == "GuardianTriageApply"][0]
     assert tasks[apply_key]["nexttasks"]["#none#"] == [summaries["triage"]]
-    assert tasks[summaries["triage"]]["nexttasks"]["#none#"] == [by_name["Which type?"]]
+    # the investigation model is chosen, its profile, prompt and tool list rebuilt, and then the branch is picked
+    chain = ["Choose the investigation model", "Resolve the investigation model profile", "Build the investigation system prompt",
+             "Build the investigation tool list", "Which type?"]
+    assert tasks[summaries["triage"]]["nexttasks"]["#none#"] == [by_name[chain[0]]]
+    for here, there in zip(chain, chain[1:]):
+        assert tasks[by_name[here]]["nexttasks"]["#none#"] == [by_name[there]], here
     done = by_name["Done"]
     assert tasks[summaries["investigation"]]["nexttasks"]["#none#"] == [done]
     for branch in _tasks(doc, "playbook"):
@@ -980,10 +986,78 @@ def test_the_triage_skill_and_the_tick_ask_for_the_optional_analysis_and_recomme
     skill = _skill_body()
     conclude = skill.split("## Conclude", 1)[1]
     assert '"analysis"' in conclude and '"recommendations"' in conclude and "optional" in conclude and "800" in conclude
+    assert '"complexity"' in conclude and "## Complexity" in conclude
+    rubric = skill.split("## Complexity", 1)[1]
+    for level in ("`low`", "`medium`", "`high`"):
+        assert level in rubric
+    assert "single-source fact" in rubric and "correlation across a few sources" in rubric and "possible compromise" in rubric
     schema = (SCRIPTS / "GuardianReasoningTick" / "GuardianReasoningTick.py").read_text()
     assert '"analysis": "optional' in schema and '"recommendations": ["optional' in schema
     doc = yaml.safe_load((SCRIPTS / "GuardianTriageResult" / "GuardianTriageResult.yml").read_text())
     paths = {o["contextPath"] for o in doc["outputs"]}
     assert {"Guardian.Triage.analysis", "Guardian.Triage.recommendations", "Guardian.Triage.issue_id"} <= paths
     index = {e["name"]: e for e in json.loads(_list_data("guardian_skills_index"))}
-    assert "analysis and recommendations" in index["cortex_triage"]["description"]
+    assert "analysis, recommendations and complexity" in index["cortex_triage"]["description"]
+
+
+# --- model routing ------------------------------------------------------------------------------------------------------
+
+def test_the_model_choice_is_operator_owned_and_the_routing_list_is_protected():
+    assert "GuardianModelChoice" in _denied() and "GuardianModelChoice" not in _allowed()
+    assert "GuardianModelChoice" not in _list_data("guardian_policy") and "GuardianModelChoice" not in _list_data("guardian_preapproved")
+    denylist = json.loads(_list_data("guardian_tool_denylist"))
+    assert "guardian_model_routing" in denylist["protected_lists"]
+
+
+def test_the_routing_list_ships_empty_so_every_run_behaves_as_before():
+    wrapper = json.loads((LISTS / "list-guardian_model_routing.json").read_text())
+    assert wrapper["id"] == wrapper["name"] == "guardian_model_routing" and wrapper["type"] == "json"
+    data = json.loads(wrapper["data"])
+    assert data["triage"] == "" and set(data["complexity"]) == {"low", "medium", "high"}
+    assert all(entry.get("model", "") == "" and "max_ticks" not in entry for entry in data["complexity"].values())
+    assert "max_ticks" in data["_comment"] and "read-only once installed" in data["_comment"]
+
+
+def test_the_parent_chooses_the_triage_model_before_resolving_the_profile_and_the_investigation_model_after_the_summary():
+    doc = _playbook(PARENT)
+    tasks = doc["tasks"]
+    by_name = {t["task"]["name"]: key for key, t in tasks.items()}
+    choose_triage, resolve = tasks[by_name["Choose the triage model"]], tasks[by_name["Resolve model profile"]]
+    assert _command_of(choose_triage) == "GuardianModelChoice" and _arg(choose_triage, "stage") == "triage"
+    assert tasks[by_name["Needs a model session?"]]["nexttasks"]["#default#"] == [by_name["Choose the triage model"]]
+    assert choose_triage["nexttasks"]["#none#"] == [by_name["Resolve model profile"]]
+    assert _arg(resolve, "model") == "${Guardian.ModelChoiceCurrent.model}"
+    invest = tasks[by_name["Choose the investigation model"]]
+    assert _command_of(invest) == "GuardianModelChoice" and _arg(invest, "stage") == "investigation"
+    assert _arg(invest, "investigate_max_ticks") == "${inputs.investigate_max_ticks}"
+    second = tasks[by_name["Resolve the investigation model profile"]]
+    assert _command_of(second) == "GuardianModelProfileCheck" and _arg(second, "model") == "${Guardian.ModelChoiceCurrent.model}"
+    # the rebuilt prompt and tool list take the same arguments as the first ones
+    for first, again in (("Build system prompt", "Build the investigation system prompt"), ("Build tool list", "Build the investigation tool list")):
+        a, b = tasks[by_name[first]], tasks[by_name[again]]
+        assert _command_of(a) == _command_of(b) and a["scriptarguments"] == b["scriptarguments"], again
+
+
+def test_every_model_routing_task_fails_open():
+    doc = _playbook(PARENT)
+    new = ["Choose the triage model", "Choose the investigation model", "Resolve the investigation model profile",
+           "Build the investigation system prompt", "Build the investigation tool list"]
+    by_name = {t["task"]["name"]: t for t in doc["tasks"].values()}
+    for name in new:
+        task = by_name[name]
+        assert task["continueonerror"] is True and task["continueonerrortype"] == "continue" and task["task"]["description"], name
+    assert by_name["Resolve model profile"]["continueonerror"] is True
+
+
+def test_the_model_choice_and_the_profile_check_document_the_routing_arguments():
+    choice = yaml.safe_load((SCRIPTS / "GuardianModelChoice" / "GuardianModelChoice.yml").read_text())
+    assert {a["name"] for a in choice["args"]} == {"stage", "investigate_max_ticks"}
+    check = yaml.safe_load((SCRIPTS / "GuardianModelProfileCheck" / "GuardianModelProfileCheck.yml").read_text())
+    assert [a["name"] for a in check["args"]] == ["model"]
+
+
+def test_the_triage_result_documents_complexity_and_the_skill_gives_its_rubric():
+    doc = yaml.safe_load((SCRIPTS / "GuardianTriageResult" / "GuardianTriageResult.yml").read_text())
+    assert "Guardian.Triage.complexity" in {o["contextPath"] for o in doc["outputs"]}
+    prompt = {i["key"]: i["value"]["simple"] for i in _playbook(PARENT)["inputs"]}["prompt"]
+    assert "complexity (low, medium or high" in " ".join(prompt.split())

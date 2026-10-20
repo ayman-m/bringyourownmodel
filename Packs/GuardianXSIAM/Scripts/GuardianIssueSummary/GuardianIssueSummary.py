@@ -15,7 +15,9 @@ Two places, one stage at a time (the `stage` argument):
 
 `stage=triage` reads `Guardian.Triage` and `Guardian.TriageApply` and skips when there is no triage result or the apply
 step skipped the issue (already triaged, owned or resolved). `stage=investigation` reads the verdict or posture
-assessment the reasoning loop recorded (`Guardian.Loop.verdict`) and skips when the run ended without one.
+assessment the reasoning loop recorded (`Guardian.Loop.verdict`) and skips when the run ended without one. It also names
+the model the investigation ran on (`Guardian.ModelChoiceCurrent`, the level and the reason; "default" when the provider
+instance's own model ran) when the investigation's model choice is there.
 
 The current description is read from the platform (`core-get-issues`, the field `core-update-issue` replaces), with the
 issue's own `details` or `description` as the fallback. When neither shows the text, or the platform cannot confirm an
@@ -2386,6 +2388,9 @@ GUARDIAN_TRIAGE_NEXT_STEP_MAX_CHARS = 300
 GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS = 800
 GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS = 200
 GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS = 5
+#: The optional `complexity` of the investigation the issue needs. GuardianModelChoice picks the investigation model by
+#: it. Any other value is read as absent.
+GUARDIAN_TRIAGE_COMPLEXITIES = ("low", "medium", "high")
 
 GUARDIAN_TRIAGE_DEFAULT_TYPES = [
     {"name": "identity_threat",
@@ -2599,6 +2604,13 @@ def guardian_triage_clean_analysis(raw):
     return guardian_scrub_secrets(" ".join(raw.split()), keep_identifiers=True)[:GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS].strip()
 
 
+def guardian_triage_clean_complexity(raw):
+    """The optional ``complexity``: ``low``, ``medium`` or ``high`` (case and surrounding spaces forgiven), else an empty
+    string."""
+    value = raw.strip().lower() if isinstance(raw, str) else ""
+    return value if value in GUARDIAN_TRIAGE_COMPLEXITIES else ""
+
+
 def guardian_triage_clean_recommendations(raw):
     """The optional ``recommendations`` list: at most GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS non-empty strings,
     each whitespace-collapsed, scrubbed of secrets and cut to GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS. A single
@@ -2626,7 +2638,8 @@ def guardian_triage_validate(raw, table=None):
     present and not a boolean). ``summary`` must be a non-vague string of at least
     GUARDIAN_TRIAGE_SUMMARY_MIN_CHARS characters. ``next_step`` is optional. ``analysis`` and ``recommendations`` are
     optional too (see :func:`guardian_triage_clean_analysis` and :func:`guardian_triage_clean_recommendations`): a
-    block without them is just as valid, and a malformed one is read as absent. ``key_entities`` is cleaned (see
+    block without them is just as valid, and a malformed one is read as absent. So is ``complexity`` (``low``, ``medium``
+    or ``high``; anything else is read as absent and the block stays valid). ``key_entities`` is cleaned (see
     :func:`guardian_triage_clean_entities`). Unknown keys are dropped.
 
     Whether the type fits the issue's domain is NOT decided here: that is GuardianTriageResult's call, not the model's
@@ -2676,6 +2689,7 @@ def guardian_triage_validate(raw, table=None):
         "next_step": next_step,
         "analysis": guardian_triage_clean_analysis(raw.get("analysis")),
         "recommendations": guardian_triage_clean_recommendations(raw.get("recommendations")),
+        "complexity": guardian_triage_clean_complexity(raw.get("complexity")),
     }
 
 
@@ -2951,10 +2965,30 @@ def guardian_summary_investigation_skip(loop):
     return ""
 
 
-def guardian_summary_investigation_note(loop):
-    """The War Room note for the investigation stage (markdown)."""
+def guardian_summary_model_choice(choice, loop=None):
+    """``(model, level, reason)`` of the investigation's model choice (`Guardian.ModelChoiceCurrent`), or ``None`` when
+    there is none for the investigation stage (the choice task did not run or failed, and the triage choice is not it).
+    `model` is ``default`` when the provider instance's own model ran, including when the session dropped the routed
+    model because the provider could not serve it (`Guardian.Loop.model_route_dropped`)."""
+    if not isinstance(choice, dict) or choice.get("stage") != "investigation":
+        return None
+    model = str(choice.get("model") or "").strip() or "default"
+    reason = str(choice.get("reason") or "").strip()
+    if model != "default" and isinstance(loop, dict) and loop.get("model_route_dropped"):
+        reason = "the routed model `{}` was not available, so the provider's configured model ran ({})".format(model, reason)
+        model = "default"
+    return model, str(choice.get("level") or "").strip(), reason
+
+
+def guardian_summary_investigation_note(loop, choice=None):
+    """The War Room note for the investigation stage (markdown). `choice` is the investigation's model choice."""
     facts = guardian_summary_investigation_facts(loop)
     lines = ["**Guardian investigation**"]
+    chosen = guardian_summary_model_choice(choice, loop)
+    if chosen:
+        lines.append("- Model: {}{} -- {}".format(
+            "`{}`".format(chosen[0]) if chosen[0] != "default" else "the provider's configured model",
+            " (level {})".format(chosen[1]) if chosen[1] else "", guardian_summary_line(chosen[2], 300)))
     if facts["posture"]:
         lines.append("- Assessment: {}{}".format(facts["label"], ", priority " + facts["priority"] if facts["priority"] else ""))
     else:
@@ -2968,9 +3002,10 @@ def guardian_summary_investigation_note(loop):
     return "\n".join(lines)[:GUARDIAN_ISSUE_SUMMARY_NOTE_MAX_CHARS]
 
 
-def guardian_summary_investigation_part(loop):
+def guardian_summary_investigation_part(loop, choice=None):
     """The investigation line of the description section (one line, at most GUARDIAN_ISSUE_SUMMARY_PART_MAX_CHARS)."""
     facts = guardian_summary_investigation_facts(loop)
+    chosen = guardian_summary_model_choice(choice, loop)
     if facts["posture"]:
         head = "{}{}.".format(facts["label"], " " + facts["priority"] if facts["priority"] else "")
     else:
@@ -2981,6 +3016,9 @@ def guardian_summary_investigation_part(loop):
     for name in _GUARDIAN_ISSUE_SUMMARY_POSTURE_LABELS:
         if facts["fields"].get(name):
             pieces.append("{}: {}.".format(name.capitalize(), guardian_summary_line(facts["fields"][name]).rstrip(".")))
+    if chosen:
+        pieces.append("Model: {}{}.".format(chosen[0] if chosen[0] != "default" else "the provider's configured model",
+                                            " (level {})".format(chosen[1]) if chosen[1] else ""))
     pieces.append("Summary: " + guardian_summary_line(facts["summary"]))
     return guardian_summary_line(" ".join(pieces), GUARDIAN_ISSUE_SUMMARY_PART_MAX_CHARS)
 
@@ -3069,7 +3107,7 @@ def guardian_summary_result(stage, status, reason="", note_posted=False, descrip
             "section_chars": section_chars, "reason": reason}
 
 
-def guardian_summary_run(stage, apply_changes, incident, triage, apply_result, loop):
+def guardian_summary_run(stage, apply_changes, incident, triage, apply_result, loop, choice=None):
     """Compute the stage's text and, when allowed, write the note and the description. Returns the result dict.
     Never raises."""
     if stage not in GUARDIAN_ISSUE_SUMMARY_STAGES:
@@ -3087,7 +3125,7 @@ def guardian_summary_run(stage, apply_changes, incident, triage, apply_result, l
     if stage == "triage":
         note, part = guardian_summary_triage_note(triage, apply_result), guardian_summary_triage_part(triage, apply_result)
     else:
-        note, part = guardian_summary_investigation_note(loop), guardian_summary_investigation_part(loop)
+        note, part = guardian_summary_investigation_note(loop, choice), guardian_summary_investigation_part(loop, choice)
 
     if not apply_changes:
         _description, section = guardian_summary_new_description("", stage, part)
@@ -3132,7 +3170,8 @@ def main():
         stage = str(args.get("stage") or "").strip().lower()
         result = guardian_summary_run(
             stage, guardian_summary_parse_flag(args.get("apply_changes")), demisto.incident() or {},
-            guardian_summary_latest("Triage"), guardian_summary_latest("TriageApply"), guardian_summary_latest("Loop"))
+            guardian_summary_latest("Triage"), guardian_summary_latest("TriageApply"), guardian_summary_latest("Loop"),
+            guardian_summary_latest("ModelChoiceCurrent"))
     except Exception as ex:  # belt-and-suspenders: an automation must not leak a traceback
         return_error("GuardianIssueSummary failed unexpectedly: {}".format(ex))
         return

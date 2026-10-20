@@ -72,6 +72,10 @@ The client is built for a stateful, sometimes-async North endpoint:
 Provider-independent chat completion (identical arguments and `Guardian.LLM.Completion` output across
 every Guardian provider). See the pack-level contract doc for the full argument/output tables.
 
+The optional `model` argument cannot select a model here: the agent behind the instance is fixed. An empty value, or one
+equal to the instance's Model label, is accepted; any other value is refused with an error that starts with
+`MODEL_SELECTION_UNSUPPORTED:`, without a call to North.
+
 ```
 !guardian-llm-chat messages=`[{"role":"user","content":"say hi in exactly two words"}]`
 ```
