@@ -275,6 +275,9 @@ def test_main_defaults_to_applying_and_overwrites_the_context_key(monkeypatch):
     assert written["Guardian.TriageApply"]["status"] == "applied"
     assert [c[0] for c in calls][0] == "setIncident"
     assert "Guardian triage apply" in results[0].readable_output
+    out, context_result = results[0], written["Guardian.TriageApply"]
+    assert out.outputs_prefix == "Guardian.TriageApply" and out.outputs_key_field == "incident_id"
+    assert out.outputs == context_result and context_result["incident_id"] == _issue()["id"]
 
 
 def test_main_is_idempotent_through_the_context(monkeypatch):

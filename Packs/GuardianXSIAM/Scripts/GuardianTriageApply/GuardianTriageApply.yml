@@ -15,7 +15,8 @@ args:
   - 'false'
 comment: >-
   Operator-owned: applies a triage result (`Guardian.Triage`) to the current issue, behind guards. Changes only the
-  issue's severity and phase, through one `core-update-issue` call, and never its type, description, name or status.
+  issue's severity and phase, through one `core-update-issue` call, and never its type, description, name or status
+  (the Guardian section of the description is written by GuardianIssueSummary, another operator-owned automation).
   Severity is raised only by a structured result, and lowered only by a structured result with a confidence of at
   least 80 that does not say escalate (a person must act within hours; a configuration weakness on a privileged account is not that, and an attempt that was blocked or failed, with no sign it succeeded (for example a blocked phishing email or a denied sign-in), does not escalate on its own); a repaired or fallback result never changes it. It skips an issue that has an owner, is closed or
   resolved, or was already triaged: in this context, or because the issue's own phase already starts with
@@ -27,6 +28,9 @@ commonfields:
 enabled: true
 name: GuardianTriageApply
 outputs:
+- contextPath: Guardian.TriageApply.issue_id
+  description: "The issue the result is about. It is the key that keeps a re-run one object."
+  type: String
 - contextPath: Guardian.TriageApply.status
   description: "applied (the issue was updated), dry_run (computed only), skipped (a guard stopped it) or error (the update failed)."
   type: String

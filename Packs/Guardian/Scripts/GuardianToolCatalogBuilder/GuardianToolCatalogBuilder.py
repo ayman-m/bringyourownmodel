@@ -3207,23 +3207,23 @@ def main():
     # never nested under the array's own path) because a single context path cannot hold both
     # an array value and dict-style children.
     guardian_ctx_write("ToolCatalog", data["catalog"])
-    guardian_ctx_write(
-        "ToolCatalogMeta",
-        {
-            "ConfiguredCommands": data["configured_commands"],
-            "AllowlistSource": data["allowlist_source"],
-            "TokenEstimate": data["token_estimate"],
-            "Count": data["count"],
-            "Warning": data["warning"],
-            "MaxToolDefTokens": data["max_tool_def_tokens"],
-            "MaxToolDefTokensSource": data["max_tool_def_tokens_source"],
-            "DescriptionTruncated": data["description_truncated"],
-            "ExcludedByDenylist": data["excluded_by_denylist"],
-            "ExcludedByOperatorBoundary": data["excluded_by_operator_boundary"],
-            "MissingOnBox": data["missing_on_box"],
-            "DenylistArgRules": data["denylist_arg_rules"],
-        },
-    )
+    meta = {
+        # IncidentId is the key that keeps the returned outputs and this context object one object on a re-run.
+        "IncidentId": str((demisto.incident() or {}).get("id") or ""),
+        "ConfiguredCommands": data["configured_commands"],
+        "AllowlistSource": data["allowlist_source"],
+        "TokenEstimate": data["token_estimate"],
+        "Count": data["count"],
+        "Warning": data["warning"],
+        "MaxToolDefTokens": data["max_tool_def_tokens"],
+        "MaxToolDefTokensSource": data["max_tool_def_tokens_source"],
+        "DescriptionTruncated": data["description_truncated"],
+        "ExcludedByDenylist": data["excluded_by_denylist"],
+        "ExcludedByOperatorBoundary": data["excluded_by_operator_boundary"],
+        "MissingOnBox": data["missing_on_box"],
+        "DenylistArgRules": data["denylist_arg_rules"],
+    }
+    guardian_ctx_write("ToolCatalogMeta", meta)
 
     lines = [
         "Guardian Tool Catalog: {} command(s), ~{} tokens (ceiling {}, from {}).".format(
@@ -3254,6 +3254,10 @@ def main():
     return_results(
         CommandResults(
             readable_output="\n".join(lines),
+            outputs_prefix="{}.ToolCatalogMeta".format(GUARDIAN_CONTEXT_NAMESPACE),
+            outputs_key_field="IncidentId",
+            # Never the catalogue itself, and not the list of every configured command name either.
+            outputs={key: value for key, value in meta.items() if key != "ConfiguredCommands"},
             raw_response=data,
         )
     )

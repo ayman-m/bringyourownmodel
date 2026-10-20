@@ -33,6 +33,9 @@ outputs:
     Array of OpenAI-style `{"type":"function","function":{...}}` tool definitions for the allowed commands
     that are live and not denied.
   type: Unknown
+- contextPath: Guardian.ToolCatalogMeta.IssueId
+  description: "The issue the catalogue was built for. It is the key that keeps a re-run one object."
+  type: String
 - contextPath: Guardian.ToolCatalogMeta.TokenEstimate
   description: "Estimated token count of the serialized catalogue. The estimate errs on the low side."
   type: Number
@@ -80,6 +83,9 @@ outputs:
   description: >-
     `command:targetList` argument-level denylist rules. They are not applied here; GuardianToolBridge applies
     them when the command runs.
+  type: Unknown
+- contextPath: Guardian.ToolCatalogMeta.OnBox
+  description: "Counts of the allowlisted commands by whether they exist on this server."
   type: Unknown
 script: '-'
 system: false

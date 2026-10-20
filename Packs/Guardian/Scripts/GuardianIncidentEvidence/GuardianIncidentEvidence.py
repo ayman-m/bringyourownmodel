@@ -3249,8 +3249,9 @@ def guardian_evidence_append_main(args):
         lines.append("Nothing in context for: {} (noted in the packet as not available).".format(", ".join(report["missing"])))
     if report["rejected"]:
         lines.append("Not allowed or too many, skipped: {}.".format(", ".join(report["rejected"])))
-    return_results(CommandResults(readable_output="\n".join(lines),
-                                  raw_response={k: v for k, v in updated.items() if k != "rendered"}))
+    summary = {k: v for k, v in updated.items() if k != "rendered"}
+    return_results(CommandResults(readable_output="\n".join(lines), outputs_prefix=GUARDIAN_EVIDENCE_CONTEXT_PATH,
+                                  outputs_key_field="incident_id", outputs=summary, raw_response=summary))
 
 
 def main():
@@ -3281,6 +3282,9 @@ def main():
                             "Size {} of {} characters ({} model limits).".format(
                 packet["incident_id"], len([i for i in packet["items"] if i["ok"]]), packet["calls"], packet["failures"],
                 packet["corroborated"], packet["packet_chars"], packet["budget_chars"], packet["tier"]),
+            outputs_prefix=GUARDIAN_EVIDENCE_CONTEXT_PATH,
+            outputs_key_field="incident_id",
+            outputs={k: v for k, v in packet.items() if k != "rendered"},
             raw_response={k: v for k, v in packet.items() if k != "rendered"},
         )
     )

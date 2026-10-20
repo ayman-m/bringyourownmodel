@@ -1,15 +1,17 @@
-id: GuardianTriageIssue
+id: GuardianTriageAndInvestigateIssue
 version: -1
-name: GuardianTriageIssue
+name: GuardianTriageAndInvestigateIssue
 description: >-
-  Triages THIS Cortex platform issue with a short model session and then acts on its answer by fixed rules,
-  not by prose. The standard Guardian preparation (kill switch, job guard, issue routing, model profile,
-  evidence packet, system prompt, tool list) is followed by one short triage session that ends with a fixed
-  block (severity, type, confidence). A program validates the block, with one repair call and then a fallback,
-  and the playbook sets the issue's severity and phase (never its type or description), then branches by type
-  to a sub-playbook that collects read-only enrichment and runs one focused model session. Containment and
-  other state changes still wait for a human. The investigation playbook GuardianInvestigateIssue is
-  unchanged.
+  Triages THIS Cortex platform issue with a short model session, then runs a full investigation on it, acting
+  on the triage answer by fixed rules, not by prose. The standard Guardian preparation (kill switch, job guard,
+  issue routing, model profile, evidence packet, system prompt, tool list) is followed by one short triage
+  session that ends with a fixed block (severity, type, confidence, analysis, recommendations). A program
+  validates the block, with one repair call and then a fallback, and the playbook sets the issue's severity and
+  phase (never its type), then branches by type to a sub-playbook that collects read-only enrichment and runs a
+  full model investigation of the same weight as GuardianInvestigateIssue. The playbook writes the triage
+  summary and the investigation conclusion as War Room notes and appends them to the issue's description in one
+  delimited Guardian section (the original text is never changed). Containment and other state changes still
+  wait for a human. The investigation playbook GuardianInvestigateIssue is unchanged.
 starttaskid: "0"
 tasks:
   "0":
@@ -578,8 +580,8 @@ tasks:
       version: -1
       name: "Check kill switch before applying"
       description: >-
-        Reads the kill switch again right before the only task that changes the issue, because the triage
-        session can run for minutes. Fail-open, like the first check.
+        Reads the kill switch again right before the task that changes the issue's severity and phase, because
+        the triage session can run for minutes. Fail-open, like the first check.
       script: 'GuardianKillSwitchCheck'
       type: regular
       iscommand: false
@@ -645,7 +647,7 @@ tasks:
       version: -1
       name: "Apply the triage result"
       description: >-
-        The only task that changes the issue, and an operator-owned one: the model can never call it. Writes
+        The only task that changes the issue's severity and phase, and an operator-owned one: the model can never call it. Writes
         the severity and the phase ("Guardian triage: <type>") through one core-update-issue call, never the
         type, the description or the status. Raises severity on a structured result; lowers it only for a
         structured result of confidence 80 or more; a repaired or fallback result never changes severity.
@@ -658,7 +660,7 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "20"
+      - "35"
     scriptarguments:
       apply_changes:
         simple: "${inputs.apply_changes}"
@@ -838,15 +840,15 @@ tasks:
       version: -1
       name: "GuardianTriageIdentityThreat"
       description: >-
-        Runs the GuardianTriageIdentityThreat playbook (deterministic enrichment, then one focused model
-        session). Sign-in anomaly, credential use or session abuse by a person or service identity.
+        Runs the GuardianTriageIdentityThreat playbook (deterministic enrichment, then a full
+        model investigation). Sign-in anomaly, credential use or session abuse by a person or service identity.
       playbookName: GuardianTriageIdentityThreat
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -869,15 +871,15 @@ tasks:
       version: -1
       name: "GuardianTriageCloudChange"
       description: >-
-        Runs the GuardianTriageCloudChange playbook (deterministic enrichment, then one focused model
-        session). A person or identity changed cloud network, IAM or storage configuration.
+        Runs the GuardianTriageCloudChange playbook (deterministic enrichment, then a full
+        model investigation). A person or identity changed cloud network, IAM or storage configuration.
       playbookName: GuardianTriageCloudChange
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -900,15 +902,15 @@ tasks:
       version: -1
       name: "GuardianTriageEndpointThreat"
       description: >-
-        Runs the GuardianTriageEndpointThreat playbook (deterministic enrichment, then one focused model
-        session). Malware, suspicious execution or persistence on a host.
+        Runs the GuardianTriageEndpointThreat playbook (deterministic enrichment, then a full
+        model investigation). Malware, suspicious execution or persistence on a host.
       playbookName: GuardianTriageEndpointThreat
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -931,15 +933,15 @@ tasks:
       version: -1
       name: "GuardianTriageDataExposure"
       description: >-
-        Runs the GuardianTriageDataExposure playbook (deterministic enrichment, then one focused model
-        session). Public or over-shared data, unusual data access or exfiltration.
+        Runs the GuardianTriageDataExposure playbook (deterministic enrichment, then a full
+        model investigation). Public or over-shared data, unusual data access or exfiltration.
       playbookName: GuardianTriageDataExposure
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -962,15 +964,15 @@ tasks:
       version: -1
       name: "GuardianTriageMisconfiguration"
       description: >-
-        Runs the GuardianTriageMisconfiguration playbook (deterministic enrichment, then one focused model
-        session). A cloud (CSPM) or Kubernetes policy finding: a setting that is wrong.
+        Runs the GuardianTriageMisconfiguration playbook (deterministic enrichment, then a full
+        model investigation). A cloud (CSPM) or Kubernetes policy finding: a setting that is wrong.
       playbookName: GuardianTriageMisconfiguration
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -993,15 +995,15 @@ tasks:
       version: -1
       name: "GuardianTriageVulnerability"
       description: >-
-        Runs the GuardianTriageVulnerability playbook (deterministic enrichment, then one focused model
-        session). A known CVE on a host, image or package.
+        Runs the GuardianTriageVulnerability playbook (deterministic enrichment, then a full
+        model investigation). A known CVE on a host, image or package.
       playbookName: GuardianTriageVulnerability
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -1024,7 +1026,8 @@ tasks:
       version: -1
       name: "GuardianTriageCodeRisk"
       description: >-
-        Runs the GuardianTriageCodeRisk playbook (deterministic enrichment, then one focused model session).
+        Runs the GuardianTriageCodeRisk playbook (deterministic enrichment, then a full model
+        investigation).
         Infrastructure-as-code, secrets or package operational risk found in code.
       playbookName: GuardianTriageCodeRisk
       type: playbook
@@ -1032,7 +1035,7 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -1055,15 +1058,15 @@ tasks:
       version: -1
       name: "GuardianTriageExcessivePrivilege"
       description: >-
-        Runs the GuardianTriageExcessivePrivilege playbook (deterministic enrichment, then one focused model
-        session). CIEM finding: admin or unused permissions on an identity or role.
+        Runs the GuardianTriageExcessivePrivilege playbook (deterministic enrichment, then a full
+        model investigation). CIEM finding: admin or unused permissions on an identity or role.
       playbookName: GuardianTriageExcessivePrivilege
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -1086,7 +1089,8 @@ tasks:
       version: -1
       name: "GuardianTriageAttackPath"
       description: >-
-        Runs the GuardianTriageAttackPath playbook (deterministic enrichment, then one focused model session).
+        Runs the GuardianTriageAttackPath playbook (deterministic enrichment, then a full model
+        investigation).
         A graph attack path from an entry point to a sensitive asset.
       playbookName: GuardianTriageAttackPath
       type: playbook
@@ -1094,7 +1098,7 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
         simple: "${inputs.investigate_max_ticks}"
@@ -1117,15 +1121,18 @@ tasks:
       version: -1
       name: "GuardianTriageOther"
       description: >-
-        Runs the GuardianTriageOther playbook (no model session, one case note). None of the above fits; an
-        analyst decides.
+        Runs the GuardianTriageOther playbook (a full model investigation without type-specific enrichment).
+        None of the above fits, so triage could not place the issue in a type.
       playbookName: GuardianTriageOther
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
+    scriptarguments:
+      max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -1134,6 +1141,81 @@ tasks:
         "position": {
           "x": 4360,
           "y": 3735
+        }
+      }
+  "35":
+    id: "35"
+    taskid: 3eab331a-2628-5423-9d53-4e72a0182205
+    type: regular
+    task:
+      id: 3eab331a-2628-5423-9d53-4e72a0182205
+      version: -1
+      name: "Write the triage summary"
+      description: >-
+        Writes the triage summary: a short "Guardian triage" note in the War Room (type, severity before and after,
+        confidence, summary, analysis and recommendations) and the same text as the "Triage:" part of the Guardian
+        section at the end of the issue's description, through one core-update-issue call. Operator-owned: the model
+        can never call it. The text is scrubbed of secrets and capped, and the issue's original description is never
+        changed. Skips an issue the apply task skipped (already triaged, owned or resolved). With apply_changes set to
+        false it computes the text and writes nothing.
+      script: 'GuardianIssueSummary'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "20"
+    scriptarguments:
+      stage:
+        simple: "triage"
+      apply_changes:
+        simple: "${inputs.apply_changes}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 3070,
+          "y": 3365
+        }
+      }
+  "36":
+    id: "36"
+    taskid: f8e2ca1e-51fc-5d78-8e60-9661478f4afe
+    type: regular
+    task:
+      id: f8e2ca1e-51fc-5d78-8e60-9661478f4afe
+      version: -1
+      name: "Write the investigation conclusion"
+      description: >-
+        Writes the investigation conclusion: a short "Guardian investigation" note in the War Room (verdict or
+        assessment, confidence or priority, techniques, summary, and exposure, owner and fix for a posture finding)
+        and the same text as the "Investigation:" part of the Guardian section at the end of the issue's description,
+        through one core-update-issue call. The model's own case note stays the full report. Operator-owned: the model
+        can never call it. The text is scrubbed of secrets and capped, and the issue's original description is never
+        changed. Skips a run that ended without a verdict. With apply_changes set to false it computes the text and
+        writes nothing.
+      script: 'GuardianIssueSummary'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      stage:
+        simple: "investigation"
+      apply_changes:
+        simple: "${inputs.apply_changes}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1892.5,
+          "y": 3920
         }
       }
   "31":
@@ -1154,7 +1236,7 @@ tasks:
       {
         "position": {
           "x": 1892.5,
-          "y": 3920
+          "y": 4105
         }
       }
   "32":
@@ -1228,7 +1310,7 @@ view: |-
     "linkLabelsPosition": {},
     "paper": {
       "dimensions": {
-        "height": 3930,
+        "height": 4115,
         "width": 4690,
         "x": 50,
         "y": 50
@@ -1258,8 +1340,9 @@ inputs:
       no core-update-case, no containment. The playbook records the outcome.
 
       4) END with EXACTLY the triage block from the skill and nothing after it: severity, investigation_type,
-      confidence, likely_benign, escalate, summary, key_entities and next_step. Every value comes from the
-      allowed lists in the skill; use `other` for the type when nothing fits.
+      confidence, likely_benign, escalate, summary, key_entities and next_step, and optionally analysis (2-4
+      sentences on what you saw and why you rated it so) and recommendations (up to 5 short next actions). Every
+      value comes from the allowed lists in the skill; use `other` for the type when nothing fits.
   required: false
   description: >-
     Triage prompt: triage THIS issue by reading the pinned packet and the triage skill, with at most a few
@@ -1286,8 +1369,8 @@ inputs:
     simple: ""
   required: false
   description: >-
-    Optional cap on the model turns of the focused session of the chosen sub-playbook (passed to its max_ticks
-    input). Empty (the default) gives that session the same limit GuardianInvestigateIssue gets: the model
+    Optional cap on the model turns of the investigation session of the chosen sub-playbook (passed to its
+    max_ticks input). Empty (the default) gives that session the same limit GuardianInvestigateIssue gets: the model
     size's limit (25, 40 or 60), or the guardian_settings and model profile override. A number can only lower
     that limit.
   playbookInputQuery: null

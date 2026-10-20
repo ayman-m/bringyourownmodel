@@ -427,7 +427,8 @@ def _capture_context_writes(monkeypatch):
 
 def test_main_success_writes_the_skill_to_context_without_the_append_trap(monkeypatch):
     """CommandResults outputs under a bare 'Guardian' prefix make XSOAR APPEND, turning the whole Guardian context
-    into a list (live-caught). The skill is written with setContext to Guardian.Skill* and the entry carries no outputs."""
+    into a list (live-caught). The skill text is written with setContext to Guardian.Skill*; the entry's outputs are the small
+    Guardian.Skill object (never the text), under its own prefix and keyed by the skill name."""
     _install_lists(monkeypatch, _base_lists_map())
     monkeypatch.setattr(gsr.demisto, "args", lambda: {"name": "xsoar_case_triage"})
     writes = _capture_context_writes(monkeypatch)
@@ -437,7 +438,11 @@ def test_main_success_writes_the_skill_to_context_without_the_append_trap(monkey
     gsr.main()
 
     result = captured["result"]
-    assert result.outputs_prefix is None and result.outputs is None
+    assert result.outputs_prefix == "Guardian.Skill" and result.outputs_key_field == "name"
+    assert result.outputs == writes["Guardian.Skill"] == {
+        "name": "xsoar_case_triage", "display_name": "XSOAR case triage reference", "category": "foundation",
+        "chars": len(writes["Guardian.SkillBody"]), "token_estimate": result.outputs["token_estimate"]}
+    assert "Triage body text." not in json.dumps(result.outputs)
     assert writes["Guardian.SkillName"] == "xsoar_case_triage"
     assert writes["Guardian.SkillDisplayName"] == "XSOAR case triage reference"
     assert writes["Guardian.SkillCategory"] == "foundation"

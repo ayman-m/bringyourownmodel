@@ -156,6 +156,18 @@ outputs:
     Triage runs only. The final conclusion text (the analysis held back at a corrective nudge, then the last reply),
     cut to 12000 characters. Empty when the run ended without a final answer. GuardianTriageResult reads it.
   type: String
+- contextPath: Guardian.Loop.verdict.verdict
+  description: "Verdict runs only. The recorded verdict (Malicious, Suspicious, Benign or Inconclusive). Also returned as a command output when the run concludes."
+  type: String
+- contextPath: Guardian.Loop.verdict.confidence
+  description: "The verdict's confidence, 0-100."
+  type: Number
+- contextPath: Guardian.Loop.verdict.techniques
+  description: "The ATT&CK technique ids the verdict names."
+  type: Unknown
+- contextPath: Guardian.Loop.verdict.summary
+  description: "The one-line rationale."
+  type: String
 - contextPath: Guardian.Loop.triage_block
   description: >-
     Triage runs only. The validated triage block parsed from the conclusion (severity, investigation_type,

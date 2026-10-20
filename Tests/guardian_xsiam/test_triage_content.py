@@ -165,7 +165,7 @@ def test_no_triage_automation_is_allowlisted_and_core_update_issue_is_still_not(
     assert "core-update-issue" in policy  # still gated by the policy list for the model
 
 
-@pytest.mark.parametrize("name", ["GuardianTriageResult", "GuardianTriageApply"])
+@pytest.mark.parametrize("name", ["GuardianTriageResult", "GuardianTriageApply", "GuardianIssueSummary"])
 def test_the_new_scripts_are_well_formed(name):
     folder = SCRIPTS / name
     doc = yaml.safe_load((folder / (name + ".yml")).read_text())
@@ -175,6 +175,22 @@ def test_the_new_scripts_are_well_formed(name):
     source = (folder / (name + ".py")).read_text()
     assert source.count("# <GUARDIAN_COMMON_INJECT>") == 1 and source.count("# </GUARDIAN_COMMON>") == 1
     assert (folder / (name + "_test.py")).exists()
+
+
+def test_the_issue_summary_is_operator_owned_denylisted_and_not_allowlisted():
+    assert "GuardianIssueSummary" in _denied() and "GuardianIssueSummary" not in _allowed()
+    policy = _list_data("guardian_policy")
+    assert "GuardianIssueSummary" not in policy
+    preapproved = _list_data("guardian_preapproved")
+    assert "GuardianIssueSummary" not in preapproved
+
+
+def test_the_issue_summary_writes_only_the_id_and_the_description():
+    source = (SCRIPTS / "GuardianIssueSummary" / "GuardianIssueSummary.py").read_text()
+    assert source.count("GUARDIAN_ISSUE_SUMMARY_UPDATE_COMMAND, {") == 1
+    assert re.findall(r'GUARDIAN_ISSUE_SUMMARY_UPDATE_COMMAND, (\{.*?\})\)', source) == ['{"id": issue_id, "description": description}']
+    assert "This script writes no name, type or status" in _flat(source)
+
 
 
 def test_apply_writes_only_severity_and_phase():
@@ -209,7 +225,7 @@ PLAYBOOKS = PACK / "Playbooks"
 COMMAND_NAMES = set(json.loads((Path(__file__).resolve().parent / "cortex_command_names.json").read_text())["commands"])
 #: Automations the platform ships (not pack scripts, not integration commands).
 BUILTIN_SCRIPTS = {"DeleteContext", "Print", "Set", "SetAndHandleEmpty"}
-PARENT = "GuardianTriageIssue"
+PARENT = "GuardianTriageAndInvestigateIssue"
 
 #: Where each command leaves its result in context (from the integration definitions). GuardianXQL leaves it at its
 #: `context_key` argument instead.
@@ -345,7 +361,7 @@ def test_no_triage_playbook_uses_a_write_command():
             assert command != "asm-start-remediation-confirmation-scan"
             if command in denied:
                 # the only denylisted automations a triage playbook may run are the parent's own operator steps
-                assert name == PARENT and command in ("GuardianTriageResult", "GuardianTriageApply"), (name, command)
+                assert name == PARENT and command in ("GuardianTriageResult", "GuardianTriageApply", "GuardianIssueSummary"), (name, command)
             for blocked in ("core-update", "setIncident", "setList", "addToList", "xdr-", "isolate", "quarantine", "delete"):
                 assert blocked not in command.lower() or command == "DeleteContext", (name, command)
 
@@ -353,8 +369,10 @@ def test_no_triage_playbook_uses_a_write_command():
 def test_apply_and_result_are_run_once_and_only_by_the_parent():
     commands = {n: [_command_of(t) for t in _tasks(_playbook(n), "regular")] for n in _all_triage_names()}
     assert commands[PARENT].count("GuardianTriageApply") == 1 and commands[PARENT].count("GuardianTriageResult") == 1
+    assert commands[PARENT].count("GuardianIssueSummary") == 2
     for name in _sub_names():
-        assert "GuardianTriageApply" not in commands[name] and "GuardianTriageResult" not in commands[name]
+        for operator_step in ("GuardianTriageApply", "GuardianTriageResult", "GuardianIssueSummary"):
+            assert operator_step not in commands[name]
 
 
 def _predecessors(doc):
@@ -710,16 +728,37 @@ def test_the_data_exposure_session_follows_the_issues_domain_not_a_fixed_skill()
     assert _taxonomy()["types"][3]["skill"] == {"detection": "cortex_detection_investigation", "posture": "cortex_posture_misconfiguration"}
 
 
-def test_the_other_branch_has_no_model_session_and_writes_one_note():
+def test_the_other_branch_runs_a_full_investigation_like_the_investigate_playbook():
     doc = _playbook("GuardianTriageOther")
-    commands = [_command_of(t) for t in _tasks(doc, "regular")]
-    assert commands == ["GuardianCaseNote"]
-    note = _arg(_tasks(doc, "regular")[0], "content")
-    assert "needs an analyst" in note and "${Guardian.Triage.reason}" in note
-    # the apply step's own note already carries the summary, next step, severity and branch
-    for placeholder in ("${Guardian.Triage.summary}", "${Guardian.Triage.next_step}", "${Guardian.Triage.severity}"):
-        assert placeholder not in note
-    assert doc["inputs"] == []
+    regular = _tasks(doc, "regular")
+    assert [_command_of(t) for t in regular] == ["DeleteContext", "GuardianSkillRead", "GuardianReasoningTick", "GuardianRunCapture"]
+    assert [t["task"]["name"] for t in regular] == ["Clear the triage session state", "Load the skill", "Run the investigation session",
+                                                    "Remember the outcome"]
+    clear, load, tick, capture = regular
+    assert _arg(clear, "key") == "Guardian.Loop" and _arg(clear, "subplaybook") == "no"
+    assert _arg(load, "name") == "${Guardian.Route.skill}" and _arg(load, "summary_only") == "true"
+    assert {k: _arg(tick, k) for k in tick["scriptarguments"]} == {
+        "prompt": "${inputs.prompt}", "skill": "${Guardian.Route.skill}", "use_prebuilt": "true", "scope_to_incident": "true",
+        "assessment_mode": "${Guardian.Route.assessment_mode}", "max_ticks": "${inputs.max_ticks}", "continue_run_totals": "true"}
+    # no analyst note task any more: the investigation writes its own case note, and the flow is a straight line
+    assert "GuardianCaseNote" not in [_command_of(t) for t in regular]
+    order = _flow_order(doc)
+    assert [doc["tasks"][k]["task"]["name"] for k in order] == ["", "Clear the triage session state", "Load the skill",
+                                                                 "Run the investigation session", "Remember the outcome", "Done"]
+    inputs = {i["key"]: i for i in doc["inputs"]}
+    assert set(inputs) == {"prompt", "max_ticks"} and inputs["max_ticks"]["value"]["simple"] == ""
+    assert "Empty (the default)" in " ".join(inputs["max_ticks"]["description"].split())
+    prompt = inputs["prompt"]["value"]["simple"]
+    assert "${incident.id}" in prompt and "did not place it in a type" in prompt and "${Guardian.Triage.reason}" in prompt
+    assert "DIGEST" not in prompt and "rule_digest" not in prompt  # digest mode is left out
+    assert "GuardianTriage" not in prompt
+
+
+def test_the_parent_hands_the_turn_cap_to_every_branch_including_other():
+    doc = _playbook(PARENT)
+    branches = _tasks(doc, "playbook")
+    assert len(branches) == 10
+    assert all(_arg(sub, "max_ticks") == "${inputs.investigate_max_ticks}" for sub in branches)
 
 
 def test_the_parent_flow_runs_the_preparation_then_triage_then_apply_then_the_branch():
@@ -757,8 +796,7 @@ def test_the_parent_flow_runs_the_preparation_then_triage_then_apply_then_the_br
     assert _arg(doc["tasks"][by_command["GuardianSkillRead"][0]], "name") == "cortex_triage"
     assert _arg(doc["tasks"][by_command["GuardianTriageApply"][0]], "apply_changes") == "${inputs.apply_changes}"
     for sub in _tasks(doc, "playbook"):
-        if sub["task"]["playbookName"] != "GuardianTriageOther":
-            assert _arg(sub, "max_ticks") == "${inputs.investigate_max_ticks}"
+        assert _arg(sub, "max_ticks") == "${inputs.investigate_max_ticks}"
         assert sub["separatecontext"] is False  # the sub-playbook shares Guardian.Triage, Guardian.Evidence and the prompt
 
 
@@ -767,10 +805,10 @@ def test_the_parent_inputs_and_prompt():
     inputs = {i["key"]: i["value"]["simple"] for i in doc["inputs"]}
     assert set(inputs) == {"prompt", "apply_changes", "triage_max_ticks", "investigate_max_ticks"}
     assert inputs["apply_changes"] == "true" and inputs["triage_max_ticks"] == "6"  # the triage session is meant to be short
-    assert inputs["investigate_max_ticks"] == ""  # empty: the focused session follows the model size tier and the settings
+    assert inputs["investigate_max_ticks"] == ""  # empty: the investigation session follows the model size tier and the settings
     prompt = inputs["prompt"]
     for phrase in ("THIS Cortex platform issue", "pinned above", "at most a few lookups", "Do NOT write a case note",
-                   "do NOT store a memory row", "EXACTLY the triage block", "`other`"):
+                   "do NOT store a memory row", "EXACTLY the triage block", "`other`", "analysis", "recommendations"):
         assert phrase in prompt, phrase
     assert "${incident.id}" in prompt and "GuardianTriage" not in prompt
 
@@ -826,13 +864,11 @@ def test_every_continue_on_error_value_is_continue():
         text = (PLAYBOOKS / "playbook-{}.yml".format(name)).read_text()
         assert 'continueonerrortype: ""' not in text
         total += text.count("continueonerrortype: continue")
-    assert total == 108  # every task that continues on error, in all eleven playbooks
+    assert total == 113  # every task that continues on error, in all eleven playbooks
 
 
-def test_the_nine_focused_sessions_continue_the_run_totals_and_the_other_sessions_do_not():
+def test_the_ten_investigation_sessions_continue_the_run_totals_and_the_other_sessions_do_not():
     for name in _sub_names():
-        if name == "GuardianTriageOther":
-            continue
         doc = _playbook(name)
         ticks = [t for t in _tasks(doc, "regular") if _command_of(t) == "GuardianReasoningTick"]
         assert len(ticks) == 1 and _arg(ticks[0], "continue_run_totals") == "true", name
@@ -852,8 +888,6 @@ def test_the_turn_limit_inputs_say_empty_means_the_investigation_limit():
     text = " ".join(parent["investigate_max_ticks"]["description"].split())
     assert "Empty (the default)" in text and "GuardianInvestigateIssue" in text and "25, 40 or 60" in text and "only lower" in text
     for name in _sub_names():
-        if name == "GuardianTriageOther":
-            continue
         inputs = {i["key"]: i for i in _playbook(name)["inputs"]}
         assert "Empty (the default)" in " ".join(inputs["max_ticks"]["description"].split()), name
 
@@ -864,3 +898,92 @@ def test_the_health_note_does_not_quote_the_route_reason():
     assert len(notes) == 1
     content = _arg(notes[0], "content")
     assert "Guardian.Route.reason" not in content and "handled without a model session" in content and "${Guardian.Route.family}" in content
+
+
+# --- the summary tasks in the parent, and the investigation rules in every branch ----------------------------------
+
+def test_the_parent_writes_the_triage_summary_after_apply_and_the_conclusion_before_done():
+    doc = _playbook(PARENT)
+    tasks = doc["tasks"]
+    summaries = {_arg(t, "stage"): key for key, t in tasks.items() if t["type"] == "regular" and _command_of(t) == "GuardianIssueSummary"}
+    assert set(summaries) == {"triage", "investigation"}
+    by_name = {t["task"]["name"]: key for key, t in tasks.items()}
+    assert tasks[summaries["triage"]]["task"]["name"] == "Write the triage summary"
+    assert tasks[summaries["investigation"]]["task"]["name"] == "Write the investigation conclusion"
+    apply_key = [k for k, t in tasks.items() if t["type"] == "regular" and _command_of(t) == "GuardianTriageApply"][0]
+    assert tasks[apply_key]["nexttasks"]["#none#"] == [summaries["triage"]]
+    assert tasks[summaries["triage"]]["nexttasks"]["#none#"] == [by_name["Which type?"]]
+    done = by_name["Done"]
+    assert tasks[summaries["investigation"]]["nexttasks"]["#none#"] == [done]
+    for branch in _tasks(doc, "playbook"):
+        assert branch["nexttasks"]["#none#"] == [summaries["investigation"]], branch["task"]["name"]
+    for key in summaries.values():
+        task = tasks[key]
+        assert _arg(task, "apply_changes") == "${inputs.apply_changes}" and task["continueonerror"] is True
+        assert task["separatecontext"] is False and task["task"]["description"]
+    # a halted path or the no-model note never passes through them: only the apply task and the branches lead there
+    pred = _predecessors(doc)
+    assert {p for p, _l in pred[summaries["triage"]]} == {apply_key}
+    assert {p for p, _l in pred[summaries["investigation"]]} == {k for k, t in tasks.items() if t["type"] == "playbook"}
+    assert {p for p, _l in pred[done]} == {summaries["investigation"], by_name["Note - no model session needed"]}
+    for title in [t for t in tasks.values() if t["type"] == "title" and t["task"]["name"].startswith("Halted")]:
+        assert not title.get("nexttasks")
+
+
+def test_every_new_and_moved_task_has_a_view_and_no_two_tasks_share_a_position():
+    for name in _all_triage_names():
+        doc = _playbook(name)
+        positions = [tuple(json.loads(t["view"])["position"].values()) for t in doc["tasks"].values()]
+        assert len(positions) == len(set(positions)), name
+
+
+def _investigate_rules():
+    prompt = {i["key"]: i["value"]["simple"] for i in yaml.safe_load((PLAYBOOKS / "playbook-GuardianInvestigateIssue.yml").read_text())["inputs"]}["prompt"]
+    text = _flat(prompt)
+    start = text.index("Judge by the assessment mode")
+    judge = text[start:text.index(" 4) If a memory row")]
+    start = text.index("If a memory row")
+    memory = text[start:text.index(" 5) DOCUMENT")]
+    start = text.index("In `verdict` mode: `Malicious`")
+    verdict = text[start:text.index(" End with EXACTLY", start)]
+    start = text.index("In `posture` mode: `Confirmed`")
+    posture = text[start:text.index(" End with EXACTLY", start)]
+    return {"judge": judge, "memory": memory, "verdict": verdict, "posture": posture}
+
+
+@pytest.mark.parametrize("name", [
+    "GuardianTriageIdentityThreat", "GuardianTriageCloudChange", "GuardianTriageEndpointThreat", "GuardianTriageDataExposure",
+    "GuardianTriageMisconfiguration", "GuardianTriageVulnerability", "GuardianTriageCodeRisk", "GuardianTriageExcessivePrivilege",
+    "GuardianTriageAttackPath", "GuardianTriageOther"])
+def test_every_branch_prompt_carries_the_judgment_and_calibration_rules_of_the_investigate_prompt_verbatim(name):
+    rules = _investigate_rules()
+    assert all(len(rule) > 200 for rule in rules.values())
+    prompt = _flat({i["key"]: i["value"]["simple"] for i in _playbook(name)["inputs"]}["prompt"])
+    for label, rule in rules.items():
+        assert rule in prompt, (name, label)
+    for phrase in ("Benign at 70 or more needs evidence that it was expected", "answer Suspicious (confidence 40-70), not Malicious",
+                   "A memory row is an earlier conclusion, often Guardian's own", "a resolution as a false positive is evidence",
+                   "P1 (fix now: internet-exposed or admin-level in production)"):
+        assert phrase in prompt, (name, phrase)
+    assert "digest" not in prompt.lower()
+
+
+def test_the_branch_session_task_is_called_the_investigation_session_everywhere():
+    for name in _sub_names():
+        doc = _playbook(name)
+        names = [t["task"]["name"] for t in _tasks(doc, "regular")]
+        assert "Run the investigation session" in names and "Run the focused model session" not in names, name
+        assert "focused" not in (PLAYBOOKS / "playbook-{}.yml".format(name)).read_text(), name
+
+
+def test_the_triage_skill_and_the_tick_ask_for_the_optional_analysis_and_recommendations():
+    skill = _skill_body()
+    conclude = skill.split("## Conclude", 1)[1]
+    assert '"analysis"' in conclude and '"recommendations"' in conclude and "optional" in conclude and "800" in conclude
+    schema = (SCRIPTS / "GuardianReasoningTick" / "GuardianReasoningTick.py").read_text()
+    assert '"analysis": "optional' in schema and '"recommendations": ["optional' in schema
+    doc = yaml.safe_load((SCRIPTS / "GuardianTriageResult" / "GuardianTriageResult.yml").read_text())
+    paths = {o["contextPath"] for o in doc["outputs"]}
+    assert {"Guardian.Triage.analysis", "Guardian.Triage.recommendations", "Guardian.Triage.issue_id"} <= paths
+    index = {e["name"]: e for e in json.loads(_list_data("guardian_skills_index"))}
+    assert "analysis and recommendations" in index["cortex_triage"]["description"]

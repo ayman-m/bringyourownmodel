@@ -8558,6 +8558,26 @@ def guardian_reasoning_tick_run(args):
     )
 
 
+#: The run-level fields a concluded run returns as its command outputs (merged into `Guardian.Loop` by `run_id`).
+#: The transcript, the executed-call map and the conclusion text stay in the context only: they are large.
+GUARDIAN_LOOP_CONTEXT_PATH = "{}.{}".format(GUARDIAN_CONTEXT_NAMESPACE, GUARDIAN_LOOP_CONTEXT_KEY)
+GUARDIAN_TICK_OUTPUT_FIELDS = ("run_id", "status", "tick", "assessment_mode", "skill", "cost_usd", "cost_tokens_total")
+GUARDIAN_TICK_OUTPUT_VERDICT_FIELDS = ("verdict", "confidence", "techniques", "summary", "kind", "priority")
+
+
+def guardian_tick_concluding_outputs(loop_state):
+    """The small outputs of a run that has just concluded (no further tick), or ``None`` when there is no loop state to
+    report. Only the declared run-level fields and the verdict's own fields: never the transcript, the executed-call
+    map or the conclusion text."""
+    if not isinstance(loop_state, dict) or not loop_state.get("run_id"):
+        return None
+    outputs = {key: loop_state[key] for key in GUARDIAN_TICK_OUTPUT_FIELDS if loop_state.get(key) not in (None, "")}
+    verdict = loop_state.get("verdict")
+    if isinstance(verdict, dict) and verdict.get("verdict"):
+        outputs["verdict"] = {key: verdict[key] for key in GUARDIAN_TICK_OUTPUT_VERDICT_FIELDS if key in verdict}
+    return outputs
+
+
 def main():
     try:
         outcome = guardian_reasoning_tick_run(demisto.args())
@@ -8587,10 +8607,15 @@ def main():
             loop_status = (outcome.get("loop_state") or {}).get("status")
             guardian_tick_report_job_guard(job_name, loop_status)
 
+    # Outputs only when the run has concluded: a tick that reschedules itself returns none.
+    outputs = None if outcome["reschedule"] else guardian_tick_concluding_outputs(outcome.get("loop_state"))
     return_results(
         CommandResults(
             readable_output=outcome["narration"],
             scheduled_command=scheduled_command,
+            outputs_prefix=GUARDIAN_LOOP_CONTEXT_PATH if outputs else None,
+            outputs_key_field="run_id" if outputs else None,
+            outputs=outputs,
         )
     )
 

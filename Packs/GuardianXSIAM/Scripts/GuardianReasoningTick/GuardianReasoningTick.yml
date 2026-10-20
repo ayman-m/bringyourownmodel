@@ -156,11 +156,29 @@ outputs:
     Triage runs only. The final conclusion text (the analysis held back at a corrective nudge, then the last reply),
     cut to 12000 characters. Empty when the run ended without a final answer. GuardianTriageResult reads it.
   type: String
+- contextPath: Guardian.Loop.verdict.verdict
+  description: "Verdict and posture runs only. The recorded verdict (Malicious, Suspicious, Benign or Inconclusive) or posture assessment (Confirmed, Not reproducible or Accepted risk candidate). Also returned as a command output when the run concludes."
+  type: String
+- contextPath: Guardian.Loop.verdict.confidence
+  description: "The verdict's confidence, 0-100 (for a posture assessment, the score of its priority)."
+  type: Number
+- contextPath: Guardian.Loop.verdict.techniques
+  description: "The ATT&CK technique ids the verdict names."
+  type: Unknown
+- contextPath: Guardian.Loop.verdict.summary
+  description: "The one-line rationale (for a posture assessment: priority, exposure, owner, fix and rationale, separated by ` | `)."
+  type: String
+- contextPath: Guardian.Loop.verdict.kind
+  description: "`posture` for a posture assessment; absent for a verdict."
+  type: String
+- contextPath: Guardian.Loop.verdict.priority
+  description: "P1 to P4 for a posture assessment; absent for a verdict."
+  type: String
 - contextPath: Guardian.Loop.triage_block
   description: >-
     Triage runs only. The validated triage block parsed from the conclusion (severity, investigation_type,
-    confidence, likely_benign, escalate, summary, key_entities, next_step), or null when the conclusion had no valid
-    block.
+    confidence, likely_benign, escalate, summary, key_entities, next_step and the optional analysis and
+    recommendations), or null when the conclusion had no valid block.
   type: Unknown
 script: '-'
 system: false

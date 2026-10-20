@@ -359,7 +359,7 @@ def test_inputs_come_from_the_incident_first_in_the_full_record():
 def test_the_record_has_exactly_the_documented_keys():
     record, _n, _c = _run({"triage_block": _block()})
     assert set(record) == {
-        "status", "branch", "investigation_type", "severity", "original_severity", "confidence", "likely_benign", "escalate",
+        "incident_id", "status", "branch", "investigation_type", "severity", "original_severity", "confidence", "likely_benign", "escalate",
         "summary", "next_step", "domain", "assessment_mode", "sub_playbook", "skill", "reason", "inputs", "domain_mismatch",
         "input_sources"}
     json.dumps(record)  # serializable
@@ -486,6 +486,9 @@ def test_main_writes_the_record_with_setcontext_audits_it_and_reports(monkeypatc
     assert audit["action"] == "GuardianTriageResult" and audit["status"] == "ok" and audit["target"] == "1001"
     detail = json.loads(audit["detail"])
     assert detail["triage_status"] == "repaired" and detail["taxonomy"] == "default" and detail["repair_cost_usd"] == 0.001
+    # the same record is returned as the task's outputs, keyed by the incident so a re-run merges into one object
+    assert results[0].outputs_prefix == "Guardian.Triage" and results[0].outputs_key_field == "incident_id"
+    assert results[0].outputs == record and record["incident_id"] == "1001"
 
 
 def test_main_audits_a_fallback_as_an_error_row(monkeypatch):

@@ -14,6 +14,9 @@ commonfields:
 enabled: true
 name: GuardianTriageResult
 outputs:
+- contextPath: Guardian.Triage.incident_id
+  description: "The incident the record is about. It is the key that keeps a re-run one object."
+  type: String
 - contextPath: Guardian.Triage.status
   description: "structured (the session's block was valid), repaired (one repair call produced a valid block) or fallback (no valid block; the branch is other and no severity is proposed)."
   type: String

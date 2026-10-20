@@ -3,9 +3,11 @@ version: -1
 name: GuardianTriageOther
 description: >-
   Triage branch for an issue that fits no type, or whose triage answer could not be used or did not fit the
-  issue's domain. No model session runs: it writes one case note saying an analyst has to decide and why
-  triage stopped (the triage apply step has already noted the summary and next step), and stops. The issue's
-  phase was already set to "Guardian triage: needs analyst" by the triage apply step.
+  issue's domain. There is no type-specific enrichment, but the issue still gets a full investigation, of the
+  same weight as GuardianInvestigateIssue: it loads the skill the issue route chose, runs one model session over
+  the evidence packet and ends with the verdict or posture block. The issue's phase was already set to
+  "Guardian triage: needs analyst" by the triage apply step. Everything the model session reads is read-only; it
+  proposes actions and takes none.
 starttaskid: "0"
 tasks:
   "0":
@@ -32,17 +34,16 @@ tasks:
       }
   "1":
     id: "1"
-    taskid: 168b42ea-4e41-53da-86f2-41c0aca3725b
+    taskid: e27d72e1-da2f-5689-acc4-050466c5e5d8
     type: regular
     task:
-      id: 168b42ea-4e41-53da-86f2-41c0aca3725b
+      id: e27d72e1-da2f-5689-acc4-050466c5e5d8
       version: -1
-      name: "Note - needs an analyst"
+      name: "Clear the triage session state"
       description: >-
-        Writes one case note saying that an analyst has to decide and why triage stopped here, then the
-        playbook ends. The triage apply step has already written its own note (branch, severity before and
-        after, the model's summary and next step), so this one adds only the reason. No model is involved.
-      script: 'GuardianCaseNote'
+        Deletes Guardian.Loop, the triage session's state, so the investigation session below starts its own
+        loop instead of stopping at "loop already done". The triage outcome stays in Guardian.Triage.
+      script: 'DeleteContext'
       type: regular
       iscommand: false
       brand: ""
@@ -50,11 +51,10 @@ tasks:
       '#none#':
       - "2"
     scriptarguments:
-      content:
-        simple: |-
-          Guardian triage could not place this issue in a type, so it needs an analyst.
-          Why triage stopped here: ${Guardian.Triage.reason}
-          Triage status: ${Guardian.Triage.status}. Apply outcome: ${Guardian.TriageApply.status}.
+      key:
+        simple: "Guardian.Loop"
+      subplaybook:
+        simple: "no"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -67,6 +67,116 @@ tasks:
       }
   "2":
     id: "2"
+    taskid: 641fd0bd-9347-55cf-ab4a-aeda809cd1f9
+    type: regular
+    task:
+      id: 641fd0bd-9347-55cf-ab4a-aeda809cd1f9
+      version: -1
+      name: "Load the skill"
+      description: >-
+        Loads the skill the issue route chose (Guardian.Route.skill) so the model session can carry it in its
+        system prompt. The triage chose no type, so there is no type-specific skill. No model is involved; a
+        skill that cannot be loaded never stops the run.
+      script: 'GuardianSkillRead'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "3"
+    scriptarguments:
+      name:
+        simple: "${Guardian.Route.skill}"
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 380
+        }
+      }
+  "3":
+    id: "3"
+    taskid: 0c3cdfd1-8733-5ada-898e-62700427b166
+    type: regular
+    task:
+      id: 0c3cdfd1-8733-5ada-898e-62700427b166
+      version: -1
+      name: "Run the investigation session"
+      description: >-
+        A full investigation of this issue, of the same weight as GuardianInvestigateIssue: the model reads the
+        evidence packet, follows the skill, judges by the assessment mode, checks what is still open, writes one
+        case note and ends with the verdict or posture block. Every tool call goes through the security gate;
+        containment and other state changes wait for a human. Re-schedules itself for each turn until the model
+        concludes, the kill switch is thrown or the tick limit (input max_ticks) is hit. It continues the tick
+        count, cost and tool activity of the triage session on the issue instead of restarting them.
+      script: 'GuardianReasoningTick'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    scriptarguments:
+      prompt:
+        simple: "${inputs.prompt}"
+      skill:
+        simple: "${Guardian.Route.skill}"
+      use_prebuilt:
+        simple: "true"
+      scope_to_incident:
+        simple: "true"
+      assessment_mode:
+        simple: "${Guardian.Route.assessment_mode}"
+      max_ticks:
+        simple: "${inputs.max_ticks}"
+      continue_run_totals:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 565
+        }
+      }
+  "4":
+    id: "4"
+    taskid: 51163622-2f3b-5036-acc3-3393c939a031
+    type: regular
+    task:
+      id: 51163622-2f3b-5036-acc3-3393c939a031
+      version: -1
+      name: "Remember the outcome"
+      description: >-
+        Stores one memory row for the finished run (key run:<issue id>) with the family, rule, assets, verdict
+        or posture assessment, priority and summary, so a later issue of the same rule or on the same asset
+        opens with this outcome in front of it. Writes nothing when the run ended without a verdict.
+      script: 'GuardianRunCapture'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 750
+        }
+      }
+  "5":
+    id: "5"
     taskid: 4cd5e3fd-e6bf-5128-a540-5fc631e58e67
     type: title
     task:
@@ -83,7 +193,7 @@ tasks:
       {
         "position": {
           "x": 450,
-          "y": 340
+          "y": 935
         }
       }
 view: |-
@@ -91,7 +201,7 @@ view: |-
     "linkLabelsPosition": {},
     "paper": {
       "dimensions": {
-        "height": 455,
+        "height": 945,
         "width": 800,
         "x": 0,
         "y": 50
@@ -99,7 +209,89 @@ view: |-
     }
   }
 
-inputs: []
+inputs:
+- key: prompt
+  value:
+    simple: >-
+      Triage looked at THIS Cortex platform issue, number ${incident.id}, and did not place it in a type
+      (${Guardian.Triage.reason}). Triage status: ${Guardian.Triage.status}. Its first rating, if it gave one, was
+      severity `${Guardian.Triage.severity}` (the issue arrived as `${Guardian.Triage.original_severity}`) with
+      confidence ${Guardian.Triage.confidence}; an empty value or a zero means there was no usable rating. Triage is
+      a first look, not a conclusion: investigate the issue yourself from the evidence.
+
+      You are already assigned to this issue: do NOT search for or switch to another issue, never invent an id, and never ask anyone
+      for it. Work in this order, calling the tools yourself. Make exactly ONE tool call per turn and read its result
+      before choosing the next call; never write the case note or store a memory in the same turn as a lookup.
+
+      1) READ THE EVIDENCE PACKET pinned above first. It holds what the platform already knows: the issue's status and fields,
+      the platform's remediation text, the asset details, the case, how earlier issues of the same rule were resolved, and
+      what Guardian remembers about the rule and assets. Do not fetch again what is there, and name the sections you rely on.
+      A section listed as not available is unknown, not empty.
+
+      2) FOLLOW THE ACTIVE SKILL for this family. It lists the checks that matter, the commands and queries that answer them,
+      and the report format. Gather only what your question needs, and stop when another call would not change your answer.
+      A failed or empty lookup is not evidence either way: say so and carry on.
+
+      3) Judge by the assessment mode, which the issue pin above states (family and mode). In `posture` mode the
+      finding comes from a scanner: it is a fact about configuration, not a claim to corroborate, so confirm it still holds,
+      then assess how exposed it is, what it protects, who owns it and what fixes it. In `verdict` mode the issue is a
+      detector's claim: corroborate it with independent telemetry before you call it Malicious or Benign.
+
+      4) If a memory row or an earlier resolution in the packet covers this rule or asset, use it and quote its key. A
+      memory row is an earlier conclusion, often Guardian's own: check it against this issue's evidence instead of adopting
+      it. How analysts closed earlier issues of the rule is in prior_rules; a resolution as a false positive is evidence.
+
+      5) DOCUMENT: call GuardianCaseNote once, in the report format the skill gives. Keep the case note under 2500 characters. Notes over 4000 are
+      rejected and cost a retry. Cut repetition and raw lists before findings: name each item once, summarise
+      counts, and keep the verdict, key evidence and next steps. When you cite a cloud resource, copy its full
+      resource id exactly as it appears in the evidence. Never shorten it with '...'.
+
+      6) REMEMBER: if this run's evidence shows a durable pattern (a routine shown to be authorised, an accepted risk, a new
+      risk), call GuardianMemory with op=store, a key that names the rule or the asset (for example rule:<rule id> or
+      asset:<asset id>), a one-sentence value and tags. Store what you saw, not a guess: later runs on this rule read it.
+
+      7) DECIDE. Do NOT change anything: no core-update-issue, no core-update-case, no containment. Propose the next action
+      in your report instead.
+      In `verdict` mode: `Malicious` = confirmed hostile activity; `Suspicious` = likely hostile but not confirmed; `Benign` =
+      confirmed non-threat or expected activity; `Inconclusive` = genuinely insufficient signal in the issue's own evidence.
+      `techniques` lists parent-level ATT&CK ids that match THIS activity (the `T####` in the template is a placeholder, never
+      copy it), or [] if none apply. `confidence`: 90 or more only when a tool result or the packet confirms the key facts;
+      40-70 when the evidence is partial. If nothing independent corroborates the detector, answer Suspicious (confidence
+      40-70), not Malicious. Telemetry that shows the activity happened confirms the detector's facts, not that the activity
+      was authorised: Benign at 70 or more needs evidence that it was expected (an earlier issue of this rule resolved as a
+      false positive, a known automation identity doing its usual job, or the same identity doing the same thing from the
+      same networks before). A source IP never seen on this tenant, failed sign-ins around the change, or a lookup that
+      failed argue against Benign; when the activity is confirmed but its authorisation is not, answer Suspicious and
+      propose confirming it with the owner. End with EXACTLY this fenced block and nothing after it:
+      ```json
+      {"verdict": "Malicious|Suspicious|Benign|Inconclusive", "confidence": 0-100,
+       "techniques": ["T####"], "summary": "one-line blast-radius / rationale"}
+      ```
+      In `posture` mode: `Confirmed` = the condition still holds; `Not reproducible` = it no longer holds or the asset is gone;
+      `Accepted risk candidate` = it holds, but the evidence shows a deliberate, contained or low-impact setup that an owner
+      could accept. `priority` is P1 (fix now: internet-exposed or admin-level in production), P2, P3 or P4 (low impact); say
+      why. `exposure`, `owner` and `fix` are each one short line; if the owner is unknown, write unknown. End with EXACTLY this
+      fenced block and nothing after it:
+      ```json
+      {"assessment": "Confirmed|Not reproducible|Accepted risk candidate", "priority": "P1|P2|P3|P4",
+       "exposure": "who or what can reach it", "owner": "team or role, or unknown", "fix": "the change that closes it",
+       "summary": "one-line rationale"}
+      ```
+  required: false
+  description: >-
+    Prompt for the investigation session on an issue triage could not place in a type. It says what triage
+    concluded (from Guardian.Triage), and carries the same instructions as the GuardianInvestigateIssue prompt
+    (without its digest mode).
+  playbookInputQuery: null
+- key: max_ticks
+  value:
+    simple: ""
+  required: false
+  description: >-
+    Optional cap on the model turns of the investigation session. Empty (the default) uses the same limit
+    GuardianInvestigateIssue gets: the model size's limit, or the guardian_settings and model profile
+    override. A number can only lower that limit. The parent playbook passes its investigate_max_ticks input.
+  playbookInputQuery: null
 outputs: []
 adopted: true
 fromversion: 6.10.0

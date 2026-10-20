@@ -156,10 +156,13 @@ def test_main_overwrites_the_route_instead_of_appending(monkeypatch):
     monkeypatch.setattr(route.demisto, "args", lambda: {})
     monkeypatch.setattr(route.demisto, "incident", lambda: {"id": "1", "CustomFields": {}})
     monkeypatch.setattr(route, "guardian_route_run", lambda incident, skill_override="": {
-        "family": "identity", "skill": "cortex_identity_risk", "assessment_mode": "posture", "run_model": "true", "reason": "r"})
+        "route_id": "identity", "family": "identity", "skill": "cortex_identity_risk", "assessment_mode": "posture",
+        "run_model": "true", "reason": "r"})
     monkeypatch.setattr(route.demisto, "setContext", lambda path, value: written.append((path, value)))
     monkeypatch.setattr(route, "return_results", results.append)
     route.main()
-    assert written == [("Guardian.Route", {"family": "identity", "skill": "cortex_identity_risk", "assessment_mode": "posture",
-                                           "run_model": "true", "reason": "r"})]
-    assert results[0].outputs_prefix is None and "identity" in results[0].readable_output
+    assert written == [("Guardian.Route", {"route_id": "identity", "family": "identity", "skill": "cortex_identity_risk",
+                                           "assessment_mode": "posture", "run_model": "true", "reason": "r"})]
+    # the same route is returned as the outputs, keyed by the route row so a re-run merges into one object
+    assert results[0].outputs_prefix == "Guardian.Route" and results[0].outputs_key_field == "route_id"
+    assert results[0].outputs == written[0][1] and "identity" in results[0].readable_output

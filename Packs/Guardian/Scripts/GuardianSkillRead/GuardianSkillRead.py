@@ -2981,6 +2981,16 @@ def main():
         ("SkillCategory", data["category"]),
     ):
         guardian_ctx_write(key, value)
+    # The command's outputs are the small Guardian.Skill object (never the body): it is written to the context too, so
+    # that the outputs merge into it, keyed by the skill name, instead of adding a second object.
+    skill = {
+        "name": data["name"],
+        "display_name": data["display_name"],
+        "category": data["category"],
+        "chars": len(data["body"]),
+        "token_estimate": guardian_estimate_tokens(data["body"]),
+    }
+    guardian_ctx_write("Skill", skill)
 
     return_results(
         CommandResults(
@@ -2993,6 +3003,9 @@ def main():
                 if argToBoolean(args.get("summary_only") or "false")
                 else "## Skill: {} (`{}`)\n\n{}".format(data["display_name"], data["name"], data["body"])
             ),
+            outputs_prefix="{}.Skill".format(GUARDIAN_CONTEXT_NAMESPACE),
+            outputs_key_field="name",
+            outputs=skill,
             raw_response=data,
         )
     )

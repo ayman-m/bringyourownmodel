@@ -27,6 +27,9 @@ outputs:
   description: >-
     The assembled system prompt for this tick, ready to pass to `!guardian-llm-chat` as the system message.
   type: String
+- contextPath: Guardian.SystemPromptMeta.IssueId
+  description: "The issue the prompt was built for. It is the key that keeps a re-run one object."
+  type: String
 - contextPath: Guardian.SystemPromptMeta.CharLen
   description: Character length of the assembled prompt.
   type: Number

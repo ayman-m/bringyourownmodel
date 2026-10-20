@@ -132,3 +132,18 @@ def test_the_shipped_list_parses_and_every_row_has_a_family_domain_and_skill():
     for row in rows + [default]:
         assert row["family"] and row["domain"] in route.GUARDIAN_ROUTE_DOMAINS
         assert row["skill"] or row["run_model"] is False
+
+
+def test_main_overwrites_the_route_and_returns_it_as_outputs_keyed_by_the_route_row(monkeypatch):
+    written, results = [], []
+    fake = {"route_id": "phishing", "family": "phishing", "domain": "detection", "skill": "xsoar_phishing_investigation",
+            "assessment_mode": "verdict", "run_model": "true", "reason": "r"}
+    monkeypatch.setattr(route.demisto, "args", lambda: {})
+    monkeypatch.setattr(route.demisto, "incident", lambda: {"id": "1", "CustomFields": {}})
+    monkeypatch.setattr(route, "guardian_route_run", lambda incident, skill_override="": dict(fake))
+    monkeypatch.setattr(route.demisto, "setContext", lambda path, value: written.append((path, value)))
+    monkeypatch.setattr(route, "return_results", results.append)
+    route.main()
+    assert written == [("Guardian.Route", fake)]
+    assert results[0].outputs_prefix == "Guardian.Route" and results[0].outputs_key_field == "route_id"
+    assert results[0].outputs == written[0][1]

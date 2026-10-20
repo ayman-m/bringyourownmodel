@@ -1880,6 +1880,24 @@ def test_reduce_list_structurally_every_item_intact_not_sliced():
         assert item in items  # byte-identical to some original item, never mangled
 
 
+# --- Guardian's own description section never reaches the model -------------------------------------------------------
+
+def test_shape_result_drops_guardians_description_section_before_the_result_reaches_the_model():
+    section = gtb.GUARDIAN_ISSUE_SECTION_GAP + gtb.GUARDIAN_ISSUE_SECTION_MARKER + "\nTriage: type x, severity high.\nInvestigation: Benign, confidence 90."
+    entries = [{"Type": 1, "Contents": [{"internal_id": "9001", "description": "The VM has admin rights." + section,
+                                         "comments": [{"text": "note" + section}]}]}]
+    payload, truncated, note, full_payload = gtb.guardian_bridge_shape_result(entries)
+    assert payload == [{"internal_id": "9001", "description": "The VM has admin rights.", "comments": [{"text": "note"}]}]
+    assert truncated is False and gtb.GUARDIAN_ISSUE_SECTION_MARKER not in json.dumps(payload)
+
+
+def test_shape_result_strips_the_section_before_it_truncates_so_a_cut_cannot_keep_a_piece_of_it():
+    section = gtb.GUARDIAN_ISSUE_SECTION_GAP + gtb.GUARDIAN_ISSUE_SECTION_MARKER + "\nInvestigation: Benign."
+    entries = [{"Type": 1, "Contents": "x" * 5000 + section}]
+    payload, truncated, _note, full_payload = gtb.guardian_bridge_shape_result(entries, truncate_arg=1000, head_tail_arg=300)
+    assert truncated is True and "Benign" not in payload and "Benign" not in json.dumps(full_payload)
+
+
 # --- guardian_bridge_shape_result: structural reduction (harvest candidate #17) ---
 
 

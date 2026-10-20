@@ -97,6 +97,14 @@ def test_find_candidates_tolerates_missing_data_key(monkeypatch):
 # --- guardian_eval_harvest_build_case -------------------------------------------
 
 
+def test_build_case_leaves_out_the_guardian_section_of_the_description():
+    section = geh.GUARDIAN_ISSUE_SECTION_GAP + geh.GUARDIAN_ISSUE_SECTION_MARKER + "\nInvestigation: Benign, confidence 90."
+    case, reason = geh.guardian_eval_harvest_build_case(_incident("201", details="A real narrative." + section))
+    assert reason is None and case["details"] == "A real narrative."
+    only_section = geh.guardian_eval_harvest_build_case(_incident("202", details=geh.GUARDIAN_ISSUE_SECTION_MARKER + "\nTriage: x"))
+    assert only_section[0] is None and "blank details" in only_section[1]
+
+
 def test_build_case_success():
     incident = _incident("200", verdict="Malicious", techniques=["T1110", "T1078"], details="A real narrative.")
     case, reason = geh.guardian_eval_harvest_build_case(incident)

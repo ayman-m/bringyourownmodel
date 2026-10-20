@@ -277,6 +277,15 @@ def test_main_defaults_to_applying_and_overwrites_the_context_key(monkeypatch):
     assert "Guardian triage apply" in results[0].readable_output
 
 
+def test_main_returns_the_result_as_outputs_keyed_by_the_issue(monkeypatch):
+    _calls, written, results = _main(monkeypatch, {}, {"Guardian": {"Triage": _triage()}}, _issue())
+    out, context_result = results[0], written["Guardian.TriageApply"]
+    assert out.outputs_prefix == "Guardian.TriageApply" and out.outputs_key_field == "issue_id"
+    assert out.outputs == context_result and context_result["issue_id"] == "1001"
+    _calls, written, results = _main(monkeypatch, {}, {"Guardian": {"Triage": {}}}, _issue())
+    assert results[0].outputs["status"] == "skipped" and results[0].outputs["issue_id"] == "1001"
+
+
 def test_main_is_idempotent_through_the_context(monkeypatch):
     ctx = {"Guardian": {"Triage": _triage(), "TriageApply": {"status": "applied"}}}
     calls, written, _results = _main(monkeypatch, {}, ctx, _issue())

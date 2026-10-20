@@ -27,12 +27,16 @@ trust model prose.
 
 Result -- written with `setContext` (a re-run overwrites, it never appends) under `Guardian.Triage`:
 
-    {status: structured|repaired|fallback, branch: <type name or "other">, investigation_type: <the model's value or "">,
+    {incident_id: str, status: structured|repaired|fallback, branch: <type name or "other">,
+     investigation_type: <the model's value or "">,
      severity: <low|medium|high|critical or "">, original_severity: <low|medium|high|critical|informational|unknown>,
      confidence: int, likely_benign: bool, escalate: bool, summary: str, next_step: str, domain: str,
      assessment_mode: verdict, sub_playbook: str, skill: str, reason: str,
      inputs: {identity, ip, host, hash, sha256, cve, domain, url, email, rule_id},
      domain_mismatch: bool, input_sources: {<input>: "incident"|"model"|""}}
+
+The record is also returned as the command's outputs, keyed by `incident_id` (the same on a re-run), so the task shows it and
+a re-run merges into one object.
 
 Nothing here changes the incident. `GuardianTriageApply` does that, and it is operator-owned.
 """
@@ -3038,6 +3042,7 @@ def guardian_triage_result_run(incident, route, loop, table, run_id=None, repair
         summary = guardian_triage_fallback_summary(reason)
 
     record = {
+        "incident_id": str(incident.get("id") or ""),
         "status": status,
         "branch": branch,
         "investigation_type": itype,
@@ -3111,7 +3116,9 @@ def main():
     # Overwrite, never append: a second run on the same incident would otherwise turn Guardian.Triage into a list.
     demisto.setContext(GUARDIAN_TRIAGE_CONTEXT_PATH, record)
     guardian_triage_audit(record, incident.get("id") or "", repair_note, repair_cost, table_source)
-    return_results(CommandResults(readable_output=guardian_triage_readable(record), raw_response=record))
+    return_results(CommandResults(
+        readable_output=guardian_triage_readable(record), outputs_prefix=GUARDIAN_TRIAGE_CONTEXT_PATH,
+        outputs_key_field="incident_id", outputs=record, raw_response=record))
 
 
 if __name__ in ("__main__", "__builtin__", "builtins"):

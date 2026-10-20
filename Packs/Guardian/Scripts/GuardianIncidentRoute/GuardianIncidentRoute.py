@@ -2910,6 +2910,9 @@ def main():
             readable_output="Route: **{}** ({}) -> skill `{}`, assessment `{}`, model run {} ({}).".format(
                 route["family"], route["domain"], route["skill"], route["assessment_mode"], route["run_model"], route["reason"]
             ),
+            outputs_prefix=GUARDIAN_ROUTE_CONTEXT_PATH,
+            outputs_key_field="route_id",
+            outputs=route,
             raw_response=route,
         )
     )

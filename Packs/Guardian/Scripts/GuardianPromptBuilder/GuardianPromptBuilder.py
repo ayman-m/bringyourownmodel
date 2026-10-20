@@ -3248,7 +3248,8 @@ def main():
 
     data = result["data"]
     prompt = data["prompt"]
-    meta = data["meta"]
+    # IncidentId is the key that keeps the returned outputs and this context object one object on a re-run.
+    meta = dict(data["meta"], IncidentId=str((demisto.incident() or {}).get("id") or ""))
 
     guardian_ctx_write(GUARDIAN_PROMPT_CONTEXT_KEY, prompt)
     guardian_ctx_write(GUARDIAN_PROMPT_META_CONTEXT_KEY, meta)
@@ -3271,6 +3272,9 @@ def main():
     return_results(
         CommandResults(
             readable_output="\n".join(lines),
+            outputs_prefix="{}.{}".format(GUARDIAN_CONTEXT_NAMESPACE, GUARDIAN_PROMPT_META_CONTEXT_KEY),
+            outputs_key_field="IncidentId",
+            outputs=meta,
             raw_response=data,
         )
     )

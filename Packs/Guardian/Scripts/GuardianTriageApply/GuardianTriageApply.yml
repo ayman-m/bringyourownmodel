@@ -27,6 +27,9 @@ commonfields:
 enabled: true
 name: GuardianTriageApply
 outputs:
+- contextPath: Guardian.TriageApply.incident_id
+  description: "The incident the result is about. It is the key that keeps a re-run one object."
+  type: String
 - contextPath: Guardian.TriageApply.status
   description: "applied (the incident was updated), dry_run (computed only), skipped (a guard stopped it) or error (the update failed)."
   type: String

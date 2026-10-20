@@ -2389,6 +2389,64 @@ def test_main_final_answer_does_not_reschedule(monkeypatch):
     assert csp.RESULTS[0].scheduled_command is None
 
 
+def test_main_returns_no_outputs_while_the_run_reschedules_itself(monkeypatch):
+    tc = _tool_call("call_1", "ip", {"ip": "8.8.8.8"})
+    _install(
+        monkeypatch,
+        command_handlers={
+            "GuardianPromptBuilder": _prompt_builder_handler(),
+            "GuardianToolCatalogBuilder": _catalog_builder_handler([{"type": "function", "function": {"name": "ip"}}]),
+            "guardian-llm-chat": _llm_handler_sequence([_completion(tool_calls=[tc])]),
+            "GuardianToolBridge": _tool_bridge_handler(default_result={"status": "ok", "ok": True, "result": {"Score": 1}, "error": None}),
+        },
+    )
+    monkeypatch.setattr(tick.demisto, "args", lambda: {"prompt": "Investigate 8.8.8.8"})
+
+    import CommonServerPython as csp
+
+    csp.RESULTS.clear()
+    tick.main()
+    assert csp.RESULTS[0].scheduled_command is not None
+    assert csp.RESULTS[0].outputs is None and csp.RESULTS[0].outputs_prefix is None
+
+
+def test_main_returns_small_outputs_keyed_by_run_id_when_the_run_concludes(monkeypatch):
+    ctx = _install(
+        monkeypatch,
+        command_handlers={
+            "GuardianPromptBuilder": _prompt_builder_handler(),
+            "GuardianToolCatalogBuilder": _catalog_builder_handler([]),
+            "guardian-llm-chat": _llm_handler_sequence([_completion(content="done")]),
+        },
+    )
+    monkeypatch.setattr(tick.demisto, "args", lambda: {"prompt": "Investigate 8.8.8.8"})
+
+    import CommonServerPython as csp
+
+    csp.RESULTS.clear()
+    tick.main()
+    result, loop = csp.RESULTS[0], ctx["Guardian"]["Loop"]
+    assert result.outputs_prefix == "Guardian.Loop" and result.outputs_key_field == "run_id"
+    assert result.outputs["run_id"] == loop["run_id"] and result.outputs["status"] == "done"
+    # the key is in the context object the outputs merge into, and nothing large is returned
+    assert set(result.outputs) <= set(loop) | {"verdict"}
+    for large in ("messages", "executed_calls", "conclusion", "triage_block", "evidence"):
+        assert large not in result.outputs
+
+
+def test_concluding_outputs_carry_only_the_run_level_fields_and_the_verdicts_own_fields():
+    state = {"run_id": "7", "status": "done", "tick": 3, "assessment_mode": "posture", "skill": "s", "cost_usd": 0.0, "cost_tokens_total": 10,
+             "messages": [{"role": "system", "content": "x" * 1000}], "executed_calls": {"a": 1}, "conclusion": "long text",
+             "verdict": {"verdict": "Confirmed", "confidence": 75, "techniques": [], "summary": "P2 | exposure: x", "kind": "posture",
+                         "priority": "P2", "stray": "dropped"}}
+    out = tick.guardian_tick_concluding_outputs(state)
+    assert out == {"run_id": "7", "status": "done", "tick": 3, "assessment_mode": "posture", "skill": "s", "cost_usd": 0.0,
+                   "cost_tokens_total": 10, "verdict": {"verdict": "Confirmed", "confidence": 75, "techniques": [],
+                                                        "summary": "P2 | exposure: x", "kind": "posture", "priority": "P2"}}
+    assert tick.guardian_tick_concluding_outputs({"status": "done"}) is None and tick.guardian_tick_concluding_outputs(None) is None
+    assert "verdict" not in tick.guardian_tick_concluding_outputs({"run_id": "7", "status": "done", "verdict": "Benign"})
+
+
 def test_main_reports_job_guard_success_when_a_job_spawned_run_concludes_done(monkeypatch):
     """Task 3.4 follow-up wiring: main()'s report call, keyed off
     outcome["loop_state"] (this execution's OWN return value, never a
@@ -7545,7 +7603,8 @@ def test_the_triage_pin_overrides_the_shared_prompts_block_note_and_memory_steps
     assert "Do NOT call GuardianCaseNote or GuardianMemory" in pinned
     for row in tick.guardian_triage_default_table()["types"]:
         assert row["name"] in pinned
-    for key in ("severity", "investigation_type", "confidence", "likely_benign", "escalate", "summary", "key_entities", "next_step"):
+    for key in ("severity", "investigation_type", "confidence", "likely_benign", "escalate", "summary", "key_entities", "next_step",
+                "analysis", "recommendations"):
         assert key in pinned
     assert "critical" in pinned and pinned.index("YOU ARE ALREADY WORKING") == 0  # still the protected pin message
 
@@ -7910,3 +7969,24 @@ def test_the_retry_message_names_the_block_of_the_runs_mode():
     assert '"assessment"' in tick.guardian_tick_forced_retry_message(False, "posture")["content"]
     table, _src = (tick.guardian_triage_default_table(), "builtin")
     assert '"investigation_type"' in tick.guardian_tick_forced_retry_message(True, "triage", table)["content"]
+
+
+def test_the_pinned_issue_details_never_carry_guardians_own_description_section(monkeypatch):
+    section = tick.GUARDIAN_ISSUE_SECTION_GAP + tick.GUARDIAN_ISSUE_SECTION_MARKER + "\nInvestigation: Benign, expected change"
+    monkeypatch.setattr(tick.demisto, "incident", lambda: {"id": "7", "name": "n", "type": "t", "severity": 1, "details": "Original text." + section,
+                                                          "CustomFields": {}})
+    content = tick.guardian_tick_incident_context_message()["content"]
+    assert "Original text." in content and "Benign, expected change" not in content and tick.GUARDIAN_ISSUE_SECTION_MARKER not in content
+
+
+def test_a_triage_block_with_analysis_and_recommendations_is_stored_whole_and_a_block_without_them_is_still_accepted(monkeypatch):
+    block = dict(TRIAGE_BLOCK, analysis="Anonymous reads are on for a production account.", recommendations=["Disable public access"])
+    ctx, _llm = _triage_install(monkeypatch, [_completion(content=_triage_text(block))],
+                                route={"family": "misconfiguration", "assessment_mode": "posture"})
+    tick.guardian_reasoning_tick_run(dict(TRIAGE_ARGS))
+    stored = ctx["Guardian"]["Loop"]["triage_block"]
+    assert stored["analysis"].startswith("Anonymous reads") and stored["recommendations"] == ["Disable public access"]
+    ctx, _llm = _triage_install(monkeypatch, [_completion(content=_triage_text())],
+                                route={"family": "misconfiguration", "assessment_mode": "posture"})
+    tick.guardian_reasoning_tick_run(dict(TRIAGE_ARGS))
+    assert ctx["Guardian"]["Loop"]["triage_block"]["analysis"] == "" and ctx["Guardian"]["Loop"]["status"] == "done"

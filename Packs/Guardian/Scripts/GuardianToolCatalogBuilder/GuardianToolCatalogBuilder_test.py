@@ -680,6 +680,24 @@ def test_main_writes_catalog_and_meta_as_sibling_context_keys(monkeypatch):
     assert isinstance(meta["TokenEstimate"], int)
 
 
+def test_main_returns_the_meta_without_the_catalogue_as_outputs_keyed_by_the_incident(monkeypatch):
+    monkeypatch.setattr(tcb.demisto, "getAllSupportedCommands", _all_supported_stub({"BrandA": [IP_COMMAND]}))
+    _install_default_lists(monkeypatch, allowlist={"_comment": "x", "commands": ["ip"]})
+    monkeypatch.setattr(tcb.demisto, "incident", lambda: {"id": "9001"})
+    written = {}
+    monkeypatch.setattr(tcb.demisto, "setContext", lambda path, value: written.update({path: value}))
+    captured = {}
+    monkeypatch.setattr(tcb, "return_results", lambda cr: captured.setdefault("result", cr), raising=False)
+
+    tcb.main()
+
+    result, meta = captured["result"], written["Guardian.ToolCatalogMeta"]
+    assert result.outputs_prefix == "Guardian.ToolCatalogMeta" and result.outputs_key_field == "IncidentId"
+    assert meta["IncidentId"] == "9001" and result.outputs["IncidentId"] == "9001"
+    assert set(result.outputs) <= set(meta) and "ConfiguredCommands" not in result.outputs
+    assert "function" not in json.dumps(result.outputs)
+
+
 def test_main_calls_return_error_on_failure(monkeypatch):
     monkeypatch.setattr(tcb.demisto, "getAllSupportedCommands", lambda: "not a dict")
 

@@ -230,9 +230,15 @@ def test_main_overwrites_the_packet_instead_of_appending(tenant, monkeypatch):
     monkeypatch.setattr(ev, "guardian_ctx_read", lambda key, default=None: [ROUTE, ROUTE] if key == "Route" else default)
     monkeypatch.setattr(ev, "guardian_run_model_params", lambda: ({"max_input_tokens": 100000}, "test"))
     monkeypatch.setattr(ev.demisto, "setContext", lambda path, value: written.append((path, value)))
-    monkeypatch.setattr(ev, "return_results", lambda r: None)
+    results = []
+    monkeypatch.setattr(ev, "return_results", results.append)
     ev.main()
     assert [p for p, _ in written] == ["Guardian.Evidence"] and written[0][1]["family"] == "endpoint"
+    out = results[0]
+    # the outputs are the packet without its text, keyed by the incident so that they merge into the same context object
+    assert out.outputs_prefix == "Guardian.Evidence" and out.outputs_key_field == "incident_id"
+    assert "rendered" not in out.outputs and set(out.outputs) == set(written[0][1]) - {"rendered"}
+    assert out.outputs["incident_id"] == written[0][1]["incident_id"]
 
 
 # --- append mode ---------------------------------------------------------------------------------------------------
@@ -408,6 +414,10 @@ def test_main_in_append_mode_rewrites_the_packet_and_never_reruns_the_gathering(
     assert [path for path, _ in written] == ["Guardian.Evidence"]
     assert "## enrichment: Endpoint" in written[0][1]["rendered"]
     assert "Added 1 section(s)" in results[0].readable_output and "Account" in results[0].readable_output
+    out = results[0]
+    assert out.outputs_prefix == "Guardian.Evidence" and out.outputs_key_field == "incident_id"
+    assert "rendered" not in out.outputs and set(out.outputs) == set(written[0][1]) - {"rendered"}
+    assert out.outputs["incident_id"] == written[0][1]["incident_id"] == packet["incident_id"]
 
 
 def test_main_in_append_mode_reports_a_missing_packet_and_missing_paths_argument(tenant, monkeypatch):

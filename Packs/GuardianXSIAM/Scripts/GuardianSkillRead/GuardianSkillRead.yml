@@ -35,6 +35,21 @@ outputs:
     The full markdown text of the skill (front matter and body), as stored in its `guardian_skill_<name>`
     List.
   type: String
+- contextPath: Guardian.Skill.name
+  description: "The name of the skill that was loaded. It is the key of the Guardian.Skill object."
+  type: String
+- contextPath: Guardian.Skill.display_name
+  description: "The skill's display name."
+  type: String
+- contextPath: Guardian.Skill.category
+  description: "The skill's category."
+  type: String
+- contextPath: Guardian.Skill.chars
+  description: "Length of the skill text in characters (the text itself is Guardian.SkillBody)."
+  type: Number
+- contextPath: Guardian.Skill.token_estimate
+  description: "Estimated token count of the skill text. The estimate errs on the low side."
+  type: Number
 - contextPath: Guardian.SkillName
   description: "The name of the skill that was loaded."
   type: String

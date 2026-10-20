@@ -1863,7 +1863,7 @@ def test_triage_valid_block_parses_to_a_normalized_dict():
         "escalate": True, "summary": "A production bucket allows public reads and holds customer exports.",
         "key_entities": {"identities": ["svc-deploy"], "ips": ["203.0.113.9"], "resources": ["bucket-1"],
                          "assets": ["asset-1"], "hosts": ["web-01"], "hashes": []},
-        "next_step": "Ask the owner to close public access."}
+        "next_step": "Ask the owner to close public access.", "analysis": "", "recommendations": []}
 
 
 @pytest.mark.parametrize("fence", ["json", "", "JSON"])
@@ -2112,3 +2112,78 @@ def test_triage_load_table_reads_the_list_and_falls_back_to_the_defaults(monkeyp
         raise RuntimeError("down")
     monkeypatch.setattr(gc.demisto, "executeCommand", boom)
     assert gc.guardian_triage_load_table()[1] == "default"
+
+
+# --- the optional analysis and recommendations of a triage block ---------------------------------------------------
+
+def test_triage_block_without_analysis_or_recommendations_is_still_valid_with_empty_values():
+    parsed = gc.guardian_triage_validate(_block())
+    assert parsed["analysis"] == "" and parsed["recommendations"] == []
+
+
+def test_triage_analysis_is_collapsed_scrubbed_and_capped():
+    parsed = gc.guardian_triage_validate(_block(analysis="word  \n" * 400 + " api_key=sk-liveSecretToken1234567890"))
+    assert len(parsed["analysis"]) <= gc.GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS == 800
+    assert "  " not in parsed["analysis"] and "\n" not in parsed["analysis"]
+    short = gc.guardian_triage_validate(_block(analysis="password=hunter2 was seen in the query string"))
+    assert "hunter2" not in short["analysis"]
+
+
+def test_triage_recommendations_are_a_bounded_clean_list():
+    items = ["  close   public access ", "", 7, None, "x" * 500] + ["step %d" % n for n in range(10)]
+    parsed = gc.guardian_triage_validate(_block(recommendations=items))
+    recs = parsed["recommendations"]
+    assert len(recs) == gc.GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS == 5
+    assert recs[0] == "close public access" and len(recs[1]) == gc.GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS == 200
+    assert gc.guardian_triage_validate(_block(recommendations="rotate the key"))["recommendations"] == ["rotate the key"]
+
+
+@pytest.mark.parametrize("bad", [5, {"a": 1}, True, [], [[]], None])
+def test_triage_malformed_analysis_or_recommendations_are_read_as_absent_and_never_reject_the_block(bad):
+    parsed = gc.guardian_triage_validate(_block(analysis=bad, recommendations=bad))
+    assert parsed is not None and parsed["analysis"] == "" and parsed["recommendations"] == []
+
+
+# --- Guardian's section of an issue's description -----------------------------------------------------------------
+
+MARK = gc.GUARDIAN_ISSUE_SECTION_MARKER
+
+
+def test_issue_section_split_returns_the_original_text_exactly():
+    original = "Storage account allows public reads.\n\nSecond paragraph.\n"
+    text = original + gc.GUARDIAN_ISSUE_SECTION_GAP + MARK + "\nTriage: high"
+    assert gc.guardian_split_issue_section(text) == (original, MARK + "\nTriage: high")
+    assert gc.guardian_strip_issue_section(text) == original
+    assert gc.guardian_split_issue_section(MARK + "\nTriage: x") == ("", MARK + "\nTriage: x")
+
+
+def test_issue_section_absent_or_not_a_line_changes_nothing():
+    for text in ("", "plain text", "mentions " + MARK + " inline", "x\n" + MARK + " trailing words"):
+        assert gc.guardian_split_issue_section(text) == (text, "")
+        assert gc.guardian_strip_issue_section(text) == text
+    assert gc.guardian_strip_issue_section(None) is None and gc.guardian_strip_issue_section(5) == 5
+    assert gc.guardian_split_issue_section(None) == ("", "")
+
+
+def test_issue_section_is_found_with_windows_line_endings():
+    text = "original\r\n\r\n" + MARK + "\r\nTriage: x"
+    assert gc.guardian_split_issue_section(text)[0] == "original"
+
+
+def test_deep_strip_walks_dicts_and_lists_and_leaves_everything_else_alone():
+    section = gc.GUARDIAN_ISSUE_SECTION_GAP + MARK + "\nTriage: x\nInvestigation: y"
+    value = {"description": "Original." + section, "rows": [{"details": "kept" + section}, "plain", 5, None, True],
+             "nested": {"a": {"b": ["deep" + section]}}, "untouched": "no marker here"}
+    assert gc.guardian_strip_issue_section_deep(value) == {
+        "description": "Original.", "rows": [{"details": "kept"}, "plain", 5, None, True],
+        "nested": {"a": {"b": ["deep"]}}, "untouched": "no marker here"}
+    assert gc.guardian_strip_issue_section_deep(value)["rows"][0] is not value["rows"][0]  # a copy, the input is not changed
+    assert value["description"].endswith("Investigation: y")
+    assert gc.guardian_strip_issue_section_deep(None) is None and gc.guardian_strip_issue_section_deep(7) == 7
+
+
+def test_deep_strip_removes_the_section_from_json_text_with_escaped_line_breaks():
+    text = json.dumps({"description": "Original." + gc.GUARDIAN_ISSUE_SECTION_GAP + MARK + "\nTriage: x \"quoted\"\nInvestigation: y", "id": "9"})
+    stripped = gc.guardian_strip_issue_section_deep(text)
+    assert MARK not in stripped and "Triage" not in stripped and "quoted" not in stripped
+    assert json.loads(stripped) == {"description": "Original.", "id": "9"}

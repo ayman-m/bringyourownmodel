@@ -395,9 +395,9 @@ def test_inputs_come_from_the_issue_first_in_the_full_record():
 def test_the_record_has_exactly_the_documented_keys():
     record, _n, _c = _run({"triage_block": _block()})
     assert set(record) == {
-        "status", "branch", "investigation_type", "severity", "original_severity", "confidence", "likely_benign", "escalate",
-        "summary", "next_step", "domain", "assessment_mode", "sub_playbook", "skill", "reason", "inputs", "domain_mismatch",
-        "input_sources"}
+        "issue_id", "status", "branch", "investigation_type", "severity", "original_severity", "confidence", "likely_benign",
+        "escalate", "summary", "next_step", "analysis", "recommendations", "domain", "assessment_mode", "sub_playbook", "skill",
+        "reason", "inputs", "domain_mismatch", "input_sources"}
     json.dumps(record)  # serializable
 
 
@@ -523,6 +523,9 @@ def test_main_writes_the_record_with_setcontext_audits_it_and_reports(monkeypatc
     assert audit["action"] == "GuardianTriageResult" and audit["status"] == "ok" and audit["target"] == "1001"
     detail = json.loads(audit["detail"])
     assert detail["triage_status"] == "repaired" and detail["taxonomy"] == "default" and detail["repair_cost_usd"] == 0.001
+    # the same record is returned as the task's outputs, keyed by the issue so a re-run merges into one object
+    assert results[0].outputs_prefix == "Guardian.Triage" and results[0].outputs_key_field == "issue_id"
+    assert results[0].outputs == record and record["issue_id"] == "1001"
 
 
 def test_main_audits_a_fallback_as_an_error_row(monkeypatch):
@@ -608,3 +611,44 @@ def test_a_bare_json_conclusion_that_fails_validation_goes_to_repair():
 
     record, _note, _cost = _run({"conclusion": json.dumps(_block(investigation_type="made_up")) + " " * 50}, repair=repair)
     assert len(calls) == 1 and record["status"] == "fallback" and record["branch"] == "other"
+
+
+# --- the optional analysis and recommendations ---------------------------------------------------------------------
+
+def test_a_block_without_analysis_or_recommendations_stays_structured_with_empty_values():
+    record, _n, _c = _run({"triage_block": _block()})
+    assert record["status"] == "structured" and record["analysis"] == "" and record["recommendations"] == []
+
+
+def test_analysis_and_recommendations_reach_the_record():
+    block = tri.guardian_triage_validate(_block(analysis="The bucket serves reads without a login. " * 3,
+                                                recommendations=["Close public access", "Tell the owner"]), TABLE)
+    record, _n, _c = _run({"triage_block": block})
+    assert record["status"] == "structured"
+    assert record["analysis"].startswith("The bucket serves reads") and record["recommendations"] == ["Close public access", "Tell the owner"]
+
+
+def test_a_fallback_record_has_empty_analysis_and_recommendations():
+    record, _n, _c = _run({"conclusion": ""})
+    assert record["status"] == "fallback" and record["analysis"] == "" and record["recommendations"] == []
+
+
+def test_the_repair_prompt_asks_for_the_optional_keys():
+    prompt = tri.guardian_triage_repair_prompt(TABLE)
+    assert '"analysis"' in prompt and '"recommendations"' in prompt
+
+
+def test_the_output_keys_are_all_in_the_context_record_and_the_key_matches(monkeypatch):
+    _wire(monkeypatch, [[_llm_reply(json.dumps(_block()))]])
+    written, results = {}, []
+    ctx = {"Guardian": {"Route": POSTURE_ROUTE, "Loop": {"triage_block": _block(), "conclusion": LONG_CONCLUSION}}}
+    monkeypatch.setattr(tri.demisto, "context", lambda: ctx)
+    monkeypatch.setattr(tri.demisto, "incident", lambda: ISSUE)
+    monkeypatch.setattr(tri.demisto, "setContext", lambda path, value: written.update({path: value}))
+    monkeypatch.setattr(tri, "return_results", lambda r: results.append(r))
+    original = tri.demisto.executeCommand
+    monkeypatch.setattr(tri.demisto, "executeCommand",
+                        lambda c, a: [{"Type": 4, "Contents": "nf"}] if c == "getList" else original(c, a))
+    tri.main()
+    out, ctx_record = results[0].outputs, written["Guardian.Triage"]
+    assert set(out) <= set(ctx_record) and out[results[0].outputs_key_field] == ctx_record[results[0].outputs_key_field] == "1001"

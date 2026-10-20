@@ -421,7 +421,12 @@ def test_main_overwrites_the_packet_instead_of_appending(tenant, monkeypatch):
     monkeypatch.setattr(ev, "return_results", results.append)
     ev.main()
     assert [path for path, _ in written] == ["Guardian.Evidence"] and written[0][1]["issue_id"] == "9001"
-    assert results[0].outputs_prefix is None and "Evidence packet for issue 9001" in results[0].readable_output
+    assert "Evidence packet for issue 9001" in results[0].readable_output
+    out = results[0]
+    # the outputs are the packet without its text, keyed by the issue so that they merge into the same context object
+    assert out.outputs_prefix == "Guardian.Evidence" and out.outputs_key_field == "issue_id"
+    assert "rendered" not in out.outputs and set(out.outputs) == set(written[0][1]) - {"rendered"}
+    assert out.outputs["issue_id"] == written[0][1]["issue_id"] == "9001"
 
 
 # --- append mode ---------------------------------------------------------------------------------------------------
@@ -598,6 +603,10 @@ def test_main_in_append_mode_rewrites_the_packet_and_never_reruns_the_gathering(
     assert [path for path, _ in written] == ["Guardian.Evidence"]
     assert "## enrichment: Core.RiskyUser" in written[0][1]["rendered"]
     assert "Added 1 section(s)" in results[0].readable_output and "Core.RiskyHost" in results[0].readable_output
+    out = results[0]
+    assert out.outputs_prefix == "Guardian.Evidence" and out.outputs_key_field == "issue_id"
+    assert "rendered" not in out.outputs and set(out.outputs) == set(written[0][1]) - {"rendered"}
+    assert out.outputs["issue_id"] == written[0][1]["issue_id"] == packet["issue_id"]
 
 
 def test_main_in_append_mode_reports_a_missing_packet_and_missing_paths_argument(tenant, monkeypatch):
@@ -682,3 +691,36 @@ def test_packet_reports_its_size_and_tier(tenant):
     assert packet["tier"] == "large"
     assert packet["packet_chars"] == len(packet["rendered"])
     assert packet["budget_chars"] == ev.guardian_evidence_budget(LARGE)[0] > packet["packet_chars"]
+
+
+# --- Guardian's own description section is never evidence --------------------------------------------------------------
+
+SECTION = ev.GUARDIAN_ISSUE_SECTION_GAP + ev.GUARDIAN_ISSUE_SECTION_MARKER + "\nTriage: type misconfiguration, severity high -> critical.\nInvestigation: Benign, confidence 90."
+
+
+def test_compaction_drops_the_guardian_section_from_any_string():
+    assert ev.guardian_evidence_compact("Original text." + SECTION) == "Original text."
+    assert ev.guardian_evidence_compact(ev.GUARDIAN_ISSUE_SECTION_MARKER + "\nTriage: x") is None
+    assert ev.guardian_evidence_compact({"description": "Original." + SECTION, "alert_description": "Fix it." + SECTION,
+                                         "note": "kept" + SECTION}) == {"description": "Original.", "alert_description": "Fix it.", "note": "kept"}
+    assert ev.guardian_evidence_compact(["a" + SECTION, {"x": "b" + SECTION}]) == ["a", {"x": "b"}]
+
+
+def test_the_packet_never_carries_the_conclusion_guardian_wrote_to_the_description(tenant):
+    replies = dict(HAPPY)
+    replies["core-get-issues"] = lambda a: ([{"internal_id": "7777", "issue_name": "older", "resolve_comment": "Older issue." + SECTION}] if "rule_id" in a
+                                            else [{"internal_id": "9001", "description": "The VM has admin rights." + SECTION}])
+    tenant(replies)
+    incident = _incident(description="Field text." + SECTION)
+    packet = ev.guardian_evidence_run(incident, ROUTE, None, now=1000)
+    text = packet["rendered"]
+    assert "The VM has admin rights." in text and "Older issue." in text and "Field text." in text
+    assert "Benign, confidence 90" not in text and ev.GUARDIAN_ISSUE_SECTION_MARKER not in text and "Triage: type" not in text
+
+
+def test_an_appended_section_never_carries_it_either(tenant):
+    packet = _base_packet(tenant)
+    context = {"Core": {"Issue": [{"internal_id": "1", "description": "Same rule." + SECTION}]}}
+    updated, report = ev.guardian_evidence_append(packet, context, ["Core.Issue"], {"max_input_tokens": 100000})
+    assert report["added"] == ["Core.Issue"] and "Same rule." in updated["rendered"]
+    assert ev.GUARDIAN_ISSUE_SECTION_MARKER not in updated["rendered"] and "Benign, confidence 90" not in updated["rendered"]

@@ -30,7 +30,9 @@ result is computed and reported but nothing is written to the incident, and only
 
 Result -- written with `setContext` (overwrites, never appends):
 
-    Guardian.TriageApply = {status: applied|dry_run|skipped|error, severity_before, severity_after, phase, reason}
+    Guardian.TriageApply = {incident_id, status: applied|dry_run|skipped|error, severity_before, severity_after, phase, reason}
+
+The result is also returned as the command's outputs, keyed by `incident_id`, so a re-run merges into one object.
 
 `severity_before` is low, medium, high, critical, informational or unknown. A case note (`GuardianCaseNote`) lists the
 before and after values and why; every outcome, skips included, leaves an audit row.
@@ -2876,8 +2878,9 @@ def main():
     try:
         args = demisto.args()
         apply_changes = guardian_apply_parse_flag(args.get("apply_changes"))
-        result = guardian_apply_run(
-            guardian_apply_latest("Triage"), demisto.incident() or {}, guardian_apply_latest("TriageApply"), apply_changes)
+        incident = demisto.incident() or {}
+        result = guardian_apply_run(guardian_apply_latest("Triage"), incident, guardian_apply_latest("TriageApply"), apply_changes)
+        result = dict(result, incident_id=str(incident.get("id") or ""))
     except Exception as ex:  # belt-and-suspenders: an automation must not leak a traceback
         return_error("GuardianTriageApply failed unexpectedly: {}".format(ex))
         return
@@ -2888,6 +2891,7 @@ def main():
         readable_output=tableToMarkdown("Guardian triage apply", [{
             "Status": result["status"], "Severity": "{} -> {}".format(result["severity_before"], result["severity_after"]),
             "Phase": result["phase"], "Reason": result["reason"]}], headers=["Status", "Severity", "Phase", "Reason"]),
+        outputs_prefix=GUARDIAN_TRIAGE_APPLY_CONTEXT_PATH, outputs_key_field="incident_id", outputs=result,
         raw_response=result,
     ))
 

@@ -2364,6 +2364,62 @@ def test_main_reschedules_with_bare_command_name_and_original_args(monkeypatch):
     assert result.scheduled_command._args == original_args
 
 
+def test_main_returns_no_outputs_while_the_run_reschedules_itself(monkeypatch):
+    tc = _tool_call("call_1", "ip", {"ip": "8.8.8.8"})
+    _install(
+        monkeypatch,
+        command_handlers={
+            "GuardianPromptBuilder": _prompt_builder_handler(),
+            "GuardianToolCatalogBuilder": _catalog_builder_handler([{"type": "function", "function": {"name": "ip"}}]),
+            "guardian-llm-chat": _llm_handler_sequence([_completion(tool_calls=[tc])]),
+            "GuardianToolBridge": _tool_bridge_handler(default_result={"status": "ok", "ok": True, "result": {"Score": 1}, "error": None}),
+        },
+    )
+    monkeypatch.setattr(tick.demisto, "args", lambda: {"prompt": "Investigate 8.8.8.8"})
+
+    import CommonServerPython as csp
+
+    csp.RESULTS.clear()
+    tick.main()
+    assert csp.RESULTS[0].scheduled_command is not None
+    assert csp.RESULTS[0].outputs is None and csp.RESULTS[0].outputs_prefix is None
+
+
+def test_main_returns_small_outputs_keyed_by_run_id_when_the_run_concludes(monkeypatch):
+    ctx = _install(
+        monkeypatch,
+        command_handlers={
+            "GuardianPromptBuilder": _prompt_builder_handler(),
+            "GuardianToolCatalogBuilder": _catalog_builder_handler([]),
+            "guardian-llm-chat": _llm_handler_sequence([_completion(content="done")]),
+        },
+    )
+    monkeypatch.setattr(tick.demisto, "args", lambda: {"prompt": "Investigate 8.8.8.8"})
+
+    import CommonServerPython as csp
+
+    csp.RESULTS.clear()
+    tick.main()
+    result, loop = csp.RESULTS[0], ctx["Guardian"]["Loop"]
+    assert result.outputs_prefix == "Guardian.Loop" and result.outputs_key_field == "run_id"
+    assert result.outputs["run_id"] == loop["run_id"] and result.outputs["status"] == "done"
+    # the key is in the context object the outputs merge into, and nothing large is returned
+    assert set(result.outputs) <= set(loop) | {"verdict"}
+    for large in ("messages", "executed_calls", "conclusion", "triage_block", "evidence"):
+        assert large not in result.outputs
+
+
+def test_concluding_outputs_carry_only_the_run_level_fields_and_the_verdicts_own_fields():
+    state = {"run_id": "7", "status": "done", "tick": 3, "assessment_mode": "verdict", "skill": "s", "cost_usd": 0.0, "cost_tokens_total": 10,
+             "messages": [{"role": "system", "content": "x" * 1000}], "executed_calls": {"a": 1}, "conclusion": "long text",
+             "verdict": {"verdict": "Suspicious", "confidence": 55, "techniques": ["T1078"], "summary": "why", "stray": "dropped"}}
+    out = tick.guardian_tick_concluding_outputs(state)
+    assert out == {"run_id": "7", "status": "done", "tick": 3, "assessment_mode": "verdict", "skill": "s", "cost_usd": 0.0,
+                   "cost_tokens_total": 10, "verdict": {"verdict": "Suspicious", "confidence": 55, "techniques": ["T1078"], "summary": "why"}}
+    assert tick.guardian_tick_concluding_outputs({"status": "done"}) is None and tick.guardian_tick_concluding_outputs(None) is None
+    assert "verdict" not in tick.guardian_tick_concluding_outputs({"run_id": "7", "status": "done", "verdict": "Benign"})
+
+
 def test_main_final_answer_does_not_reschedule(monkeypatch):
     _install(
         monkeypatch,

@@ -675,6 +675,20 @@ def test_main_success_writes_context_and_returns_command_results(monkeypatch):
     assert TAIL_TEXT in captured["result"].readable_output
 
 
+def test_main_returns_only_the_small_meta_as_outputs_keyed_by_the_incident(monkeypatch):
+    written = _install_lists(monkeypatch, _base_lists_map())
+    monkeypatch.setattr(gpb.demisto, "incident", lambda: {"id": "9001"})
+    captured = {}
+    monkeypatch.setattr(gpb, "return_results", lambda cr: captured.setdefault("result", cr), raising=False)
+
+    gpb.main()
+
+    result, meta = captured["result"], written[gpb.GUARDIAN_CONTEXT_NAMESPACE + ".SystemPromptMeta"]
+    assert result.outputs_prefix == "Guardian.SystemPromptMeta" and result.outputs_key_field == "IncidentId"
+    assert result.outputs == meta and meta["IncidentId"] == "9001"
+    assert HEAD_TEXT not in json.dumps(result.outputs) and "prompt" not in result.outputs
+
+
 def test_main_summary_only_prints_the_summary_but_still_writes_the_whole_prompt_to_context(monkeypatch):
     """The playbook task passes summary_only=true so the War Room shows one summary line instead of a
     35K-character prompt dump; the prompt itself must still reach context in full."""
