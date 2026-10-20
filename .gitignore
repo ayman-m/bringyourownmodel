@@ -14,3 +14,4 @@ Packs/*/Scripts/*/conftest.py
 Packs/*/Integrations/*/conftest.py
 .DS_Store
 *.local.txt
+.local/

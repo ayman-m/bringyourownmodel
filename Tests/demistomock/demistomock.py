@@ -713,7 +713,7 @@ def executeCommandBatch(commands_list):
     Execute list of commands in the following format {"command_name":args}
     Example:
     [{"get-endpoint-data":{"endpoint_hostname":"example"}},
-    {"get-user-data":{"user_email":"example@gmail.com"}}]
+    {"get-user-data":{"user_email":"example@example.com"}}]
     Args:
       commands_list (list[dict[str,any]]): list of dicts each represent a command.
 

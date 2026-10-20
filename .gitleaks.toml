@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "fake credentials used by the redaction tests and command-name fixtures"
+paths = ['''_test\.py$''', '''Tests/guardian_xsiam/cortex_command_names\.json$''', '''lab/cohere-north/README\.md$''']
