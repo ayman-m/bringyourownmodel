@@ -900,3 +900,43 @@ def test_tool_choice_is_sent_to_north_only_as_required_or_none(raw, expected):
         assert "tool_choice" not in body
     else:
         assert body["tool_choice"] == expected
+
+
+def _sse(*events):
+    return "".join("event: x\ndata: " + json.dumps(e) + "\n\n" for e in events)
+
+
+def test_usage_is_read_from_the_stream_end_event():
+    from GuardianCohere import _usage_from_stream
+
+    raw = _sse({"type": "content-delta", "delta": {"text": "hi"}},
+               {"type": "stream-end", "delta": {"finish_reason": "COMPLETE",
+                                                 "usage": {"tokens": {"input_tokens": 1200, "output_tokens": 30}, "cached_tokens": 100}}})
+    assert _usage_from_stream(raw) == {"prompt_tokens": 1200, "completion_tokens": 30, "total_tokens": 1230, "cached_tokens": 100}
+
+
+def test_usage_falls_back_to_billed_units_and_ignores_junk():
+    from GuardianCohere import _usage_from_stream
+
+    assert _usage_from_stream(_sse({"usage": {"billed_units": {"input_tokens": 7, "output_tokens": 3}}}))["total_tokens"] == 10
+    assert _usage_from_stream("data: not json\n\ndata: {\"usage\": {}}") is None
+    assert _usage_from_stream(None) is None and _usage_from_stream("") is None
+
+
+def test_chat_completion_uses_stream_usage_when_the_conversation_has_none(mocker):
+    c = _client()
+    convo = {"messages": [{"role": "CHATBOT", "content": [{"type": "text", "text": "ok"}]}]}
+    mocker.patch.object(c, "baseline_message_count", return_value=0)
+    mocker.patch.object(c, "submit_turn", return_value=_sse({"type": "stream-end", "usage": {"tokens": {"input_tokens": 50, "output_tokens": 5}}}))
+    mocker.patch.object(c, "poll_conversation", return_value=convo)
+    res = c.chat_completion({"messages": [{"role": "user", "content": "hi"}]})
+    assert res["usage"]["prompt_tokens"] == 50 and res["usage"]["total_tokens"] == 55
+
+
+def test_conversation_usage_wins_over_the_stream(mocker):
+    c = _client()
+    convo = {"messages": [{"role": "CHATBOT", "content": [{"type": "text", "text": "ok"}]}], "meta": {"tokens": {"input_tokens": 9, "output_tokens": 1}}}
+    mocker.patch.object(c, "baseline_message_count", return_value=0)
+    mocker.patch.object(c, "submit_turn", return_value=_sse({"usage": {"tokens": {"input_tokens": 50, "output_tokens": 5}}}))
+    mocker.patch.object(c, "poll_conversation", return_value=convo)
+    assert c.chat_completion({"messages": [{"role": "user", "content": "hi"}]})["usage"]["prompt_tokens"] == 9

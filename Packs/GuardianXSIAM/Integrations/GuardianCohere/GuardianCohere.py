@@ -320,6 +320,58 @@ def _usage_from_conversation(convo: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _usage_from_stream(raw: Any) -> Optional[Dict[str, Any]]:
+    """Token usage from the chat response's event stream, or ``None``. North ends the stream with an event that carries
+    ``usage`` (``tokens`` with ``input_tokens``/``output_tokens``, else ``billed_units``); the conversation read
+    does not always include it. The last ``usage`` found wins. Never raises."""
+    if not isinstance(raw, str) or "usage" not in raw:
+        return None
+
+    def find(node: Any) -> Optional[Dict[str, Any]]:
+        if isinstance(node, dict):
+            usage = node.get("usage")
+            if isinstance(usage, dict) and (usage.get("tokens") or usage.get("billed_units")):
+                return usage
+            for value in node.values():
+                hit = find(value)
+                if hit:
+                    return hit
+        elif isinstance(node, list):
+            for value in node:
+                hit = find(value)
+                if hit:
+                    return hit
+        return None
+
+    found = None
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        try:
+            hit = find(json.loads(line[5:].strip()))
+        except (TypeError, ValueError):
+            continue
+        if hit:
+            found = hit
+    if not found:
+        return None
+    counts = found.get("tokens") if isinstance(found.get("tokens"), dict) else {}
+    billed = found.get("billed_units") if isinstance(found.get("billed_units"), dict) else {}
+    prompt = counts.get("input_tokens", billed.get("input_tokens"))
+    completion = counts.get("output_tokens", billed.get("output_tokens"))
+    if not isinstance(prompt, (int, float)) and not isinstance(completion, (int, float)):
+        return None
+    total = prompt + completion if isinstance(prompt, (int, float)) and isinstance(completion, (int, float)) else None
+    cached = found.get("cached_tokens")
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": total,
+        "cached_tokens": cached if isinstance(cached, (int, float)) else None,
+    }
+
+
 """ HELPER FUNCTIONS (argument parsing — shared shape with the other Guardian providers) """
 
 
@@ -561,10 +613,11 @@ class CohereNorthClient(BaseClient):
             resp_type="json",
         )
 
-    def submit_turn(self, body: Dict[str, Any]) -> None:
+    def submit_turn(self, body: Dict[str, Any]) -> str:
         """POST one turn to /api/v1/chat. The streamed body is drained and discarded — the reply is
-        read back from the conversation object. Only 429 is retried (the POST is non-idempotent)."""
-        self._http_request(
+        read back from the conversation object, except the token usage, which is read from the stream's last event
+        and returned as text. Only 429 is retried (the POST is non-idempotent)."""
+        streamed = self._http_request(
             method="POST",
             full_url=f"{self.endpoint}{CHAT_PATH}",
             headers=self._auth_headers(),
@@ -577,6 +630,7 @@ class CohereNorthClient(BaseClient):
             status_list_to_retry=RETRYABLE_STATUS_CODES,
             backoff_factor=RETRY_BACKOFF_FACTOR,
         )
+        return streamed if isinstance(streamed, str) else ""
 
     def poll_conversation(self, conversation_id: str, baseline_count: int = 0) -> Dict[str, Any]:
         """GET /api/v1/conversations/{id} until it ends in a NEW assistant reply — i.e. the last
@@ -673,9 +727,12 @@ class CohereNorthClient(BaseClient):
             if self.conversation_mode == CONVERSATION_MODE_REUSE:
                 baseline_count = self.baseline_message_count(conversation_id)
             body = self.build_request_body(request, conversation_id)
-            self.submit_turn(body)
+            streamed = self.submit_turn(body)
             convo = self.poll_conversation(conversation_id, baseline_count)
-            return self.normalize_response(convo, conversation_id)
+            result = self.normalize_response(convo, conversation_id)
+            if result["usage"].get("prompt_tokens") is None:
+                result["usage"] = _usage_from_stream(streamed) or result["usage"]
+            return result
         finally:
             self._call_deadline = None
 
