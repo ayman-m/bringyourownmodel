@@ -424,3 +424,29 @@ def test_main_in_append_mode_reports_a_missing_packet_and_missing_paths_argument
     monkeypatch.setattr(ev.demisto, "args", lambda: {"mode": "append"})
     ev.main()
     assert errors and "needs `paths`" in errors[0]
+
+
+# --- limits that follow the model tier -----------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _small_limits_again():
+    ev.guardian_evidence_use_limits(None)
+    yield
+    ev.guardian_evidence_use_limits(None)
+
+
+def test_unknown_or_missing_tier_means_small_limits():
+    for params in (None, {}, {"tier": "auto"}, {"tier": "huge"}):
+        limits, tier = ev.guardian_evidence_use_limits(params)
+        assert tier == "small" and limits == ev.GUARDIAN_EVIDENCE_TIER_LIMITS["small"]
+
+
+def test_compaction_and_default_counts_follow_the_tier():
+    text = "y" * 1500
+    assert len(ev.guardian_evidence_compact(text)) < 600
+    limits, tier = ev.guardian_evidence_use_limits({"tier": "large", "max_input_tokens": 272000})
+    assert tier == "large" and ev.guardian_evidence_compact(text) == text
+    assert len(ev.guardian_evidence_compact(list(range(40)))) == 40
+    assert limits["prior_limit"] == 20 and limits["max_indicators"] == 100
+    ev.guardian_evidence_use_limits(None)
+    assert len(ev.guardian_evidence_compact(list(range(40)))) == ev.GUARDIAN_EVIDENCE_LIST_ITEMS + 1

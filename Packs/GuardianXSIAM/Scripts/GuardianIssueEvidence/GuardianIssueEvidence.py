@@ -2695,6 +2695,32 @@ GUARDIAN_EVIDENCE_DICT_KEYS = 60
 GUARDIAN_EVIDENCE_MAX_DEPTH = 5
 GUARDIAN_EVIDENCE_CHARS_PER_TOKEN = 4
 
+#: Size limits per model tier. The packet's total budget already follows the model's input window; these limits shape each
+#: section, and a model with room for more gets more of the platform's record instead of a small model's cut.
+#: ``case_full`` keeps every field of the case and of each of its issues instead of a fixed short list.
+GUARDIAN_EVIDENCE_TIER_LIMITS = {
+    "small": {"string": GUARDIAN_EVIDENCE_STRING_CHARS, "long_string": GUARDIAN_EVIDENCE_LONG_STRING_CHARS,
+              "list_items": GUARDIAN_EVIDENCE_LIST_ITEMS, "dict_keys": GUARDIAN_EVIDENCE_DICT_KEYS,
+              "depth": GUARDIAN_EVIDENCE_MAX_DEPTH, "case_issues": GUARDIAN_EVIDENCE_CASE_ISSUES,
+              "max_assets": GUARDIAN_EVIDENCE_DEFAULT_MAX_ASSETS, "prior_limit": GUARDIAN_EVIDENCE_DEFAULT_PRIOR_LIMIT,
+              "case_full": False},
+    "medium": {"string": 800, "long_string": 3000, "list_items": 25, "dict_keys": 120, "depth": 6, "case_issues": 50,
+               "max_assets": 10, "prior_limit": 10, "case_full": True},
+    "large": {"string": 2000, "long_string": 6000, "list_items": 50, "dict_keys": 250, "depth": 7, "case_issues": 100,
+              "max_assets": 15, "prior_limit": 20, "case_full": True},
+}
+#: The limits of the run in progress (the small ones until ``guardian_evidence_use_limits`` is called).
+GUARDIAN_EVIDENCE_ACTIVE = dict(GUARDIAN_EVIDENCE_TIER_LIMITS["small"])
+
+
+def guardian_evidence_use_limits(params):
+    """Make the limits of the run's model tier the active ones; ``(limits, tier)``. An unknown tier means small."""
+    tier = guardian_tier_name(params.get("tier")) if isinstance(params, dict) else None
+    tier = tier or "small"
+    GUARDIAN_EVIDENCE_ACTIVE.clear()
+    GUARDIAN_EVIDENCE_ACTIVE.update(GUARDIAN_EVIDENCE_TIER_LIMITS[tier])
+    return dict(GUARDIAN_EVIDENCE_ACTIVE), tier
+
 #: Fields of a prior resolved issue worth keeping, matched by substring on the flattened key.
 GUARDIAN_EVIDENCE_PRIOR_KEY_HINTS = (
     "internal_id", "issue_id", "issue_name", "severity", "status", "resol", "comment", "closed", "assign",
@@ -2715,30 +2741,33 @@ def guardian_evidence_compact(value, depth=0):
     if isinstance(value, bool) or isinstance(value, (int, float)):
         return value
     if isinstance(value, str):
-        if len(value) > GUARDIAN_EVIDENCE_STRING_CHARS:
-            return value[:GUARDIAN_EVIDENCE_STRING_CHARS] + "…[+{} chars]".format(len(value) - GUARDIAN_EVIDENCE_STRING_CHARS)
+        cap = GUARDIAN_EVIDENCE_ACTIVE["string"]
+        if len(value) > cap:
+            return value[:cap] + "…[+{} chars]".format(len(value) - cap)
         return value
-    if depth >= GUARDIAN_EVIDENCE_MAX_DEPTH:
+    if depth >= GUARDIAN_EVIDENCE_ACTIVE["depth"]:
         return guardian_evidence_compact(str(value), depth)
     if isinstance(value, dict):
         out = {}
         for index, (key, item) in enumerate(value.items()):
-            if index >= GUARDIAN_EVIDENCE_DICT_KEYS:
-                out["…"] = "{} more fields".format(len(value) - GUARDIAN_EVIDENCE_DICT_KEYS)
+            if index >= GUARDIAN_EVIDENCE_ACTIVE["dict_keys"]:
+                out["…"] = "{} more fields".format(len(value) - GUARDIAN_EVIDENCE_ACTIVE["dict_keys"])
                 break
             if isinstance(item, str) and str(key) in GUARDIAN_EVIDENCE_LONG_TEXT_KEYS:
-                over = len(item) - GUARDIAN_EVIDENCE_LONG_STRING_CHARS
-                cleaned = (item[:GUARDIAN_EVIDENCE_LONG_STRING_CHARS] + "…[+{} chars]".format(over) if over > 0 else item) or None
+                long_cap = GUARDIAN_EVIDENCE_ACTIVE["long_string"]
+                over = len(item) - long_cap
+                cleaned = (item[:long_cap] + "…[+{} chars]".format(over) if over > 0 else item) or None
             else:
                 cleaned = guardian_evidence_compact(item, depth + 1)
             if cleaned is not None:
                 out[str(key)] = cleaned
         return out or None
     if isinstance(value, (list, tuple)):
-        items = [guardian_evidence_compact(item, depth + 1) for item in value[:GUARDIAN_EVIDENCE_LIST_ITEMS]]
+        keep = GUARDIAN_EVIDENCE_ACTIVE["list_items"]
+        items = [guardian_evidence_compact(item, depth + 1) for item in value[:keep]]
         items = [item for item in items if item is not None]
-        if len(value) > GUARDIAN_EVIDENCE_LIST_ITEMS:
-            items.append("…{} more".format(len(value) - GUARDIAN_EVIDENCE_LIST_ITEMS))
+        if len(value) > keep:
+            items.append("…{} more".format(len(value) - keep))
         return items or None
     return guardian_evidence_compact(str(value), depth)
 
@@ -2833,13 +2862,17 @@ def guardian_evidence_case_projection(payload):
         case = record.get("case") if isinstance(record.get("case"), dict) else {}
         issues = record.get("issues") if isinstance(record.get("issues"), dict) else {}
         rows = []
-        for issue in (issues.get("data") or [])[:GUARDIAN_EVIDENCE_CASE_ISSUES]:
+        for issue in (issues.get("data") or [])[:GUARDIAN_EVIDENCE_ACTIVE["case_issues"]]:
             if isinstance(issue, dict):
-                rows.append({k: issue.get(k) for k in ("issue_id", "name", "category", "severity", "source", "host_name", "user_name") if issue.get(k)})
+                if GUARDIAN_EVIDENCE_ACTIVE["case_full"]:
+                    rows.append({k: v for k, v in issue.items() if v not in (None, "", [], {})})
+                else:
+                    rows.append({k: issue.get(k) for k in ("issue_id", "name", "category", "severity", "source", "host_name", "user_name") if issue.get(k)})
         keep = ("case_id", "case_name", "status", "severity", "description", "issue_count", "high_severity_issue_count",
                 "critical_severity_issue_count", "user_count", "host_count", "notes", "resolve_comment", "case_sources",
                 "issue_categories", "mitre_techniques_ids_and_names", "hosts")
-        out.append({"case": {k: case.get(k) for k in keep if case.get(k) not in (None, "", [])},
+        shown = case.items() if GUARDIAN_EVIDENCE_ACTIVE["case_full"] else ((k, case.get(k)) for k in keep)
+        out.append({"case": {k: v for k, v in shown if v not in (None, "", [], {})},
                     "issues_total": issues.get("total_count"), "issues": rows})
     return out or payload
 
@@ -2993,7 +3026,7 @@ def guardian_evidence_step_case(incident, signals, run_id):
     if not case_id:
         return [guardian_evidence_item("case", "(none)", True, "This issue is not part of a case.")]
     ok, payload, error = guardian_evidence_call(
-        "core-get-case-extra-data", {"case_id": case_id, "issues_limit": str(GUARDIAN_EVIDENCE_CASE_ISSUES)}, "case:" + case_id, run_id)
+        "core-get-case-extra-data", {"case_id": case_id, "issues_limit": str(GUARDIAN_EVIDENCE_ACTIVE["case_issues"])}, "case:" + case_id, run_id)
     return [guardian_evidence_item("case:" + case_id, "core-get-case-extra-data", ok,
                                    guardian_evidence_case_projection(payload) if ok else None, error)]
 
@@ -3175,10 +3208,13 @@ def guardian_evidence_render(family, issue_id, items, packet_chars, item_ceiling
              body=body or "(nothing could be fetched)", close=GUARDIAN_EVIDENCE_CLOSE, tail=tail)
 
 
-def guardian_evidence_run(incident, route, params, max_assets=GUARDIAN_EVIDENCE_DEFAULT_MAX_ASSETS,
-                          prior_limit=GUARDIAN_EVIDENCE_DEFAULT_PRIOR_LIMIT, now=None, mode="issue"):
-    """Gather the packet for one issue. Never raises. ``route`` is the `Guardian.Route` dict (or ``None``)."""
+def guardian_evidence_run(incident, route, params, max_assets=None, prior_limit=None, now=None, mode="issue"):
+    """Gather the packet for one issue. Never raises. ``route`` is the `Guardian.Route` dict (or ``None``).
+    ``max_assets`` and ``prior_limit`` default to the model tier's limits (``GUARDIAN_EVIDENCE_TIER_LIMITS``)."""
     import time
+    limits, tier = guardian_evidence_use_limits(params)
+    max_assets = max_assets or limits["max_assets"]
+    prior_limit = prior_limit or limits["prior_limit"]
     GUARDIAN_EVIDENCE_TALLY.update(calls=0, failures=0)
     incident = incident if isinstance(incident, dict) else {}
     route = route if isinstance(route, dict) else {}
@@ -3232,6 +3268,9 @@ def guardian_evidence_run(incident, route, params, max_assets=GUARDIAN_EVIDENCE_
         # A posture finding is confirmed by seeing the asset as it is now, not by how other issues were closed.
         "confirms_condition": any(i["ok"] and i["name"].startswith("asset:") for i in items),
         "mode": mode,
+        "tier": tier,
+        "packet_chars": len(rendered),
+        "budget_chars": packet_chars,
         "digest_done": any(i.get("digest_done") for i in items),
         "digest_key": guardian_evidence_digest_key(signals["rule_id"], today) if mode == "digest" and signals["rule_id"] else "",
         "items": [{k: i.get(k) for k in ("name", "command", "ok", "corroborates", "chars", "error")} for i in items],
@@ -3336,6 +3375,7 @@ def guardian_evidence_append(packet, context, paths, params=None, now=None):
     :return: the report is ``{"added": [...], "missing": [...], "rejected": [...], "error": str}``.
     """
     import time
+    guardian_evidence_use_limits(params)
     report = {"added": [], "missing": [], "rejected": [], "error": ""}
     parts = guardian_evidence_split_rendered(packet.get("rendered") if isinstance(packet, dict) else None)
     if parts is None:
@@ -3433,8 +3473,8 @@ def main():
         params, _source = guardian_run_model_params()
         packet = guardian_evidence_run(
             demisto.incident() or {}, route, params, mode=args.get("mode"),
-            max_assets=_guardian_positive_int(args.get("max_assets")) or GUARDIAN_EVIDENCE_DEFAULT_MAX_ASSETS,
-            prior_limit=_guardian_positive_int(args.get("prior_limit")) or GUARDIAN_EVIDENCE_DEFAULT_PRIOR_LIMIT,
+            max_assets=_guardian_positive_int(args.get("max_assets")),
+            prior_limit=_guardian_positive_int(args.get("prior_limit")),
         )
     except Exception as ex:  # belt-and-suspenders: an automation must not leak a traceback
         return_error("GuardianIssueEvidence failed unexpectedly: {}".format(ex))
@@ -3445,8 +3485,10 @@ def main():
     demisto.setContext(GUARDIAN_EVIDENCE_CONTEXT_PATH, packet)
     return_results(
         CommandResults(
-            readable_output="Evidence packet for issue {}: {} sections, {} calls, {} failed, corroborated={}.".format(
-                packet["issue_id"], len([i for i in packet["items"] if i["ok"]]), packet["calls"], packet["failures"], packet["corroborated"]),
+            readable_output="Evidence packet for issue {}: {} sections, {} calls, {} failed, corroborated={}. "
+                            "Size {} of {} characters ({} model limits).".format(
+                packet["issue_id"], len([i for i in packet["items"] if i["ok"]]), packet["calls"], packet["failures"], packet["corroborated"],
+                packet["packet_chars"], packet["budget_chars"], packet["tier"]),
             raw_response={k: v for k, v in packet.items() if k != "rendered"},
         )
     )

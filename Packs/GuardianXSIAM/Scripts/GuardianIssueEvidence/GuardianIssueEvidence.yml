@@ -1,12 +1,12 @@
 args:
 - name: max_assets
-  description: "Optional. The most asset ids to look up with core-get-asset-details. Defaults to 5."
+  description: "Optional. The most asset ids to look up with core-get-asset-details. Defaults to the model size: 5 (small), 10 (medium) or 15 (large)."
   required: false
   isArray: false
   default: false
   secret: false
 - name: prior_limit
-  description: "Optional. How many earlier resolved issues of the same rule to read. Defaults to 5."
+  description: "Optional. How many earlier resolved issues of the same rule to read. Defaults to the model size: 5 (small), 10 (medium) or 20 (large)."
   required: false
   isArray: false
   default: false
@@ -32,7 +32,7 @@ comment: >-
   Before the model session starts, fetches what the platform already knows about this issue (its status, the
   platform's remediation text, the asset details, the parent case, how earlier issues of the same rule were
   resolved, and Guardian's own memory for the rule and assets) and writes one bounded evidence packet to
-  Guardian.Evidence. The packet is pinned at the start of the model session. Every command is read-only and
+  Guardian.Evidence. The packet is pinned at the start of the model session. How much of each record it keeps follows the model size: a small model gets short cuts of long text and lists and a fixed short list of case fields, while a medium or large model gets longer text and lists, more assets and prior issues, and the whole case record with up to 50 or 100 of its issues; the packet size and the limits used are shown in the task output. Every command is read-only and
   fixed; none costs compute units, and each call is audited. A command that is missing or fails is noted in the
   packet and never stops the run. Which steps run comes from Guardian.Route.evidence_plan. With mode=append it
   instead adds the context values at `paths` (the results of earlier playbook tasks) to the packet already in

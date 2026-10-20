@@ -614,3 +614,71 @@ def test_main_in_append_mode_reports_a_missing_packet_and_missing_paths_argument
     monkeypatch.setattr(ev.demisto, "args", lambda: {"mode": "append"})
     ev.main()
     assert errors and "needs `paths`" in errors[0]
+
+
+# --- limits that follow the model tier -----------------------------------------------------------------------------
+
+LARGE = {"tier": "large", "max_input_tokens": 272000}
+CASE_WITH_EXTRAS = {"case": {"case_id": "4242", "case_name": "Admin role added", "status": "open", "internal_owner": "Ana",
+                              "custom_flag": "kept on a large model", "description": "x" * 2500},
+                    "issues": {"total_count": 2, "data": [{"issue_id": "1", "name": "n1", "extra_detail": "only a large model keeps this", "source": "CSPM"},
+                                                          {"issue_id": "2", "name": "n2", "source": "CSPM"}]}}
+
+
+@pytest.fixture(autouse=True)
+def _small_limits_again():
+    ev.guardian_evidence_use_limits(None)
+    yield
+    ev.guardian_evidence_use_limits(None)
+
+
+def test_unknown_or_missing_tier_means_small_limits():
+    for params in (None, {}, {"tier": "auto"}, {"tier": "huge"}):
+        limits, tier = ev.guardian_evidence_use_limits(params)
+        assert tier == "small" and limits == ev.GUARDIAN_EVIDENCE_TIER_LIMITS["small"]
+
+
+def test_compaction_follows_the_tier():
+    text = "y" * 1500
+    assert len(ev.guardian_evidence_compact(text)) < 600
+    ev.guardian_evidence_use_limits(LARGE)
+    assert ev.guardian_evidence_compact(text) == text
+    assert len(ev.guardian_evidence_compact(list(range(40)))) == 40
+    ev.guardian_evidence_use_limits(None)
+    assert len(ev.guardian_evidence_compact(list(range(40)))) == ev.GUARDIAN_EVIDENCE_LIST_ITEMS + 1
+
+
+def test_large_tier_asks_for_more_of_the_case_and_keeps_all_of_it(tenant):
+    fake = tenant(dict(HAPPY, **{"core-get-case-extra-data": CASE_WITH_EXTRAS}))
+    route = {"evidence_plan": ["case"], "signals": {}}
+    small = ev.guardian_evidence_run(_incident(parentXDRIncident="INCIDENT-4242"), route, None)["rendered"]
+    assert "only a large model keeps this" not in small and "kept on a large model" not in small
+    assert fake.by_command("core-get-case-extra-data")[-1]["issues_limit"] == "20"
+    large = ev.guardian_evidence_run(_incident(parentXDRIncident="INCIDENT-4242"), route, LARGE)["rendered"]
+    assert "only a large model keeps this" in large and "kept on a large model" in large and "Ana" in large
+    assert fake.by_command("core-get-case-extra-data")[-1]["issues_limit"] == "100"
+
+
+def test_asset_and_prior_limits_follow_the_tier_and_an_explicit_value_wins(tenant):
+    fake = tenant(HAPPY)
+    ids = ["a%d" % i for i in range(20)]
+    route = {"evidence_plan": ["assets"], "signals": {"asset_ids": ids, "rule_id": ""}}
+    ev.guardian_evidence_run(_incident(), route, None)
+    assert len(fake.by_command("core-get-asset-details")) == 5
+    fake.calls.clear()
+    ev.guardian_evidence_run(_incident(), route, LARGE)
+    assert len(fake.by_command("core-get-asset-details")) == 15
+    fake.calls.clear()
+    ev.guardian_evidence_run(_incident(), route, LARGE, max_assets=3)
+    assert len(fake.by_command("core-get-asset-details")) == 3
+    fake.calls.clear()
+    ev.guardian_evidence_run(_incident(), {"evidence_plan": ["prior_rules"], "signals": {"asset_ids": [], "rule_id": "rule-7"}}, LARGE)
+    assert fake.by_command("core-get-issues")[-1]["page_size"] == "21"
+
+
+def test_packet_reports_its_size_and_tier(tenant):
+    tenant(HAPPY)
+    packet = ev.guardian_evidence_run(_incident(), ROUTE, LARGE)
+    assert packet["tier"] == "large"
+    assert packet["packet_chars"] == len(packet["rendered"])
+    assert packet["budget_chars"] == ev.guardian_evidence_budget(LARGE)[0] > packet["packet_chars"]
