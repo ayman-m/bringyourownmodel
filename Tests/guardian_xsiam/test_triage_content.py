@@ -435,7 +435,8 @@ def test_each_guard_is_a_deterministic_condition_with_a_yes_branch_and_a_default
                 continue
             assert set(task["nexttasks"]) == {"yes", "#default#"}, (name, key)
             rule = task["conditions"][0]
-            assert rule["label"] == "yes" and rule["condition"][0][0]["operator"] == "isNotEmpty"  # no regex operator anywhere
+            # a fixed, deterministic operator only: no regex operator anywhere
+            assert rule["label"] == "yes" and rule["condition"][0][0]["operator"] in ("isNotEmpty", "isEqualString"), (name, key)
 
 
 def _context_paths_written(doc):
@@ -1082,3 +1083,22 @@ def test_the_triage_result_documents_complexity_and_the_skill_gives_its_rubric()
     assert "Guardian.Triage.complexity" in {o["contextPath"] for o in doc["outputs"]}
     prompt = {i["key"]: i["value"]["simple"] for i in _playbook(PARENT)["inputs"]}["prompt"]
     assert "complexity (low, medium or high" in " ".join(prompt.split())
+
+
+def test_the_contributing_event_lookup_runs_only_for_a_correlation_detection():
+    """core-get-contributing-event answers HTTP 400 for any other alert source (a behavioral-analytics detection for one),
+    so it is reachable only through a guard on the alert's source brand."""
+    doc = _playbook("GuardianTriageEndpointThreat")
+    tasks = doc["tasks"]
+    lookup = next(k for k, t in tasks.items() if _command_of(t) == "core-get-contributing-event")
+    guards = [k for k, t in tasks.items() if t["type"] == "condition" and "yes" in t["nexttasks"] and lookup in t["nexttasks"]["yes"]]
+    assert len(guards) == 1
+    guard = tasks[guards[0]]
+    operand = guard["conditions"][0]["condition"][0][0]
+    assert operand["operator"] == "isEqualString" and operand["ignorecase"] is True
+    assert operand["left"]["value"]["simple"] == "incident.sourcebrand" and operand["right"]["value"]["simple"] == "CORRELATION"
+    skipped_to = guard["nexttasks"]["#default#"]
+    assert skipped_to == tasks[lookup]["nexttasks"]["#none#"]  # a skipped lookup rejoins right after it
+    # nothing else points at the lookup: every path to it goes through the guard
+    pointing = [k for k, t in tasks.items() if any(lookup in ids for ids in (t.get("nexttasks") or {}).values())]
+    assert pointing == guards

@@ -180,7 +180,7 @@ tasks:
       "yes":
       - "6"
       '#default#':
-      - "7"
+      - "14"
     separatecontext: false
     conditions:
     - label: "yes"
@@ -214,7 +214,7 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "7"
+      - "14"
     scriptarguments:
       sha256:
         simple: "${Guardian.Triage.inputs.sha256}"
@@ -226,6 +226,46 @@ tasks:
         "position": {
           "x": 162.5,
           "y": 1145
+        }
+      }
+  "14":
+    id: "14"
+    taskid: 215967e0-1bda-5d69-b26f-06c2a57c50a7
+    type: condition
+    task:
+      id: 215967e0-1bda-5d69-b26f-06c2a57c50a7
+      version: -1
+      name: "Is it a correlation detection?"
+      description: >-
+        The lookup of the events behind a detection only works for correlation detections: for any other alert source
+        (for example behavioral analytics) the platform answers HTTP 400. The next step runs only when the alert's
+        source is CORRELATION, and the others skip it quietly.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      "yes":
+      - "7"
+      '#default#':
+      - "8"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: incident.sourcebrand
+            iscontext: true
+          right:
+            value:
+              simple: CORRELATION
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 300,
+          "y": 1237
         }
       }
   "7":
