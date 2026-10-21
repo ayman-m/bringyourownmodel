@@ -9,12 +9,12 @@ Paths below are relative to the unzipped download (`Guardian-XSOAR-v<version>/`)
 
 | Content type | Count | Folder inside the pack zip |
 |---|---|---|
-| Incident fields | 9 | `IncidentFields/` |
+| Incident fields | 15 | `IncidentFields/` |
 | Indicator fields | 10 | `IndicatorFields/` |
-| Lists | 16 | `Lists/` |
+| Lists | 20 | `Lists/` |
 | Integrations (Foundry, Vertex, Cohere), unified YAML | 3 | `Integrations/` |
-| Automations, unified YAML | 71 | `Scripts/` |
-| Playbooks | 9 | `Playbooks/` |
+| Automations, unified YAML | 78 | `Scripts/` |
+| Playbooks | 17 | `Playbooks/` |
 | Layouts (1 incident layout, 1 indicator layout) | 2 | `Layouts/` |
 | Incident types | 2 | `IncidentTypes/` |
 | Indicator type | 1 | `IndicatorTypes/` |
@@ -125,6 +125,27 @@ recommended actions. Approve or deny a proposed action with `!guardian-approve a
 `!guardian-killswitch state=on`.
 
 More: [`../OPERATOR_RUNBOOK.md`](../OPERATOR_RUNBOOK.md) (operation) and [`../GUARDIAN_GUIDE.md`](../GUARDIAN_GUIDE.md) (capabilities, who uses it, testing).
+
+## Triage and investigation of one incident
+
+To have Guardian rate an incident and then investigate it, attach the playbook **`GuardianTriageAndInvestigateIncident`**
+to the incident (as its type's playbook, or `!setPlaybook name="GuardianTriageAndInvestigateIncident"` in its War Room).
+It runs a short triage session that ends with a fixed block (severity, type, confidence, and optionally an analysis,
+recommendations and a complexity rating), sets the incident's severity and phase behind guards, writes a "Guardian
+triage" note, and then runs a full investigation through the sub-playbook for the incident's type (`GuardianTriagePhishing`,
+`IdentityThreat`, `EndpointThreat`, `NetworkThreat`, `DataExposure`, `Vulnerability`, or `GuardianTriageOther`, which
+investigates on the skill the incident route chose). The triage summary and the conclusion are also kept in one section
+at the end of the incident's details, behind the line `--- Guardian (automated) ---`; the original text is never
+changed. That write uses the Core REST API integration Guardian already needs.
+
+**Model routing (optional).** The protected list `guardian_model_routing` ships empty: every call uses the provider
+instance's configured model, exactly as before. Fill it (edit `Lists/list-guardian_model_routing.json` and redeploy) to
+send the triage session and each investigation complexity level to a model of your choice; the routing rules are in
+[`../OPERATOR_RUNBOOK.md`](../OPERATOR_RUNBOOK.md). Only this playbook routes: the *Guardian Agent Run* incidents and the
+intake Job (`GuardianAgentLoop`) always use the configured model.
+
+Upgrading from a version with `GuardianTriageIncident`: that playbook is now `GuardianTriageAndInvestigateIncident`.
+Re-point any incident type or Job that used the old name, then delete the old playbook.
 
 ## Upgrading
 

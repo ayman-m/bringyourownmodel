@@ -50,14 +50,21 @@ swapping which integration instance is enabled.
 6. **Investigate an incident**: bind an incident's playbook to `GuardianAgentLoop` (or
    `GuardianEvalInvestigate` for a scripted/eval-style run) and activate it. The first tick starts the
    loop; it reschedules itself every `guardian_settings.tick_cadence_seconds` until it concludes or
-   pauses for approval.
+   pauses for approval. To triage an incident and then investigate it by type, bind it to
+   `GuardianTriageAndInvestigateIncident` instead (see below).
 
 ## What's in the pack
 
 - **Playbooks**: `GuardianAgentLoop` (the main entry point — preflight checks, then builds the prompt and tool list as separate tasks, then runs the model session as one task),
   `GuardianApprovalGate` (pauses for analyst sign-off on a state-changing action),
   `GuardianEvalInvestigate` / `GuardianEvalScore` (scripted evaluation runs), `GuardianHousekeeping`
-  (periodic audit/approval-ledger maintenance and stalled-run recovery).
+  (periodic audit/approval-ledger maintenance and stalled-run recovery),
+  `GuardianTriageAndInvestigateIncident` (a short triage session that ends with a fixed block, guarded severity and
+  phase writes, then a full investigation through one of seven `GuardianTriage<Type>` sub-playbooks; the triage summary
+  and the conclusion are written as War Room notes and as one Guardian section at the end of the incident's details by
+  the operator-owned `GuardianIncidentSummary`). Optional model routing: the operator-owned `GuardianModelChoice` reads
+  the protected List `guardian_model_routing` (shipped empty, so every call uses the instance's configured model) and can
+  send the triage and the investigation to different models; `GuardianAgentLoop` is never routed.
 - **Core scripts**: `GuardianReasoningTick` (the loop itself), `GuardianToolBridge` (policy-gated tool
   dispatch), `GuardianToolCatalogBuilder` / `GuardianPromptBuilder` (assemble what the model sees each
   tick), `GuardianCompact` (transcript summarization when a run runs long), `GuardianMemory` /

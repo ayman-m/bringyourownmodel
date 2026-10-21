@@ -460,3 +460,38 @@ def test_compaction_and_default_counts_follow_the_tier():
     assert limits["prior_limit"] == 20 and limits["max_indicators"] == 100
     ev.guardian_evidence_use_limits(None)
     assert len(ev.guardian_evidence_compact(list(range(40)))) == ev.GUARDIAN_EVIDENCE_LIST_ITEMS + 1
+
+
+# --- Guardian's own details section is never evidence ------------------------------------------------------------------
+
+SECTION = ev.GUARDIAN_ISSUE_SECTION_GAP + ev.GUARDIAN_ISSUE_SECTION_MARKER + "\nTriage: type phishing, severity high -> critical.\nInvestigation: Benign, confidence 90."
+
+
+def test_compaction_drops_the_guardian_section_from_any_string():
+    assert ev.guardian_evidence_compact("Original text." + SECTION) == "Original text."
+    assert ev.guardian_evidence_compact(ev.GUARDIAN_ISSUE_SECTION_MARKER + "\nTriage: x") is None
+    assert ev.guardian_evidence_compact({"details": "Original." + SECTION, "closeNotes": "Closed." + SECTION,
+                                         "note": "kept" + SECTION}) == {"details": "Original.", "closeNotes": "Closed.", "note": "kept"}
+    assert ev.guardian_evidence_compact(["a" + SECTION, {"x": "b" + SECTION}]) == ["a", {"x": "b"}]
+
+
+def test_the_packet_never_carries_the_conclusion_guardian_wrote_to_the_details(tenant):
+    replies = dict(HAPPY)
+    replies["SearchIncidentsV2"] = lambda a: _search_reply(
+        [{"id": "7777", "name": "Suspicious beacon", "status": 2, "closeReason": "False Positive",
+          "closeNotes": "Known updater." + SECTION, "details": "Older incident." + SECTION}]
+        if "fromclosedate" in a else [{"id": "8001", "name": "Suspicious beacon", "status": 1, "details": "Open one." + SECTION}])
+    incident = _incident(details="Field text." + SECTION)
+    incident["details"] = "Top-level details." + SECTION
+    _fake, packet = _run(tenant, replies=replies, incident=incident)
+    text = packet["rendered"]
+    assert "Known updater." in text and "Field text." in text
+    assert "Benign, confidence 90" not in text and ev.GUARDIAN_ISSUE_SECTION_MARKER not in text and "Triage: type" not in text
+
+
+def test_an_appended_section_never_carries_it_either(tenant):
+    packet = _base_packet(tenant)
+    context = {"foundIncidents": [{"id": "1", "details": "Same alert." + SECTION}]}
+    updated, report = ev.guardian_evidence_append(packet, context, ["foundIncidents"], {"max_input_tokens": 100000})
+    assert report["added"] == ["foundIncidents"] and "Same alert." in updated["rendered"]
+    assert ev.GUARDIAN_ISSUE_SECTION_MARKER not in updated["rendered"] and "Benign, confidence 90" not in updated["rendered"]

@@ -47,17 +47,26 @@ outputs:
 - contextPath: Guardian.Triage.next_step
   description: "The model's one-line next step."
   type: String
+- contextPath: Guardian.Triage.analysis
+  description: "The model's optional analysis: what it saw and why it rated the incident so (at most 800 characters, scrubbed of secrets; empty when the block has none or on fallback)."
+  type: String
+- contextPath: Guardian.Triage.complexity
+  description: "The model's optional complexity rating of the investigation the incident needs: low, medium or high (empty when the block has none, the value is invalid, or on fallback). GuardianModelChoice reads it."
+  type: String
+- contextPath: Guardian.Triage.recommendations
+  description: "The model's optional recommendations: up to 5 short next actions, each at most 200 characters and scrubbed of secrets (empty when the block has none or on fallback)."
+  type: Unknown
 - contextPath: Guardian.Triage.domain
   description: "detection, posture or unknown, decided from the incident's route."
   type: String
 - contextPath: Guardian.Triage.assessment_mode
-  description: "verdict: the block the focused model session of the sub-playbook ends with (this edition has no posture assessment)."
+  description: "verdict: the block the investigation session of the sub-playbook ends with (this edition has no posture assessment)."
   type: String
 - contextPath: Guardian.Triage.sub_playbook
   description: "The sub-playbook for the branch."
   type: String
 - contextPath: Guardian.Triage.skill
-  description: "The skill the branch's focused model session loads (empty for other)."
+  description: "The skill the branch's investigation session loads (empty for other)."
   type: String
 - contextPath: Guardian.Triage.reason
   description: "Why this status and branch, including any repair or domain-mismatch note."

@@ -1880,6 +1880,34 @@ def test_reduce_list_structurally_every_item_intact_not_sliced():
         assert item in items  # byte-identical to some original item, never mangled
 
 
+# --- Guardian's own details section never reaches the model -----------------------------------------------------------
+
+def test_shape_result_drops_guardians_details_section_before_the_result_reaches_the_model():
+    section = gtb.GUARDIAN_ISSUE_SECTION_GAP + gtb.GUARDIAN_ISSUE_SECTION_MARKER + "\nTriage: type phishing, severity high.\nInvestigation: Benign, confidence 90."
+    entries = [{"Type": 1, "Contents": [{"id": "9001", "details": "User reported a suspicious email." + section,
+                                         "CustomFields": {"notes": "note" + section}}]}]
+    payload, truncated, note, full_payload = gtb.guardian_bridge_shape_result(entries)
+    assert payload == [{"id": "9001", "details": "User reported a suspicious email.", "CustomFields": {"notes": "note"}}]
+    assert truncated is False and gtb.GUARDIAN_ISSUE_SECTION_MARKER not in json.dumps(payload)
+
+
+def test_shape_result_strips_the_section_before_it_truncates_so_a_cut_cannot_keep_a_piece_of_it():
+    section = gtb.GUARDIAN_ISSUE_SECTION_GAP + gtb.GUARDIAN_ISSUE_SECTION_MARKER + "\nInvestigation: Benign."
+    entries = [{"Type": 1, "Contents": "x" * 5000 + section}]
+    payload, truncated, _note, full_payload = gtb.guardian_bridge_shape_result(entries, truncate_arg=1000, head_tail_arg=300)
+    assert truncated is True and "Benign" not in payload and "Benign" not in json.dumps(full_payload)
+
+
+def test_shipped_denylist_protects_the_model_routing_list_and_denies_the_operator_scripts(monkeypatch):
+    shipped = json.loads(_shipped_list_text("guardian_tool_denylist"))
+    assert "guardian_model_routing" in shipped["protected_lists"]
+    assert {"GuardianModelChoice", "GuardianIncidentSummary"} <= set(shipped["denied"])
+    audit = _install_gates(monkeypatch, denylist=shipped)
+    result = gtb.guardian_tool_bridge_run("setList", {"listName": "guardian_model_routing", "listData": "{}"})
+    assert result["data"]["tool_result"]["status"] == "denied" and "protected_list" in result["data"]["tool_result"]["error"]
+    assert len(audit["calls"]) == 1
+
+
 # --- guardian_bridge_shape_result: structural reduction (harvest candidate #17) ---
 
 

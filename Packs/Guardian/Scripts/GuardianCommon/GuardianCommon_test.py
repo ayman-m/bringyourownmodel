@@ -1843,7 +1843,7 @@ def test_triage_valid_block_parses_to_a_normalized_dict():
         "escalate": True, "summary": "A production bucket allows public reads and holds customer exports.",
         "key_entities": {"identities": ["svc-deploy"], "ips": ["203.0.113.9"], "hosts": ["web-01"], "hashes": [],
                          "domains": ["update-cdn.example"], "urls": [], "emails": []},
-        "next_step": "Ask the owner to close public access."}
+        "next_step": "Ask the owner to close public access.", "analysis": "", "recommendations": [], "complexity": ""}
 
 
 @pytest.mark.parametrize("fence", ["json", "", "JSON"])
@@ -2092,3 +2092,172 @@ def test_triage_load_table_reads_the_list_and_falls_back_to_the_defaults(monkeyp
         raise RuntimeError("down")
     monkeypatch.setattr(gc.demisto, "executeCommand", boom)
     assert gc.guardian_triage_load_table()[1] == "default"
+
+
+# --- the optional analysis and recommendations of a triage block ---------------------------------------------------
+
+def test_triage_block_without_analysis_or_recommendations_is_still_valid_with_empty_values():
+    parsed = gc.guardian_triage_validate(_block())
+    assert parsed["analysis"] == "" and parsed["recommendations"] == []
+
+
+def test_triage_analysis_is_collapsed_scrubbed_and_capped():
+    parsed = gc.guardian_triage_validate(_block(analysis="word  \n" * 400 + " api_key=sk-liveSecretToken1234567890"))
+    assert len(parsed["analysis"]) <= gc.GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS == 800
+    assert "  " not in parsed["analysis"] and "\n" not in parsed["analysis"]
+    short = gc.guardian_triage_validate(_block(analysis="password=hunter2 was seen in the query string"))
+    assert "hunter2" not in short["analysis"]
+
+
+def test_triage_recommendations_are_a_bounded_clean_list():
+    items = ["  close   public access ", "", 7, None, "x" * 500] + ["step %d" % n for n in range(10)]
+    parsed = gc.guardian_triage_validate(_block(recommendations=items))
+    recs = parsed["recommendations"]
+    assert len(recs) == gc.GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS == 5
+    assert recs[0] == "close public access" and len(recs[1]) == gc.GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS == 200
+    assert gc.guardian_triage_validate(_block(recommendations="rotate the key"))["recommendations"] == ["rotate the key"]
+
+
+@pytest.mark.parametrize("bad", [5, {"a": 1}, True, [], [[]], None])
+def test_triage_malformed_analysis_or_recommendations_are_read_as_absent_and_never_reject_the_block(bad):
+    parsed = gc.guardian_triage_validate(_block(analysis=bad, recommendations=bad))
+    assert parsed is not None and parsed["analysis"] == "" and parsed["recommendations"] == []
+
+
+# --- Guardian's section of an incident's details (same marker and helpers as the Cortex platform edition) ----------
+
+MARK = gc.GUARDIAN_ISSUE_SECTION_MARKER
+
+
+def test_issue_section_split_returns_the_original_text_exactly():
+    original = "Phishing report from the mail gateway.\n\nSecond paragraph.\n"
+    text = original + gc.GUARDIAN_ISSUE_SECTION_GAP + MARK + "\nTriage: high"
+    assert gc.guardian_split_issue_section(text) == (original, MARK + "\nTriage: high")
+    assert gc.guardian_strip_issue_section(text) == original
+    assert gc.guardian_split_issue_section(MARK + "\nTriage: x") == ("", MARK + "\nTriage: x")
+
+
+def test_issue_section_absent_or_not_a_line_changes_nothing():
+    for text in ("", "plain text", "mentions " + MARK + " inline", "x\n" + MARK + " trailing words"):
+        assert gc.guardian_split_issue_section(text) == (text, "")
+        assert gc.guardian_strip_issue_section(text) == text
+    assert gc.guardian_strip_issue_section(None) is None and gc.guardian_strip_issue_section(5) == 5
+    assert gc.guardian_split_issue_section(None) == ("", "")
+
+
+def test_issue_section_is_found_with_windows_line_endings():
+    text = "original\r\n\r\n" + MARK + "\r\nTriage: x"
+    assert gc.guardian_split_issue_section(text)[0] == "original"
+
+
+def test_deep_strip_walks_dicts_and_lists_and_leaves_everything_else_alone():
+    section = gc.GUARDIAN_ISSUE_SECTION_GAP + MARK + "\nTriage: x\nInvestigation: y"
+    value = {"details": "Original." + section, "rows": [{"details": "kept" + section}, "plain", 5, None, True],
+             "nested": {"a": {"b": ["deep" + section]}}, "untouched": "no marker here"}
+    assert gc.guardian_strip_issue_section_deep(value) == {
+        "details": "Original.", "rows": [{"details": "kept"}, "plain", 5, None, True],
+        "nested": {"a": {"b": ["deep"]}}, "untouched": "no marker here"}
+    assert gc.guardian_strip_issue_section_deep(value)["rows"][0] is not value["rows"][0]  # a copy, the input is not changed
+    assert value["details"].endswith("Investigation: y")
+    assert gc.guardian_strip_issue_section_deep(None) is None and gc.guardian_strip_issue_section_deep(7) == 7
+
+
+def test_deep_strip_removes_the_section_from_json_text_with_escaped_line_breaks():
+    text = json.dumps({"details": "Original." + gc.GUARDIAN_ISSUE_SECTION_GAP + MARK + "\nTriage: x \"quoted\"\nInvestigation: y", "id": "9"})
+    stripped = gc.guardian_strip_issue_section_deep(text)
+    assert MARK not in stripped and "Triage" not in stripped and "quoted" not in stripped
+    assert json.loads(stripped) == {"details": "Original.", "id": "9"}
+
+
+# --- the optional complexity of a triage block ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("value, expected", [("low", "low"), ("Medium", "medium"), (" HIGH ", "high"), ("", ""), (None, ""), (3, ""),
+                                             ("extreme", ""), (["low"], ""), (True, "")])
+def test_triage_complexity_is_low_medium_or_high_and_anything_else_is_absent(value, expected):
+    parsed = gc.guardian_triage_validate(_block(complexity=value))
+    assert parsed is not None and parsed["complexity"] == expected
+
+
+def test_triage_block_without_complexity_is_valid_with_an_empty_value():
+    assert gc.guardian_triage_validate(_block())["complexity"] == ""
+
+
+# --- guardian_set_incident_fields: the optional `details` builder ----------------------------------------------------
+
+def _details_world(monkeypatch, records, write_errors=()):
+    """REST stubs: each read returns the next record of `records` (the last one repeats); each write fails with the next
+    error of `write_errors`, then succeeds. Returns the list of posted bodies."""
+    posted, reads = [], {"n": 0}
+    errors = list(write_errors)
+
+    def fake_execute(command, args):
+        body = json.loads(args["body"])
+        if args["uri"] == "/incidents/search":
+            record = records[min(reads["n"], len(records) - 1)]
+            reads["n"] += 1
+            return _rest_entry({"total": 1, "data": [dict(record)]})
+        if args["uri"] == "/incident":
+            if errors:
+                return [{"Type": 4, "Contents": errors.pop(0)}]
+            posted.append(body)
+            return _rest_entry(body)
+        raise AssertionError("unexpected uri {}".format(args["uri"]))
+
+    monkeypatch.setattr(gc.demisto, "executeCommand", fake_execute)
+    return posted
+
+
+def test_set_incident_fields_writes_details_built_from_the_record_it_read(monkeypatch):
+    posted = _details_world(monkeypatch, [{"id": "42", "version": 3, "details": "Original text.", "CustomFields": {"a": 1}}])
+    seen = []
+    result = gc.guardian_set_incident_fields("42", {}, details=lambda current: seen.append(current) or current + "\n\nsection")
+    assert result["ok"] is True and result["data"] == {"id": "42", "fields": {}, "details_written": True}
+    assert seen == ["Original text."]
+    assert len(posted) == 1 and posted[0]["details"] == "Original text.\n\nsection"
+    assert posted[0]["CustomFields"] == {"a": 1} and posted[0]["version"] == 3  # nothing else changes
+
+
+def test_set_incident_fields_rebuilds_details_from_the_fresh_record_after_an_optimistic_lock(monkeypatch):
+    records = [{"id": "42", "version": 1, "details": "first"}, {"id": "42", "version": 2, "details": "edited meanwhile"}]
+    posted = _details_world(monkeypatch, records, write_errors=["errOptimisticLock: version mismatch"])
+    result = gc.guardian_set_incident_fields("42", {}, details=lambda current: current + " +section")
+    assert result["ok"] is True and posted[0]["details"] == "edited meanwhile +section"  # never the stale text
+
+
+def test_set_incident_fields_does_not_write_when_the_details_are_unchanged_or_the_builder_declines(monkeypatch):
+    posted = _details_world(monkeypatch, [{"id": "42", "version": 1, "details": "same"}])
+    for builder in (lambda current: current, lambda current: None):
+        result = gc.guardian_set_incident_fields("42", {}, details=builder)
+        assert result["ok"] is True and result["data"]["details_written"] is False
+    assert posted == []
+
+
+def test_set_incident_fields_never_writes_details_it_could_not_read(monkeypatch):
+    posted = _details_world(monkeypatch, [{"id": "42", "version": 1, "CustomFields": {}}])
+    result = gc.guardian_set_incident_fields("42", {}, details=lambda current: "new")
+    assert result["ok"] is False and "without its details text" in result["error"] and posted == []
+
+
+def test_set_incident_fields_reports_a_builder_that_raises(monkeypatch):
+    posted = _details_world(monkeypatch, [{"id": "42", "version": 1, "details": ""}])
+
+    def broken(current):
+        raise ValueError("bad")
+
+    result = gc.guardian_set_incident_fields("42", {}, details=broken)
+    assert result["ok"] is False and "building the new details failed" in result["error"] and posted == []
+
+
+def test_set_incident_fields_writes_details_and_custom_fields_in_one_post(monkeypatch):
+    posted = _details_world(monkeypatch, [{"id": "42", "version": 1, "details": "", "CustomFields": {"keep": "x"}}])
+    result = gc.guardian_set_incident_fields("42", {"guardiantickcount": 2}, details=lambda current: "section")
+    assert result["ok"] is True and result["data"] == {"id": "42", "fields": {"guardiantickcount": 2}, "details_written": True}
+    assert len(posted) == 1 and posted[0]["details"] == "section"
+    assert posted[0]["CustomFields"] == {"keep": "x", "guardiantickcount": 2}
+
+
+def test_set_incident_fields_without_details_is_unchanged(monkeypatch):
+    posted = _details_world(monkeypatch, [{"id": "42", "version": 1, "details": "untouched", "CustomFields": {}}])
+    result = gc.guardian_set_incident_fields("42", {"guardiancostusd": 1.0})
+    assert result["data"] == {"id": "42", "fields": {"guardiancostusd": 1.0}}
+    assert posted[0]["details"] == "untouched"

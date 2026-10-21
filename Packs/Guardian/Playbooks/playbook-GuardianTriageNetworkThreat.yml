@@ -5,7 +5,7 @@ description: >-
   Triage branch for a network detection: command and control, scanning, an IDS, IPS or firewall alert, or
   suspicious traffic. Collects read-only enrichment for it (the address, domain and URL reputation (IP,
   Domain, URL, DBotScore), the internal endpoint that holds the address (Endpoint) and other incidents with
-  the same address (foundIncidents)), adds it to the evidence packet, then runs one focused model session.
+  the same address (foundIncidents)), adds it to the evidence packet, then runs a full investigation.
   Every lookup is skipped when its input is empty and continues on error; nothing here changes the incident,
   and the model session proposes actions and takes none.
 starttaskid: "0"
@@ -335,7 +335,7 @@ tasks:
       name: "Add enrichment to the evidence packet"
       description: >-
         Adds the lookups above to the pinned evidence packet (GuardianIncidentEvidence mode=append), so the
-        focused session sees them without fetching anything again. A path with nothing in context is listed as
+        investigation session sees them without fetching anything again. A path with nothing in context is listed as
         not available.
       script: 'GuardianIncidentEvidence'
       type: regular
@@ -368,7 +368,7 @@ tasks:
       version: -1
       name: "Clear the triage session state"
       description: >-
-        Deletes Guardian.Loop, the finished triage session, so the focused session starts its own loop.
+        Deletes Guardian.Loop, the finished triage session, so the investigation session starts its own loop.
       script: 'DeleteContext'
       type: regular
       iscommand: false
@@ -430,11 +430,13 @@ tasks:
     task:
       id: 1f75725b-32c0-5cc4-81ff-0534ce2d6449
       version: -1
-      name: "Run the focused model session"
+      name: "Run the investigation session"
       description: >-
-        One model session focused on this type: it reads the packet with its enrichment, makes the remaining
-        lookups, writes one case note and ends with the verdict block. It continues the incident's run totals,
-        so the incident shows the whole playbook run.
+        A full investigation of this incident, with the same judging rules, calibration and memory rule as an
+        investigation run: the model reads the evidence packet with the enrichment above, follows the skill, checks
+        what is still open, writes one case note and ends with the verdict block. Every tool call goes through the
+        security gate; containment and other state changes wait for a human. It continues the incident's run
+        totals, so the incident shows the whole playbook run.
       script: 'GuardianReasoningTick'
       type: regular
       iscommand: false
@@ -534,24 +536,26 @@ inputs:
       Triage already classified THIS incident (number ${incident.id}) as `${Guardian.Triage.investigation_type}` with severity `${Guardian.Triage.severity}` (it arrived as `${Guardian.Triage.original_severity}`), confidence ${Guardian.Triage.confidence}, likely benign: ${Guardian.Triage.likely_benign}. You are already assigned to this incident: do NOT search for or switch to another incident, never invent an id, and never ask anyone for it. Triage is a first look: confirm it or correct it from evidence. Make exactly ONE tool call per turn and read its result before choosing the next call.
       1) READ THE EVIDENCE PACKET pinned above. Besides the incident's own sections it holds `enrichment:` sections: read-only lookups the playbook already ran for this type. They hold the address, domain and URL reputation (IP, Domain, URL, DBotScore), the internal endpoint that holds the address (Endpoint) and other incidents with the same address (foundIncidents). Check whether the remote end is known-bad, which internal host is involved, whether the traffic was blocked, and whether other incidents share the address. A lookup that is not listed was skipped, had nothing to return, or failed; that is unknown, not clean. Do not repeat what is there.
       The triage inputs this playbook used: ip=`${Guardian.Triage.inputs.ip}`, domain=`${Guardian.Triage.inputs.domain}`, url=`${Guardian.Triage.inputs.url}`. A lookup whose input is empty was skipped, not failed. Do not run it yourself with a different kind of value: a host name is not an identity, and an internal address is not a remote one. If the missing input matters, say so in your report.
-      2) FOLLOW THE ACTIVE SKILL and gather only what your question still needs. Stop when another call would not change your answer.
-      3) DOCUMENT: call GuardianCaseNote once, in the report format the skill gives. Keep the case note under 2500 characters. Notes over 4000 are rejected and cost a retry. Cut repetition and raw lists before findings: name each item once, summarise counts, and keep the verdict, key evidence and next steps.
-      4) REMEMBER: if this run's evidence shows a durable pattern (a routine shown to be authorised, a false positive, a new threat), call GuardianMemory with op=store, a key that names the alert or the entity (for example alert:<alert name> or ip:<address>), a one-sentence value and tags. Store what you saw, not a guess: later runs on this alert read it.
-      5) Do NOT change anything: no setIncident, no closeInvestigation, no containment. Propose the next action in your report instead.
-      6) END with EXACTLY the verdict block and nothing after it, as the system prompt gives it: Malicious, Suspicious, Benign or Inconclusive, with confidence, techniques and summary.
+      2) FOLLOW THE ACTIVE SKILL and gather only what your question still needs. Stop when another call would not change your answer. A failed or empty lookup is not evidence either way: say so and carry on.
+      3) Judge the incident as a claim to check. The alert or detector that opened it is a claim, not evidence that it is malicious or benign: corroborate it with an independent read (an enrichment or reputation lookup, or a directory, endpoint, mailbox or SIEM query) before you call it Malicious or Benign. "I did not find it" is not "it did not happen": a timeout, a permission error or a missing field is a coverage gap, never an empty result.
+      4) If a memory row or an earlier incident in the packet covers this alert or one of its entities, use it and quote its key. A memory row is an earlier conclusion, often Guardian's own: check it against this incident's evidence instead of adopting it. How analysts closed earlier incidents with the same name is in prior_closed; a close as a false positive is evidence.
+      5) DOCUMENT: call GuardianCaseNote once, in the report format the skill gives. Keep the case note under 2500 characters. Notes over 4000 are rejected and cost a retry. Cut repetition and raw lists before findings: name each item once, summarise counts, and keep the verdict, key evidence and next steps.
+      6) REMEMBER: if this run's evidence shows a durable pattern (a routine shown to be authorised, a false positive, a new threat), call GuardianMemory with op=store, a key that names the alert or the entity (for example alert:<alert name> or ip:<address>), a one-sentence value and tags. Store what you saw, not a guess: later runs on this alert read it.
+      7) DECIDE. Do NOT change anything: no setIncident, no closeInvestigation, no containment. Propose the next action in your report instead. `Malicious` = confirmed hostile activity; `Suspicious` = likely hostile but not confirmed; `Benign` = confirmed non-threat or expected activity; `Inconclusive` = genuinely insufficient signal in the incident's own evidence. `techniques` lists parent-level ATT&CK ids that match THIS activity (the `T####` in the template is a placeholder, never copy it), or [] if none apply. `confidence`: 90 or more only when a tool result or the packet confirms the key facts; 40-70 when the evidence is partial. If nothing independent corroborates the alert, answer Suspicious with confidence 65 or lower, not Malicious, and say what is unconfirmed. A similar earlier incident, a knowledge-base entry and an ATT&CK mapping are context, not corroboration. Telemetry that shows the activity happened confirms the alert's facts, not that the activity was authorised: Benign at 70 or more needs evidence that it was expected (earlier incidents with the same name that analysts closed as false positives, a known automation account doing its usual job, indicators that enrichment rated Good, or the same account doing the same thing from the same networks before). A source address never seen before, failed sign-ins around the activity, or a lookup that failed argue against Benign; when the activity is confirmed but its authorisation is not, answer Suspicious and propose confirming it with the owner. Never write that something was validated, verified or confirmed unless a tool result in this run shows it.
+      8) END with EXACTLY the verdict block and nothing after it, as the system prompt gives it: Malicious, Suspicious, Benign or Inconclusive, with confidence, techniques and summary.
   required: false
   description: >-
-    Prompt for the focused model session on this type. It says what triage concluded (from Guardian.Triage)
-    and where the enrichment is.
+    Prompt for the investigation session on this type. It says what triage concluded (from Guardian.Triage)
+    and where the enrichment is, and carries the judging, memory and calibration rules every branch shares.
   playbookInputQuery: null
 - key: max_ticks
   value:
     simple: ""
   required: false
   description: >-
-    Optional cap on the model turns of the focused session. Empty (the default) uses the same limit
+    Optional cap on the model turns of the investigation session. Empty (the default) uses the same limit
     GuardianAgentLoop gets: the model size's limit, or the guardian_settings and model profile override. A
-    number can only lower that limit. The parent playbook passes its investigate_max_ticks input.
+    number can only lower that limit. The parent playbook passes the turn limit of its investigation model choice.
   playbookInputQuery: null
 outputs: []
 fromversion: 6.10.0

@@ -15,7 +15,8 @@ args:
   - 'false'
 comment: >-
   Operator-owned: applies a triage result (`Guardian.Triage`) to the current incident, behind guards. Changes only the
-  incident's severity and phase, through one `setIncident` call, and never its type, description, name or status.
+  incident's severity and phase, through one `setIncident` call, and never its type, details, name or status (the
+  Guardian section of the details is written by GuardianIncidentSummary, another operator-owned automation).
   Severity is raised only by a structured result, and lowered only by a structured result with a confidence of at
   least 80 that does not say escalate (a person must act within hours; a configuration weakness on a privileged account is not that, and an attempt that was blocked or failed, with no sign it succeeded (for example a blocked phishing email or a denied sign-in), does not escalate on its own); a repaired or fallback result never changes it. It skips an incident that has an owner, is closed or
   resolved, or was already triaged: in this context, or because the incident's own phase already starts with

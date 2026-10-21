@@ -37,6 +37,19 @@ A Cohere North provider cannot choose a model per call: the default is kept. A m
 `guardian_model_catalog` is kept, with a warning that its limits will be guessed. If the provider does not know the model
 at run time, the reasoning loop drops it and carries on with the instance's model.
 
+## When the task fails
+---
+
+The script empties `Guardian.ModelChoiceCurrent` before it does anything else, and again when it fails, so the playbook
+never reads an earlier run's choice, or the triage stage's, as this one: a failed choice means the configured model and the
+model size's own turn limit. Two consequences are known and left as they are:
+
+- if the investigation choice fails, the playbook input `investigate_max_ticks` is not applied either (the sub-playbooks
+  take their turn limit from `Guardian.ModelChoiceCurrent.max_ticks`), so the investigation runs with the model size's
+  own limit;
+- the one repair call `GuardianTriageResult` makes for a triage answer it cannot read goes to the provider instance's
+  configured model, not to the routed triage model.
+
 ## Outputs
 ---
 

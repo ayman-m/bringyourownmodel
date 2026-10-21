@@ -574,3 +574,55 @@ def test_a_bare_json_conclusion_that_fails_validation_goes_to_repair():
 
     record, _note, _cost = _run({"conclusion": json.dumps(_block(investigation_type="made_up")) + " " * 50}, repair=repair)
     assert len(calls) == 1 and record["status"] == "fallback" and record["branch"] == "other"
+
+
+# --- the optional analysis, recommendations and complexity -----------------------------------------------------------
+
+def test_a_block_without_analysis_or_recommendations_stays_structured_with_empty_values():
+    record, _n, _c = _run({"triage_block": _block()})
+    assert record["status"] == "structured" and record["analysis"] == "" and record["recommendations"] == []
+
+
+def test_analysis_and_recommendations_reach_the_record():
+    block = tri.guardian_triage_validate(_block(analysis="The sender domain was registered yesterday. " * 3,
+                                                recommendations=["Block the sender", "Tell the recipients"]), TABLE)
+    record, _n, _c = _run({"triage_block": block})
+    assert record["status"] == "structured"
+    assert record["analysis"].startswith("The sender domain was registered") and record["recommendations"] == ["Block the sender", "Tell the recipients"]
+
+
+def test_a_fallback_record_has_empty_analysis_recommendations_and_complexity():
+    record, _n, _c = _run({"conclusion": ""})
+    assert record["status"] == "fallback" and record["analysis"] == "" and record["recommendations"] == [] and record["complexity"] == ""
+
+
+def test_complexity_reaches_the_record_and_a_missing_or_invalid_one_is_empty_and_still_structured():
+    block = tri.guardian_triage_validate(_block(complexity="high"), TABLE)
+    record, _n, _c = _run({"triage_block": block})
+    assert record["status"] == "structured" and record["complexity"] == "high"
+    for value in (None, "", "extreme", 4):
+        block = tri.guardian_triage_validate(_block(complexity=value), TABLE)
+        record, _n, _c = _run({"triage_block": block})
+        assert record["status"] == "structured" and record["complexity"] == ""
+
+
+def test_the_repair_prompt_asks_for_the_optional_keys():
+    prompt = tri.guardian_triage_repair_prompt(TABLE)
+    assert '"analysis"' in prompt and '"recommendations"' in prompt and '"complexity"' in prompt
+
+
+def test_the_record_has_exactly_the_documented_keys():
+    record, _n, _c = _run({"triage_block": _block()})
+    assert set(record) == {
+        "incident_id", "status", "branch", "investigation_type", "severity", "original_severity", "confidence", "likely_benign",
+        "escalate", "summary", "next_step", "analysis", "recommendations", "complexity", "domain", "assessment_mode", "sub_playbook",
+        "skill", "reason", "inputs", "domain_mismatch", "input_sources"}
+    json.dumps(record)
+
+
+def test_the_yml_documents_the_optional_keys():
+    import pathlib
+    import yaml
+    doc = yaml.safe_load((pathlib.Path(__file__).parent / "GuardianTriageResult.yml").read_text())
+    paths = {o["contextPath"] for o in doc["outputs"]}
+    assert {"Guardian.Triage.analysis", "Guardian.Triage.recommendations", "Guardian.Triage.complexity"} <= paths

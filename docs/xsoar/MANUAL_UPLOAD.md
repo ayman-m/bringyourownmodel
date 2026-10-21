@@ -34,6 +34,7 @@ Settings > Advanced > Lists > **Add a List** (the console can also upload a file
 | `guardian_skills_index` | JSON | `Lists/guardian_skills_index.json` | The menu of skills the agent can load |
 | `guardian_incident_routes` | JSON | `Lists/guardian_incident_routes.json` | How an incident is routed to a skill, by type, source and category |
 | `guardian_triage_types` | JSON | `Lists/guardian_triage_types.json` | The triage types, the only values a triage result may use |
+| `guardian_model_routing` | JSON | `Lists/guardian_model_routing.json` | Which model the triage session and each investigation level uses; every model is empty as shipped, so the provider instance's configured model is used |
 | `guardian_kb_soc_investigation` | JSON | `Lists/guardian_kb_soc_investigation.json` | Searchable investigation guides |
 | `guardian_skill_xsoar_case_triage` | Markdown | `Lists/guardian_skill_xsoar_case_triage.md` | Skill: triage reference |
 | `guardian_skill_xsoar_triage` | Markdown | `Lists/guardian_skill_xsoar_triage.md` | Skill: triage an incident (severity and type) |
@@ -52,8 +53,8 @@ A list that shows a wrapper like that was loaded from a pack file: delete it and
 | 2 | Indicator fields | `IndicatorFields/` | nothing | Settings > Objects Setup > Indicators > Fields. No import documented | `POST /incidentfields/import` |
 | 3 | Lists (what each one does: [`../CONTENT_REFERENCE.md`](../CONTENT_REFERENCE.md#1-lists)) | `Lists/` | nothing | Settings > Advanced > Lists > **Add a List** (the guide also lists uploading and downloading a list) | `POST /lists/save` |
 | 4 | Integrations | `Integrations/` | nothing | Settings > Integrations > Instances. The guide does not describe importing an integration file; the toolbar has an upload icon | `POST /settings/integration-conf/upload` |
-| 5 | Automations | `Scripts/` | nothing (no order among the 71) | **Automation** page > the upload automation icon | `POST /automation/import` |
-| 6 | Playbooks | `Playbooks/` | the automations (14 are used) | **Playbooks** page > the upload button, top right | `POST /playbook/save/yaml` |
+| 5 | Automations | `Scripts/` | nothing (no order among the 78) | **Automation** page > the upload automation icon | `POST /automation/import` |
+| 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 22 of the pack's automations). **Upload the seven `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIncident`**, which calls them | **Playbooks** page > the upload button, top right | `POST /playbook/save/yaml` |
 | 7 | Layouts | `Layouts/` | the incident and indicator fields | Settings > Objects Setup > Incidents > **Layouts**. No import documented | `POST /layouts/import` |
 | 8 | Incident types | `IncidentTypes/` | the layout and the playbooks | Settings > Objects Setup > Incidents > **Types**: the guide lists "create, duplicate, import, export" | `POST /incidenttypes/import` |
 | 9 | Indicator type | `IndicatorTypes/` | the indicator layout (step 7) | Settings > Objects Setup > Indicators > **Types**. No import documented | `POST /reputation/import` |
@@ -67,6 +68,7 @@ Notes:
 - Steps 1 to 3 need nothing, so they can be done in any order among themselves.
 - Dashboard sharing is a per-user setting: share the dashboard with your team after importing it.
 - After step 8, confirm that a new *Guardian Agent Run* incident shows the **Guardian** layout tab.
+- Upgrading from a version that shipped `GuardianTriageIncident`: that playbook is now `GuardianTriageAndInvestigateIncident`. Re-point any incident type or Job that used the old name, then delete the old playbook. Upload the new automations `GuardianModelChoice` and `GuardianIncidentSummary` and the new list `guardian_model_routing` before the playbooks.
 
 **API payloads** (when you use the API column). Send each file on its own, one call at a time, with a pause between calls:
 - Fields and indicator fields: a JSON file `{"incidentFields": [ <the file's content> ]}`, as multipart form field `file`.

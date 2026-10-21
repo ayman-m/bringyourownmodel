@@ -167,10 +167,11 @@ an SLA-first triage sweep read-only.
 (the tool catalogue), `!guardian-plan` (a plan-only preview), `!guardian-compact` (compact the
 transcript), `!guardian-model` (current model).
 
-### Deterministic triage of one incident (`GuardianTriageIncident`)
+### Triage and investigation of one incident (`GuardianTriageAndInvestigateIncident`)
 
-Attach **`GuardianTriageIncident`** to an incident (as its type's playbook, or with `!setPlaybook
-name="GuardianTriageIncident"` in its War Room) to triage that one incident by fixed rules:
+Attach **`GuardianTriageAndInvestigateIncident`** to an incident (as its type's playbook, or with `!setPlaybook
+name="GuardianTriageAndInvestigateIncident"` in its War Room) to triage that one incident by fixed rules and then
+investigate it:
 
 1. **Route** (`GuardianIncidentRoute`): the List `guardian_incident_routes` maps the incident's type, category, source,
    name and labels to a family, a domain (`detection` or `posture`) and an evidence plan. Guardian's own run and eval
@@ -178,7 +179,9 @@ name="GuardianTriageIncident"` in its War Room) to triage that one incident by f
 2. **Evidence** (`GuardianIncidentEvidence`): the linked indicators with their reputation, other open incidents with the
    same name, how earlier ones were closed, and Guardian memory, pinned at the start of the model session. Read-only.
 3. **Triage session**: a short session (`triage_max_ticks`, default 6) on the `xsoar_triage` skill that ends with a
-   fixed block: severity, type, confidence, likely benign, escalate, key entities.
+   fixed block: severity, type, confidence, likely benign, escalate, key entities, and optionally an analysis, up to five
+   recommendations and a complexity rating (low, medium or high). The model is chosen first (`Choose the triage model`,
+   see model routing below).
 4. **Validate** (`GuardianTriageResult`): an invalid block gets one repair call, then a fallback to `other`; a type that
    does not fit the incident's domain also goes to `other`. The result is `Guardian.Triage`.
 5. **Apply** (`GuardianTriageApply`): sets the incident's **severity** and **phase** (`Guardian triage: <type>`) through
@@ -186,11 +189,36 @@ name="GuardianTriageIncident"` in its War Room) to triage that one incident by f
    without escalation, and skips an incident that has an owner, is closed, or was already triaged (its phase starts with
    `Guardian triage:`; clear the phase to allow a new write). Set the playbook input `apply_changes` to `false` for a
    dry run that only writes the note.
-6. **Branch** to one typed sub-playbook (`GuardianTriagePhishing`, `IdentityThreat`, `EndpointThreat`, `NetworkThreat`,
-   `DataExposure`, `Vulnerability`) or `GuardianTriageOther` (a note, no model). Each typed one runs read-only lookups
+6. **Triage summary** (`GuardianIncidentSummary stage=triage`): a short "Guardian triage" War Room note and the
+   `Triage:` line of one Guardian section at the end of the incident's details (below).
+7. **Investigation model**: `Choose the investigation model`, `Resolve the investigation model profile`, `Gather evidence
+   for the investigation model` (the packet again, sized for that model) and the system prompt and tool list rebuilt for it.
+8. **Branch** to one typed sub-playbook (`GuardianTriagePhishing`, `IdentityThreat`, `EndpointThreat`, `NetworkThreat`,
+   `DataExposure`, `Vulnerability`) or `GuardianTriageOther`. Each typed one runs read-only lookups
    (`ip`/`domain`/`url`/`file` reputation, `endpoint`, `cve`, `GetUserData`, `GetEndpointData`, a narrow
    `SearchIncidentsV2`), each skipped when its input is empty and continuing on error, adds them to the evidence packet,
-   runs one focused session that writes a case note and a verdict, and stores a memory row (`GuardianRunCapture`).
+   runs a full investigation (`Run the investigation session`: the same judging, memory and calibration rules in every
+   branch) that writes a case note and a verdict, and stores a memory row (`GuardianRunCapture`). `Other` has no lookups
+   and runs the same investigation on the skill the incident route chose.
+9. **Investigation conclusion** (`GuardianIncidentSummary stage=investigation`): a short "Guardian investigation" note
+   (the model it ran on, verdict, confidence, techniques, summary) and the `Investigation:` line of the Guardian section.
+
+**The Guardian section of the details.** `GuardianIncidentSummary` keeps one section at the end of the incident's
+details, behind the line `--- Guardian (automated) ---`. The original text is never changed; a re-run replaces only the
+section, and each stage keeps the other's line. It is written through the Core REST API (read the incident, change only
+`details`, write it back), and not written at all when the incident cannot be read. The evidence packet, the incident pin,
+every tool result and the eval harvest leave the section out, so the model never reads its own earlier conclusion back.
+
+**Model routing (optional).** The List `guardian_model_routing` (protected, shipped empty: every call uses the provider
+instance's configured model) can name the model of the triage session and a model, and an optional `max_ticks`, per
+investigation complexity level. The level starts at the triage block's `complexity` (medium without one), is raised to
+at least medium by an escalate or a high or critical severity, and by one more level for a confidence under 60. The input
+`investigate_max_ticks`, when set, wins over the level's `max_ticks`. A model the provider cannot serve is dropped once,
+with a line in the narration, and the run carries on with the configured model; a Cohere North provider cannot route.
+Only this playbook routes: `GuardianAgentLoop` (Guardian Agent Run incidents and the intake Job) always runs on the
+configured model. If `Choose the investigation model` fails, its result is empty, so the investigation runs on the
+configured model with the model size's own turn limit (`investigate_max_ticks` is not applied either), and the triage
+repair call of `GuardianTriageResult` always uses the configured model.
 
 `GetUserData` and `GetEndpointData` come from the Aggregated Scripts pack; their tasks are skipped when it is not
 installed. The reputation commands need at least one enabled integration that implements them. Containment and every

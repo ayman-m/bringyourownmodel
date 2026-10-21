@@ -171,8 +171,8 @@ outputs:
 - contextPath: Guardian.Loop.triage_block
   description: >-
     Triage runs only. The validated triage block parsed from the conclusion (severity, investigation_type,
-    confidence, likely_benign, escalate, summary, key_entities, next_step), or null when the conclusion had no valid
-    block.
+    confidence, likely_benign, escalate, summary, key_entities, next_step and the optional analysis, recommendations
+    and complexity), or null when the conclusion had no valid block.
   type: Unknown
 script: '-'
 system: false

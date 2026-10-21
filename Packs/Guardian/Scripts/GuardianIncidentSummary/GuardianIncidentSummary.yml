@@ -1,0 +1,70 @@
+args:
+- name: stage
+  description: >-
+    Which result to write: "triage" (the triage summary, after the apply task) or "investigation" (the conclusion
+    of the model investigation, after the branch).
+  required: true
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - triage
+  - investigation
+- name: apply_changes
+  description: >-
+    "true" (the default) posts the War Room note and writes the Guardian section of the incident's details. "false"
+    computes the text and reports it, and writes nothing. A value that is neither is treated as "false".
+  required: false
+  isArray: false
+  default: false
+  defaultValue: 'true'
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - 'true'
+  - 'false'
+comment: >-
+  Operator-owned: writes Guardian's triage summary or investigation conclusion to the current incident, in two places.
+  It posts a short War Room note ("Guardian triage" or "Guardian investigation"), and it appends one section to the end
+  of the incident's details through the Core REST API (one read of the incident and one write that changes only the
+  details). The section starts at the line "--- Guardian (automated) ---" and holds a "Triage:" line and an
+  "Investigation:" line; the text above the marker is never changed, a re-run replaces only the section, and each stage
+  keeps the other's line. The text is one line per stage, scrubbed of secrets and capped (700 characters per line, 1500
+  for the section). It skips the triage stage when there is no triage result, and the investigation stage when the run
+  ended without a verdict. The details are not written when the incident record cannot be read. It never writes the
+  name, type, severity or status. It is on the denylist: the model can never call it.
+commonfields:
+  id: GuardianIncidentSummary
+  version: -1
+enabled: true
+name: GuardianIncidentSummary
+outputs:
+- contextPath: Guardian.IncidentSummary.stage
+  description: "triage or investigation. One entry per stage, merged by this key."
+  type: String
+- contextPath: Guardian.IncidentSummary.status
+  description: "written (the note or the details were written), dry_run (computed only), skipped (nothing to write) or error (the writes failed)."
+  type: String
+- contextPath: Guardian.IncidentSummary.note_posted
+  description: "True when the War Room note was posted."
+  type: Boolean
+- contextPath: Guardian.IncidentSummary.details_updated
+  description: "True when the incident's details were updated."
+  type: Boolean
+- contextPath: Guardian.IncidentSummary.section_chars
+  description: "Length of the Guardian section as written (or as it would be written on a dry run). 0 when nothing was computed."
+  type: Number
+- contextPath: Guardian.IncidentSummary.reason
+  description: "Why nothing was written, or why the details were not: the guard that skipped it or the failure."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

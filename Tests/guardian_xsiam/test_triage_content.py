@@ -865,7 +865,7 @@ def test_every_continue_on_error_value_is_continue():
         text = (PLAYBOOKS / "playbook-{}.yml".format(name)).read_text()
         assert 'continueonerrortype: ""' not in text
         total += text.count("continueonerrortype: continue")
-    assert total == 118  # every task that continues on error, in all eleven playbooks
+    assert total == 119  # every task that continues on error, in all eleven playbooks
 
 
 def test_the_ten_investigation_sessions_continue_the_run_totals_and_the_other_sessions_do_not():
@@ -914,8 +914,8 @@ def test_the_parent_writes_the_triage_summary_after_apply_and_the_conclusion_bef
     apply_key = [k for k, t in tasks.items() if t["type"] == "regular" and _command_of(t) == "GuardianTriageApply"][0]
     assert tasks[apply_key]["nexttasks"]["#none#"] == [summaries["triage"]]
     # the investigation model is chosen, its profile, prompt and tool list rebuilt, and then the branch is picked
-    chain = ["Choose the investigation model", "Resolve the investigation model profile", "Build the investigation system prompt",
-             "Build the investigation tool list", "Which type?"]
+    chain = ["Choose the investigation model", "Resolve the investigation model profile", "Gather evidence for the investigation model",
+             "Build the investigation system prompt", "Build the investigation tool list", "Which type?"]
     assert tasks[summaries["triage"]]["nexttasks"]["#none#"] == [by_name[chain[0]]]
     for here, there in zip(chain, chain[1:]):
         assert tasks[by_name[here]]["nexttasks"]["#none#"] == [by_name[there]], here
@@ -1038,10 +1038,31 @@ def test_the_parent_chooses_the_triage_model_before_resolving_the_profile_and_th
         assert _command_of(a) == _command_of(b) and a["scriptarguments"] == b["scriptarguments"], again
 
 
+def test_the_evidence_is_gathered_again_for_the_investigation_model_with_the_same_arguments():
+    doc = _playbook(PARENT)
+    tasks = doc["tasks"]
+    by_name = {t["task"]["name"]: key for key, t in tasks.items()}
+    gathers = [k for k, t in tasks.items() if t["type"] == "regular" and _command_of(t) == "GuardianIssueEvidence"]
+    assert sorted(tasks[k]["task"]["name"] for k in gathers) == ["Gather evidence", "Gather evidence for the investigation model"]
+    first, again = tasks[by_name["Gather evidence"]], tasks[by_name["Gather evidence for the investigation model"]]
+    # the same arguments (none: the route's plan, the default mode, the snapshot's tier), so the packet is replaced, not
+    # appended to, and the branch's mode=append lookups land on the packet sized for the investigation model
+    assert (first.get("scriptarguments") or {}) == (again.get("scriptarguments") or {})
+    assert _arg(again, "mode") in (None, "issue")
+    resolve = by_name["Resolve the investigation model profile"]
+    assert tasks[resolve]["nexttasks"]["#none#"] == [by_name["Gather evidence for the investigation model"]]
+    assert again["nexttasks"]["#none#"] == [by_name["Build the investigation system prompt"]]
+    assert again["continueonerror"] is True and again["continueonerrortype"] == "continue"
+    order = _flow_order(doc)
+    assert order.index(resolve) < order.index(by_name["Gather evidence for the investigation model"]) < order.index(by_name["Which type?"])
+    # nothing in the parent appends to the packet, so the re-gather loses no enrichment
+    assert not [t for t in tasks.values() if t["type"] == "regular" and _command_of(t) == "GuardianIssueEvidence" and _arg(t, "mode") == "append"]
+
+
 def test_every_model_routing_task_fails_open():
     doc = _playbook(PARENT)
     new = ["Choose the triage model", "Choose the investigation model", "Resolve the investigation model profile",
-           "Build the investigation system prompt", "Build the investigation tool list"]
+           "Gather evidence for the investigation model", "Build the investigation system prompt", "Build the investigation tool list"]
     by_name = {t["task"]["name"]: t for t in doc["tasks"].values()}
     for name in new:
         task = by_name[name]

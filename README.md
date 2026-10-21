@@ -182,17 +182,21 @@ maintained copy (21 playbooks, no pre-process rule; see its `DIVERGENCE.md`).
   `GuardianContentBackup`, `GuardianSimulateIncidents`, `GuardianEval`, `GuardianCostLedger`.
 - **Playbooks** — `GuardianAgentLoop` (preflight and prep tasks, then one model-session task that re-schedules itself), `GuardianApprovalGate`,
   `GuardianSubagentRunner`, `GuardianHousekeeping`, `GuardianEvalScore`.
-- **Deterministic triage** — `GuardianTriageIncident` routes an incident (`GuardianIncidentRoute`, List
+- **Triage and investigation** — `GuardianTriageAndInvestigateIncident` routes an incident (`GuardianIncidentRoute`, List
   `guardian_incident_routes`), pre-fetches its evidence (`GuardianIncidentEvidence`), runs a short triage session that
-  ends with a fixed block, validates it (`GuardianTriageResult`, one repair call, then a fallback), sets severity and
-  phase behind guards (`GuardianTriageApply`, operator-owned), then branches to one of six typed sub-playbooks
-  (phishing, identity, endpoint, network, data exposure, vulnerability) or `GuardianTriageOther`. Each typed branch runs
-  read-only lookups, adds them to the evidence packet and runs one focused session; `GuardianRunCapture` remembers the
-  outcome. Taxonomy: List `guardian_triage_types`; skill `xsoar_triage`.
+  ends with a fixed block (with an optional analysis, recommendations and complexity), validates it
+  (`GuardianTriageResult`, one repair call, then a fallback), sets severity and phase behind guards
+  (`GuardianTriageApply`, operator-owned), writes the triage summary (`GuardianIncidentSummary`), then branches to one of
+  six typed sub-playbooks (phishing, identity, endpoint, network, data exposure, vulnerability) or `GuardianTriageOther`.
+  Each branch runs read-only lookups (none for `Other`), adds them to the evidence packet and runs a full investigation;
+  `GuardianRunCapture` remembers the outcome and `GuardianIncidentSummary` writes the conclusion as a War Room note and
+  one Guardian section at the end of the incident's details. Optional model routing (`GuardianModelChoice`, List
+  `guardian_model_routing`, shipped empty) can send the triage and the investigation to different models. Taxonomy: List
+  `guardian_triage_types`; skill `xsoar_triage`.
 - **Config lists** — `guardian_settings`, `guardian_persona`, `guardian_prompt_head/tail`,
   `guardian_pricing`, `guardian_model_catalog` (documented model limits), `guardian_policy`, `guardian_preapproved`, `guardian_tool_allowlist`/`denylist`,
   `guardian_skills_index` + 5 `guardian_skill_*` skills, `guardian_kb_soc_investigation`, `guardian_incident_routes`,
-  `guardian_triage_types`.
+  `guardian_triage_types`, `guardian_model_routing`.
 - **Fields** — `guardianverdict`, `guardianconfidence`, `guardianblastradius`, `guardiancostusd`,
   `guardiantickcount`, `guardianapprovalmode`, `guardiantriggersource`, `guardianattacktechniques`.
 - **UI** — the *Guardian Agent Run* layout (trace / tool-ledger / recommended-actions widgets) and the

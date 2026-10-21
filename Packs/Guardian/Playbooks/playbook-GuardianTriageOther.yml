@@ -3,9 +3,11 @@ version: -1
 name: GuardianTriageOther
 description: >-
   Triage branch for an incident that fits no type, or whose triage answer could not be used or did not fit the
-  incident's domain. No model session runs: it writes one case note saying an analyst has to decide and why
-  triage stopped (the triage apply step has already noted the summary and next step), and stops. The
-  incident's phase was already set to "Guardian triage: needs analyst" by the triage apply step.
+  incident's domain. There is no type-specific enrichment, but the incident still gets a full investigation, with the
+  same judging rules as the typed branches: it loads the skill the incident route chose, runs one model session over
+  the evidence packet and ends with the verdict block. The incident's phase was already set to "Guardian triage:
+  needs analyst" by the triage apply step. Everything the model session reads is read-only; it proposes actions and
+  takes none.
 starttaskid: "0"
 tasks:
   "0":
@@ -22,46 +24,13 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "1"
+      - "3"
     separatecontext: false
     view: |-
       {
         "position": {
           "x": 450,
           "y": 50
-        }
-      }
-  "1":
-    id: "1"
-    taskid: 6a8f4e72-db22-5fbe-b71e-e6a02ee895df
-    type: regular
-    task:
-      id: 6a8f4e72-db22-5fbe-b71e-e6a02ee895df
-      version: -1
-      name: "Note - needs an analyst"
-      description: >-
-        Writes one case note with the reason triage stopped here.
-      script: 'GuardianCaseNote'
-      type: regular
-      iscommand: false
-      brand: ""
-    nexttasks:
-      '#none#':
-      - "2"
-    scriptarguments:
-      content:
-        simple: |-
-          Guardian triage could not place this incident in a type, so it needs an analyst.
-          Why triage stopped here: ${Guardian.Triage.reason}
-          Triage status: ${Guardian.Triage.status}. Apply outcome: ${Guardian.TriageApply.status}.
-    separatecontext: false
-    continueonerror: true
-    continueonerrortype: continue
-    view: |-
-      {
-        "position": {
-          "x": 450,
-          "y": 195
         }
       }
   "2":
@@ -84,19 +53,185 @@ tasks:
           "y": 340
         }
       }
+  "3":
+    id: "3"
+    taskid: 5e7c2245-b974-54df-87eb-7d0ffa50a59b
+    type: regular
+    task:
+      id: 5e7c2245-b974-54df-87eb-7d0ffa50a59b
+      version: -1
+      name: "Clear the triage session state"
+      description: >-
+        Deletes Guardian.Loop, the finished triage session, so the investigation session starts its own loop. The
+        triage outcome stays in Guardian.Triage.
+      script: 'DeleteContext'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    scriptarguments:
+      key:
+        simple: "Guardian.Loop"
+      subplaybook:
+        simple: "no"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 195
+        }
+      }
+  "4":
+    id: "4"
+    taskid: 8c13369e-8f14-589b-a5fe-15f453cb5211
+    type: regular
+    task:
+      id: 8c13369e-8f14-589b-a5fe-15f453cb5211
+      version: -1
+      name: "Load the skill"
+      description: >-
+        Loads the skill the incident route chose (Guardian.Route.skill) so the model session can carry it in its system
+        prompt. The skill loaded before triage was the triage skill. A skill that cannot be loaded never stops the run.
+      script: 'GuardianSkillRead'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    scriptarguments:
+      name:
+        simple: "${Guardian.Route.skill}"
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 340
+        }
+      }
+  "5":
+    id: "5"
+    taskid: 7419937d-bc34-535b-ad4b-bddd23336495
+    type: regular
+    task:
+      id: 7419937d-bc34-535b-ad4b-bddd23336495
+      version: -1
+      name: "Run the investigation session"
+      description: >-
+        A full investigation of this incident, with the same judging rules, calibration and memory rule as the typed
+        branches: the model reads the evidence packet, follows the skill, checks what is still open, writes one case note
+        and ends with the verdict block. Every tool call goes through the security gate; containment and other state
+        changes wait for a human. It continues the incident's run totals, so the incident shows the whole playbook run.
+      script: 'GuardianReasoningTick'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "6"
+    scriptarguments:
+      prompt:
+        simple: "${inputs.prompt}"
+      skill:
+        simple: "${Guardian.Route.skill}"
+      use_prebuilt:
+        simple: "true"
+      scope_to_incident:
+        simple: "true"
+      assessment_mode:
+        simple: "${Guardian.Route.assessment_mode}"
+      max_ticks:
+        simple: "${inputs.max_ticks}"
+      continue_run_totals:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 485
+        }
+      }
+  "6":
+    id: "6"
+    taskid: 49b9c07f-6f5e-5897-b253-faa94c9ef511
+    type: regular
+    task:
+      id: 49b9c07f-6f5e-5897-b253-faa94c9ef511
+      version: -1
+      name: "Remember the outcome"
+      description: >-
+        Stores one memory row for the finished run (key run:<incident id>) with the family, the alert, the verdict and
+        the summary, so a later incident with the same name opens with this outcome in front of it. Writes nothing when
+        the run ended without a verdict.
+      script: 'GuardianRunCapture'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 630
+        }
+      }
 view: |-
   {
     "linkLabelsPosition": {},
     "paper": {
       "dimensions": {
-        "height": 540,
+        "height": 780,
         "width": 850,
         "x": 0,
         "y": 50
       }
     }
   }
-inputs: []
+inputs:
+- key: prompt
+  value:
+    simple: |-
+      Triage looked at THIS XSOAR incident, number ${incident.id}, and did not place it in a type (${Guardian.Triage.reason}). Triage status: ${Guardian.Triage.status}. Its first rating, if it gave one, was severity `${Guardian.Triage.severity}` (the incident arrived as `${Guardian.Triage.original_severity}`) with confidence ${Guardian.Triage.confidence}; an empty value or a zero means there was no usable rating. Triage is a first look, not a conclusion: investigate the incident yourself from the evidence. You are already assigned to this incident: do NOT search for or switch to another incident, never invent an id, and never ask anyone for it. Make exactly ONE tool call per turn and read its result before choosing the next call; never write the case note or store a memory in the same turn as a lookup.
+      1) READ THE EVIDENCE PACKET pinned above first. It holds what XSOAR already knows: the incident's fields, the indicators linked to it with their reputation, other open incidents with the same name, how earlier incidents with the same name were closed, and what Guardian remembers about the alert and its entities. There are no type-specific lookups for this incident. Do not fetch again what is there, and name the sections you rely on. A section listed as not available is unknown, not empty.
+      2) FOLLOW THE ACTIVE SKILL and gather only what your question still needs. Stop when another call would not change your answer. A failed or empty lookup is not evidence either way: say so and carry on.
+      3) Judge the incident as a claim to check. The alert or detector that opened it is a claim, not evidence that it is malicious or benign: corroborate it with an independent read (an enrichment or reputation lookup, or a directory, endpoint, mailbox or SIEM query) before you call it Malicious or Benign. "I did not find it" is not "it did not happen": a timeout, a permission error or a missing field is a coverage gap, never an empty result.
+      4) If a memory row or an earlier incident in the packet covers this alert or one of its entities, use it and quote its key. A memory row is an earlier conclusion, often Guardian's own: check it against this incident's evidence instead of adopting it. How analysts closed earlier incidents with the same name is in prior_closed; a close as a false positive is evidence.
+      5) DOCUMENT: call GuardianCaseNote once, in the report format the skill gives. Keep the case note under 2500 characters. Notes over 4000 are rejected and cost a retry. Cut repetition and raw lists before findings: name each item once, summarise counts, and keep the verdict, key evidence and next steps.
+      6) REMEMBER: if this run's evidence shows a durable pattern (a routine shown to be authorised, a false positive, a new threat), call GuardianMemory with op=store, a key that names the alert or the entity (for example alert:<alert name> or ip:<address>), a one-sentence value and tags. Store what you saw, not a guess: later runs on this alert read it.
+      7) DECIDE. Do NOT change anything: no setIncident, no closeInvestigation, no containment. Propose the next action in your report instead. `Malicious` = confirmed hostile activity; `Suspicious` = likely hostile but not confirmed; `Benign` = confirmed non-threat or expected activity; `Inconclusive` = genuinely insufficient signal in the incident's own evidence. `techniques` lists parent-level ATT&CK ids that match THIS activity (the `T####` in the template is a placeholder, never copy it), or [] if none apply. `confidence`: 90 or more only when a tool result or the packet confirms the key facts; 40-70 when the evidence is partial. If nothing independent corroborates the alert, answer Suspicious with confidence 65 or lower, not Malicious, and say what is unconfirmed. A similar earlier incident, a knowledge-base entry and an ATT&CK mapping are context, not corroboration. Telemetry that shows the activity happened confirms the alert's facts, not that the activity was authorised: Benign at 70 or more needs evidence that it was expected (earlier incidents with the same name that analysts closed as false positives, a known automation account doing its usual job, indicators that enrichment rated Good, or the same account doing the same thing from the same networks before). A source address never seen before, failed sign-ins around the activity, or a lookup that failed argue against Benign; when the activity is confirmed but its authorisation is not, answer Suspicious and propose confirming it with the owner. Never write that something was validated, verified or confirmed unless a tool result in this run shows it.
+      8) END with EXACTLY the verdict block and nothing after it, as the system prompt gives it: Malicious, Suspicious, Benign or Inconclusive, with confidence, techniques and summary.
+  required: false
+  description: >-
+    Prompt for the investigation session on an incident triage could not place in a type. It says what triage
+    concluded (from Guardian.Triage) and carries the judging, memory and calibration rules every branch shares.
+  playbookInputQuery: null
+- key: max_ticks
+  value:
+    simple: ""
+  required: false
+  description: >-
+    Optional cap on the model turns of the investigation session. Empty (the default) uses the same limit
+    GuardianAgentLoop gets: the model size's limit, or the guardian_settings and model profile override. A
+    number can only lower that limit. The parent playbook passes the turn limit of its investigation model choice.
+  playbookInputQuery: null
 outputs: []
 fromversion: 6.10.0
 marketplaces:

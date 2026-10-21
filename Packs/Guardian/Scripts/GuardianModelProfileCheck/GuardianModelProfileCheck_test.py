@@ -681,3 +681,70 @@ def test_the_turn_limit_follows_the_size_and_is_reported_and_snapshotted(monkeyp
     plist = {"active": None, "profiles": {}, "overrides": {"max_ticks": 12}}
     r, _store, _w = _run_shipped(monkeypatch, _foundry("gpt-5-mini"), plist, {"model_tier": "auto", "MAX_TICKS": 30})
     assert "Turn limit (MAX_TICKS): 12 (override)." in r["lines"]
+
+
+# --- the optional `model` argument: a routed run is resolved for that model ---------------------------------------------
+
+def test_without_a_model_the_snapshot_records_the_configured_model_as_not_routed(monkeypatch):
+    written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store={})
+    r = mtc.guardian_tiercheck_run()
+    assert (r["model"], r["routed"]) == ("gpt-5-mini", False)
+    assert written["Guardian.ModelProfile"]["model"] == "gpt-5-mini" and written["Guardian.ModelProfile"]["routed"] is False
+    for same in ("", "  ", None, "gpt-5-mini", "GPT-5-MINI"):
+        store = {}
+        written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store=store)
+        r = mtc.guardian_tiercheck_run(same)
+        assert r["routed"] is False and r["catalog_action"] == "written"  # the whole check ran, profile written as before
+
+
+def test_a_routed_model_is_resolved_for_that_model_and_never_writes_the_profile_list(monkeypatch):
+    store = {}
+    existing = _plist(_record("measured", model="gpt-5-mini", max_input=111111))
+    written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store=store, profile=existing)
+    r = mtc.guardian_tiercheck_run("gemini-2.5-pro")
+    assert (r["model"], r["routed"]) == ("gemini-2.5-pro", True)
+    snap = written["Guardian.ModelProfile"]
+    assert snap["model"] == "gemini-2.5-pro" and snap["routed"] is True
+    assert r["max_input_tokens"] != 111111   # the configured model's measured record does not apply to another model
+    assert "setList" not in store["commands"] and "createList" not in store["commands"] and "profile" not in store
+    assert "Routed model `gemini-2.5-pro`" in r["lines"][0] and "`gpt-5-mini`" in r["lines"][0]
+    assert r["mismatch"] is False and r["warning"] is None
+
+
+def test_a_routed_model_keeps_the_operators_overrides(monkeypatch):
+    existing = _plist(_record("measured", model="gpt-5-mini"), overrides={"max_input_tokens": 7000, "model_tier": "large"})
+    written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store={}, profile=existing)
+    r = mtc.guardian_tiercheck_run("gemini-2.5-pro")
+    assert (r["tier"], r["max_input_tokens"]) == ("large", 7000)
+
+
+def test_a_routed_model_that_is_not_in_the_catalogue_is_guessed_and_warned_about(monkeypatch):
+    written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store={})
+    r = mtc.guardian_tiercheck_run("some-new-model")
+    assert r["routed"] is True and r["profile_source"] is None
+    assert any("some-new-model" in w and "not in the model catalogue" in w for w in r["warnings"])
+    assert written["Guardian.ModelProfile"]["model"] == "some-new-model"
+    r = mtc.guardian_tiercheck_run("gemini-2.5-pro")
+    assert not [w for w in r["warnings"] if "not in the model catalogue" in w]
+
+
+def test_a_second_resolve_replaces_the_first_snapshot(monkeypatch):
+    written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store={})
+    mtc.guardian_tiercheck_run("")
+    assert written["Guardian.ModelProfile"]["routed"] is False
+    mtc.guardian_tiercheck_run("gemini-2.5-pro")
+    assert written["Guardian.ModelProfile"]["routed"] is True and written["Guardian.ModelProfile"]["model"] == "gemini-2.5-pro"
+
+
+def test_the_snapshot_with_the_new_keys_is_still_a_valid_run_snapshot(monkeypatch):
+    written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store={})
+    mtc.guardian_tiercheck_run("gemini-2.5-pro")
+    assert mtc.guardian_model_params_valid(written["Guardian.ModelProfile"])
+
+
+def test_the_yml_declares_the_model_argument_and_the_new_outputs():
+    import yaml
+    doc = yaml.safe_load((Path(__file__).parent / "GuardianModelProfileCheck.yml").read_text())
+    assert [a["name"] for a in doc["args"]] == ["model"] and doc["args"][0]["required"] is False
+    paths = {o["contextPath"] for o in doc["outputs"]}
+    assert {"Guardian.Preflight.ModelProfile.model", "Guardian.Preflight.ModelProfile.routed"} <= paths

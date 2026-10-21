@@ -321,7 +321,8 @@ tasks:
         were resolved, and Guardian's own memory for the rule and assets. Which steps run comes from the
         route's evidence plan. Every command is read-only and costs no compute units, each call is audited,
         and a command that is missing or fails is noted in the packet and never stops the run. The triage
-        session and the sub-playbook both pin this packet (Guardian.Evidence); nothing is fetched twice.
+        session pins this packet (Guardian.Evidence); it is gathered once more for the investigation model before the
+        branch, with the same arguments.
       script: 'GuardianIssueEvidence'
       type: regular
       iscommand: false
@@ -1272,7 +1273,7 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "40"
+      - "42"
     scriptarguments:
       model:
         simple: "${Guardian.ModelChoiceCurrent.model}"
@@ -1346,6 +1347,37 @@ tasks:
         "position": {
           "x": 4790,
           "y": 3365
+        }
+      }
+  "42":
+    id: "42"
+    taskid: 70ec073f-2860-54d1-90dd-ffd056ff1522
+    type: regular
+    task:
+      id: 70ec073f-2860-54d1-90dd-ffd056ff1522
+      version: -1
+      name: "Gather evidence for the investigation model"
+      description: >-
+        Gathers the evidence packet again, with the same arguments as the first gather, and replaces Guardian.Evidence. The
+        first packet was sized for the triage model; this one follows the numbers "Resolve the investigation model profile"
+        just wrote, so a smaller investigation model never pins a packet larger than its own budget, and a larger one gets
+        the fuller record. The sub-playbook appends its lookups to this packet afterwards (mode=append). The same read-only,
+        audited commands run again. When it fails, the first packet stays and the run goes on.
+      script: 'GuardianIssueEvidence'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "40"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 4145,
+          "y": 3550
         }
       }
   "36":

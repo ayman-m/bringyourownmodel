@@ -1,14 +1,18 @@
-id: GuardianTriageIncident
+id: GuardianTriageAndInvestigateIncident
 version: -1
-name: GuardianTriageIncident
+name: GuardianTriageAndInvestigateIncident
 description: >-
-  Triages THIS XSOAR incident with a short model session and then acts on its answer by fixed rules, not by
-  prose. The standard Guardian preparation (kill switch, job guard, incident routing, model profile, evidence
-  packet, system prompt, tool list) is followed by one short triage session that ends with a fixed block
-  (severity, type, confidence). A program validates the block, with one repair call and then a fallback, and
-  the playbook sets the incident's severity and phase (never its type, description or status), then branches
-  by type to a sub-playbook that collects read-only enrichment and runs one focused model session. Containment
-  and other state changes still wait for a human. The investigation playbook GuardianAgentLoop is unchanged.
+  Triages THIS XSOAR incident with a short model session, then runs a full investigation on it, acting on the
+  triage answer by fixed rules, not by prose. The standard Guardian preparation (kill switch, job guard, incident
+  routing, model profile, evidence packet, system prompt, tool list) is followed by one short triage session that
+  ends with a fixed block (severity, type, confidence, analysis, recommendations, complexity). A program validates
+  the block, with one repair call and then a fallback, and the playbook sets the incident's severity and phase
+  (never its type or status), then chooses the investigation model, resolves its profile, gathers the evidence
+  again for it and branches by type to a sub-playbook that collects read-only enrichment and runs a full model
+  investigation with the same judging rules as an investigation run. The playbook writes the triage summary and
+  the investigation conclusion as War Room notes and appends them to the incident's details in one delimited
+  Guardian section (the original text is never changed). Containment and other state changes still wait for a
+  human. The investigation playbook GuardianAgentLoop is unchanged.
 starttaskid: "0"
 tasks:
   "0":
@@ -202,7 +206,7 @@ tasks:
       brand: ""
     nexttasks:
       '#default#':
-      - "8"
+      - "37"
       "nomodel":
       - "7"
     separatecontext: false
@@ -262,7 +266,8 @@ tasks:
       version: -1
       name: "Resolve model profile"
       description: >-
-        Resolves the model's size and limits for this run.
+        Resolves the model's size and limits for this run, for the model chosen above
+        (Guardian.ModelChoiceCurrent.model; empty is the provider instance's configured model).
       script: 'GuardianModelProfileCheck'
       type: regular
       iscommand: false
@@ -270,6 +275,9 @@ tasks:
     nexttasks:
       '#none#':
       - "9"
+    scriptarguments:
+      model:
+        simple: "${Guardian.ModelChoiceCurrent.model}"
     separatecontext: false
     view: |-
       {
@@ -289,7 +297,8 @@ tasks:
       description: >-
         Pre-fetches what XSOAR already knows about the incident into one bounded evidence packet
         (GuardianIncidentEvidence): linked indicators, open and closed incidents with the same name, Guardian
-        memory. Read-only and audited.
+        memory. Read-only and audited. The triage session pins it; it is gathered once more for the investigation
+        model before the branch, with the same arguments.
       script: 'GuardianIncidentEvidence'
       type: regular
       iscommand: false
@@ -608,7 +617,7 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "20"
+      - "35"
     scriptarguments:
       apply_changes:
         simple: "${inputs.apply_changes}"
@@ -749,7 +758,7 @@ tasks:
       version: -1
       name: "GuardianTriagePhishing"
       description: >-
-        Runs the GuardianTriagePhishing playbook (deterministic enrichment, then one focused model session)
+        Runs the GuardianTriagePhishing playbook (deterministic enrichment, then a full investigation)
         for a reported or detected email: phishing, a malicious attachment or link, or business email
         compromise.
       playbookName: GuardianTriagePhishing
@@ -758,10 +767,10 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -781,8 +790,8 @@ tasks:
       version: -1
       name: "GuardianTriageIdentityThreat"
       description: >-
-        Runs the GuardianTriageIdentityThreat playbook (deterministic enrichment, then one focused model
-        session) for a sign-in anomaly, credential use, brute force or session abuse by a person or service
+        Runs the GuardianTriageIdentityThreat playbook (deterministic enrichment, then a full
+        investigation) for a sign-in anomaly, credential use, brute force or session abuse by a person or service
         account.
       playbookName: GuardianTriageIdentityThreat
       type: playbook
@@ -790,10 +799,10 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -813,18 +822,18 @@ tasks:
       version: -1
       name: "GuardianTriageEndpointThreat"
       description: >-
-        Runs the GuardianTriageEndpointThreat playbook (deterministic enrichment, then one focused model
-        session) for malware, suspicious execution or persistence on a host.
+        Runs the GuardianTriageEndpointThreat playbook (deterministic enrichment, then a full
+        investigation) for malware, suspicious execution or persistence on a host.
       playbookName: GuardianTriageEndpointThreat
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -844,8 +853,8 @@ tasks:
       version: -1
       name: "GuardianTriageNetworkThreat"
       description: >-
-        Runs the GuardianTriageNetworkThreat playbook (deterministic enrichment, then one focused model
-        session) for a network detection: command and control, scanning, an IDS, IPS or firewall alert, or
+        Runs the GuardianTriageNetworkThreat playbook (deterministic enrichment, then a full
+        investigation) for a network detection: command and control, scanning, an IDS, IPS or firewall alert, or
         suspicious traffic.
       playbookName: GuardianTriageNetworkThreat
       type: playbook
@@ -853,10 +862,10 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -876,18 +885,18 @@ tasks:
       version: -1
       name: "GuardianTriageDataExposure"
       description: >-
-        Runs the GuardianTriageDataExposure playbook (deterministic enrichment, then one focused model
-        session) for a data loss prevention alert, exfiltration, or public or over-shared data.
+        Runs the GuardianTriageDataExposure playbook (deterministic enrichment, then a full
+        investigation) for a data loss prevention alert, exfiltration, or public or over-shared data.
       playbookName: GuardianTriageDataExposure
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -907,18 +916,18 @@ tasks:
       version: -1
       name: "GuardianTriageVulnerability"
       description: >-
-        Runs the GuardianTriageVulnerability playbook (deterministic enrichment, then one focused model
-        session) for a known CVE or scanner finding on a host, image or application.
+        Runs the GuardianTriageVulnerability playbook (deterministic enrichment, then a full
+        investigation) for a known CVE or scanner finding on a host, image or application.
       playbookName: GuardianTriageVulnerability
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
     scriptarguments:
       max_ticks:
-        simple: "${inputs.investigate_max_ticks}"
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -938,14 +947,18 @@ tasks:
       version: -1
       name: "GuardianTriageOther"
       description: >-
-        Runs GuardianTriageOther: one case note saying an analyst has to decide, and no model session.
+        Runs GuardianTriageOther for an incident triage could not place in a type: no type-specific lookups, but
+        the same full investigation on the skill the incident route chose.
       playbookName: GuardianTriageOther
       type: playbook
       iscommand: false
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "36"
+    scriptarguments:
+      max_ticks:
+        simple: "${Guardian.ModelChoiceCurrent.max_ticks}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
@@ -1036,6 +1049,272 @@ tasks:
           "y": 2660
         }
       }
+  "35":
+    id: "35"
+    taskid: e9c44c12-5918-55db-9dd3-c2ddf8234d92
+    type: regular
+    task:
+      id: e9c44c12-5918-55db-9dd3-c2ddf8234d92
+      version: -1
+      name: "Write the triage summary"
+      description: >-
+        Writes the triage summary (GuardianIncidentSummary stage=triage): a short "Guardian triage" War Room note
+        (type, severity before and after, confidence, escalate, summary, analysis, recommendations) and the Triage line
+        of one Guardian section at the end of the incident's details. The original details are never changed; a re-run
+        replaces only the section. With apply_changes=false it writes nothing. Operator-owned and denylisted for the
+        model; a failure never stops the run.
+      script: 'GuardianIncidentSummary'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "38"
+    scriptarguments:
+      stage:
+        simple: "triage"
+      apply_changes:
+        simple: "${inputs.apply_changes}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 900,
+          "y": 2805
+        }
+      }
+  "36":
+    id: "36"
+    taskid: 019058f2-fabc-5925-9d2f-39a47470cf18
+    type: regular
+    task:
+      id: 019058f2-fabc-5925-9d2f-39a47470cf18
+      version: -1
+      name: "Write the investigation conclusion"
+      description: >-
+        Writes the investigation conclusion (GuardianIncidentSummary stage=investigation): a short "Guardian
+        investigation" War Room note (the model it ran on, verdict, confidence, techniques, summary) and the
+        Investigation line of the Guardian section in the incident's details. The model's own case note stays the full
+        report. It skips a run that ended without a verdict. With apply_changes=false it writes nothing.
+      script: 'GuardianIncidentSummary'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      stage:
+        simple: "investigation"
+      apply_changes:
+        simple: "${inputs.apply_changes}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1290,
+          "y": 3200
+        }
+      }
+  "37":
+    id: "37"
+    taskid: 2d77cafe-6895-5228-80fd-342675a450d4
+    type: regular
+    task:
+      id: 2d77cafe-6895-5228-80fd-342675a450d4
+      version: -1
+      name: "Choose the triage model"
+      description: >-
+        Chooses the model of the triage session from the control-plane List guardian_model_routing (routing.triage) and
+        leaves it at Guardian.ModelChoiceCurrent. Shipped empty: the provider instance's configured model, as before.
+        Operator-owned and denylisted for the model; a failure leaves no choice, so the configured model is used.
+      script: 'GuardianModelChoice'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "8"
+    scriptarguments:
+      stage:
+        simple: "triage"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 800,
+          "y": 1065
+        }
+      }
+  "38":
+    id: "38"
+    taskid: f5fc1691-1b66-5099-8554-ca078f67243d
+    type: regular
+    task:
+      id: f5fc1691-1b66-5099-8554-ca078f67243d
+      version: -1
+      name: "Choose the investigation model"
+      description: >-
+        Chooses the model and turn limit of the investigation from the triage result and guardian_model_routing: the
+        level starts at the triage block's complexity (medium without one), is raised to at least medium by an escalate
+        or a high or critical severity, and by one level for a confidence under 60. The level's model and max_ticks come
+        from guardian_model_routing; the input investigate_max_ticks, when set, wins over the level's max_ticks. The
+        result is at Guardian.ModelChoiceCurrent, which the branch reads.
+      script: 'GuardianModelChoice'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "39"
+    scriptarguments:
+      stage:
+        simple: "investigation"
+      investigate_max_ticks:
+        simple: "${inputs.investigate_max_ticks}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1250,
+          "y": 2805
+        }
+      }
+  "39":
+    id: "39"
+    taskid: cb31278c-29f2-50f5-89c5-660a0a141b62
+    type: regular
+    task:
+      id: cb31278c-29f2-50f5-89c5-660a0a141b62
+      version: -1
+      name: "Resolve the investigation model profile"
+      description: >-
+        Works out the model numbers for the investigation (size, input budget, tool-list budget, turn limit) again, for
+        the model chosen above (Guardian.ModelChoiceCurrent.model), and replaces the snapshot at Guardian.ModelProfile.
+        The snapshot records the model and that it was routed, so the investigation session passes that model to the
+        provider. With no model chosen it is the same check as before the triage. Never blocks the run.
+      script: 'GuardianModelProfileCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "42"
+    scriptarguments:
+      model:
+        simple: "${Guardian.ModelChoiceCurrent.model}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1600,
+          "y": 2805
+        }
+      }
+  "40":
+    id: "40"
+    taskid: 1ceea14a-1c14-550f-bcb2-30996836b412
+    type: regular
+    task:
+      id: 1ceea14a-1c14-550f-bcb2-30996836b412
+      version: -1
+      name: "Build the investigation system prompt"
+      description: >-
+        Assembles the agent's system prompt again (persona, action policy, approval mode, skills index) and leaves it in
+        context at Guardian.SystemPrompt, so it is built with the numbers of the investigation model. No model is involved.
+      script: 'GuardianPromptBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "41"
+    scriptarguments:
+      summary_only:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 2300,
+          "y": 2805
+        }
+      }
+  "41":
+    id: "41"
+    taskid: 4f1d49c5-c625-55c6-a170-55cd74681445
+    type: regular
+    task:
+      id: 4f1d49c5-c625-55c6-a170-55cd74681445
+      version: -1
+      name: "Build the investigation tool list"
+      description: >-
+        Builds the list of tools offered to the model again, trimmed to the tool-list budget of the investigation model
+        (see "Resolve the investigation model profile"), and leaves it in context at Guardian.ToolCatalog. No model is
+        involved.
+      script: 'GuardianToolCatalogBuilder'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "20"
+    scriptarguments:
+      use_snapshot:
+        simple: "true"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 2650,
+          "y": 2805
+        }
+      }
+  "42":
+    id: "42"
+    taskid: 2727aa3d-123a-522c-af4f-5d90d4fb29b4
+    type: regular
+    task:
+      id: 2727aa3d-123a-522c-af4f-5d90d4fb29b4
+      version: -1
+      name: "Gather evidence for the investigation model"
+      description: >-
+        Gathers the evidence packet again, with the same arguments as the first gather, and replaces Guardian.Evidence.
+        The first packet was sized for the triage model; this one follows the numbers "Resolve the investigation model
+        profile" just wrote, so a smaller investigation model never pins a packet larger than its own budget, and a
+        larger one gets the fuller record. The sub-playbook appends its lookups to this packet afterwards (mode=append).
+        The same read-only, audited commands run again. When it fails, the first packet stays and the run goes on.
+      script: 'GuardianIncidentEvidence'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "40"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1950,
+          "y": 2805
+        }
+      }
 view: |-
   {
     "linkLabelsPosition": {},
@@ -1056,11 +1335,11 @@ inputs:
       1) READ THE EVIDENCE PACKET pinned above first. It holds what XSOAR already knows: the incident's fields, the indicators linked to it with their reputation, other open incidents with the same name, how earlier incidents with the same name were closed, and what Guardian remembers about the alert and its entities. Do not fetch again what is there. A section listed as not available is unknown, not empty.
       2) FOLLOW THE ACTIVE SKILL (xsoar_triage). Make at most a few lookups, ONE tool call per turn, and only when the result could change the severity or the type: the reputation of one address, domain, URL or file the packet has no verdict for, the host as an endpoint tool sees it, or one narrow search for earlier incidents about the same entity. A failed or empty lookup is not evidence either way: say so and carry on.
       3) Do NOT write a case note, do NOT store a memory row and do NOT change anything: no setIncident, no closeInvestigation, no containment. The playbook records the outcome.
-      4) END with EXACTLY the triage block from the skill and nothing after it: severity, investigation_type, confidence, likely_benign, escalate, summary, key_entities and next_step. Every value comes from the allowed lists in the skill; use `other` for the type when nothing fits.
+      4) END with EXACTLY the triage block from the skill and nothing after it: severity, investigation_type, confidence, likely_benign, escalate, summary, key_entities and next_step, and optionally analysis (2-4 sentences on what you saw and why you rated it so), recommendations (up to 5 short next actions) and complexity (low, medium or high: how much investigation the incident needs, by the rubric in the skill). Every value comes from the allowed lists in the skill; use `other` for the type when nothing fits.
   required: false
   description: >-
     Triage prompt: triage THIS incident by reading the pinned packet and the triage skill, with at most a few
-    lookups, and end with exactly the triage block.
+    lookups, and end with exactly the triage block. No case note, no memory row, no changes.
   playbookInputQuery: null
 - key: apply_changes
   value:
@@ -1068,7 +1347,8 @@ inputs:
   required: false
   description: >-
     When "true" (the default), the triage result sets the incident's severity and phase through the guarded
-    apply task. Set to "false" for a dry run that writes only the case note.
+    apply task, and the two summary tasks write their notes and the Guardian section of the details. Set to
+    "false" for a dry run that writes only the apply task's case note.
   playbookInputQuery: null
 - key: triage_max_ticks
   value:
@@ -1083,10 +1363,12 @@ inputs:
     simple: ""
   required: false
   description: >-
-    Optional cap on the model turns of the focused session of the chosen sub-playbook (passed to its max_ticks
-    input). Empty (the default) gives that session the same limit GuardianAgentLoop gets: the model size's
-    limit (25, 40 or 60), or the guardian_settings and model profile override. A number can only lower that
-    limit.
+    Optional cap on the model turns of the investigation session of the chosen sub-playbook. It goes to the task
+    "Choose the investigation model", which hands the effective limit to the branch (passed to its max_ticks
+    input): this input when it is set, else the max_ticks of the level in the guardian_model_routing List, else
+    nothing. Empty (the default) with the List as shipped gives that session the same limit GuardianAgentLoop
+    gets: the model size's limit (25, 40 or 60), or the guardian_settings and model profile override. A number
+    can only lower that limit.
   playbookInputQuery: null
 outputs: []
 fromversion: 6.10.0

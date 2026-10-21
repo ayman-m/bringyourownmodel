@@ -22,7 +22,9 @@ Limits of a choice, each kept as a warning or a reason and never an error:
 
 Result -- `Guardian.ModelChoice` (returned as the command's outputs, merged by `stage`, so the triage entry and the
 investigation entry sit side by side) and `Guardian.ModelChoiceCurrent` (the same fields as one flat object, written with
-`setContext` and overwritten by each stage; the playbook reads it, so it never has to pick between the two entries):
+`setContext` and overwritten by each stage; the playbook reads it, so it never has to pick between the two entries).
+`main` empties `Guardian.ModelChoiceCurrent` before anything else and again when it fails, so a failed task leaves an
+empty choice (the configured model, the model size's own turn limit), never an earlier run's or stage's:
 
     {stage: triage|investigation, level: low|medium|high|"", model: str, max_ticks: int|"", reason: str,
      warnings: [str], provider: str}
@@ -2974,7 +2976,17 @@ def guardian_choice_readable(choice):
     return "\n".join([text] + ["WARNING: " + w for w in choice["warnings"]])
 
 
+def guardian_choice_clear_current():
+    """Empty `Guardian.ModelChoiceCurrent`. The playbook reads that key after this task, so a task that fails must not
+    leave an earlier run's choice (or the triage stage's) there to be read as this one. Never raises."""
+    try:
+        guardian_ctx_write(GUARDIAN_MODEL_CHOICE_CURRENT_KEY, {})
+    except Exception as exc:
+        demisto.error("GuardianModelChoice: could not clear {}: {}".format(GUARDIAN_MODEL_CHOICE_CURRENT_KEY, exc))
+
+
 def main():
+    guardian_choice_clear_current()
     try:
         args = demisto.args()
         stage = str(args.get("stage") or "").strip().lower()
@@ -2988,6 +3000,7 @@ def main():
         guardian_ctx_write(GUARDIAN_MODEL_CHOICE_CURRENT_KEY, choice)
         guardian_choice_audit(choice, incident.get("id") or "")
     except Exception as ex:  # belt-and-suspenders: an automation must not leak a traceback
+        guardian_choice_clear_current()
         return_error("GuardianModelChoice failed unexpectedly: {}".format(ex))
         return
 

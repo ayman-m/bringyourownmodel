@@ -1012,7 +1012,7 @@ def _guardian_rest_post(uri, body_obj):
     )
 
 
-def guardian_set_incident_fields(incident_id, fields):
+def guardian_set_incident_fields(incident_id, fields, details=None):
     """Persist `fields` onto an incident's `CustomFields` via the REST
     full-object merge -- the only form that reliably persists custom-field
     writes: the `setIncident` COMMAND form silently fails for custom fields
@@ -1056,13 +1056,25 @@ def guardian_set_incident_fields(incident_id, fields):
         a real ``int``/``float``, never a numeric string -- this helper
         merges values exactly as given, it does not coerce types.
     :type fields: ``dict``
+    :param details: Optional, for an operator-owned writer of the incident's
+        top-level ``details`` text (GuardianIncidentSummary). A function that
+        takes the ``details`` text of the record this helper has just read and
+        returns the new text, or ``None`` to leave it unchanged. It is called
+        on every attempt with that attempt's fresh read, so a retry after an
+        optimistic-lock collision rebuilds the text from the newest record
+        and never writes over a change made in between. It is called only when
+        the record holds ``details`` as a string (an empty string counts): a
+        record without it is not written, because an empty text cannot be
+        assumed. No other top-level field is ever changed by this helper.
+    :type details: ``callable`` or ``None``
     :return: A :func:`guardian_envelope`; ``data`` on success is
-        ``{"id": incident_id, "fields": fields}``.
+        ``{"id": incident_id, "fields": fields}``, plus ``"details_written"``
+        (whether the details text was changed) when `details` is given.
     :rtype: ``dict``
     """
     if not incident_id:
         return guardian_envelope(False, error="guardian_set_incident_fields: missing incident_id")
-    if not fields:
+    if not fields and details is None:
         return guardian_envelope(True, data={"id": incident_id, "fields": {}})
 
     last_error = None
@@ -1086,14 +1098,37 @@ def guardian_set_incident_fields(incident_id, fields):
             )
 
         incident = records[0]
-        custom_fields = incident.get("CustomFields")
-        custom_fields = dict(custom_fields) if isinstance(custom_fields, dict) else {}
-        custom_fields.update(fields)
-        incident["CustomFields"] = custom_fields
+        details_written = False
+        if details is not None:
+            current = incident.get("details")
+            if not isinstance(current, str):
+                return guardian_envelope(
+                    False, error="guardian_set_incident_fields: incident '{}' was read without its details text, so "
+                                 "the details are not written".format(incident_id)
+                )
+            try:
+                new_details = details(current)
+            except Exception as exc:  # the caller's builder must never turn into a raise here
+                return guardian_envelope(
+                    False, error="guardian_set_incident_fields: building the new details failed: {}".format(exc)
+                )
+            if isinstance(new_details, str) and new_details != current:
+                incident["details"] = new_details
+                details_written = True
+        if fields:
+            custom_fields = incident.get("CustomFields")
+            custom_fields = dict(custom_fields) if isinstance(custom_fields, dict) else {}
+            custom_fields.update(fields)
+            incident["CustomFields"] = custom_fields
+        data = {"id": incident_id, "fields": fields or {}}
+        if details is not None:
+            data["details_written"] = details_written
+            if not fields and not details_written:
+                return guardian_envelope(True, data=data)
 
         write_result = _guardian_rest_post("/incident", incident)
         if write_result["ok"]:
-            return guardian_envelope(True, data={"id": incident_id, "fields": fields})
+            return guardian_envelope(True, data=data)
 
         last_error = write_result["error"]
         last_retryable = write_result["retryable"]
@@ -2407,6 +2442,14 @@ GUARDIAN_TRIAGE_ENTITY_MAX_CHARS = 512
 GUARDIAN_TRIAGE_SUMMARY_MIN_CHARS = 20
 GUARDIAN_TRIAGE_SUMMARY_MAX_CHARS = 300
 GUARDIAN_TRIAGE_NEXT_STEP_MAX_CHARS = 300
+#: The optional `analysis` (what the model saw and why it rated the incident so) and `recommendations` (short next
+#: actions). A malformed or missing value is treated as absent; it never makes a block invalid.
+GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS = 800
+GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS = 200
+GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS = 5
+#: The optional `complexity` of the investigation the incident needs. GuardianModelChoice picks the investigation model
+#: by it. Any other value is read as absent.
+GUARDIAN_TRIAGE_COMPLEXITIES = ("low", "medium", "high")
 
 GUARDIAN_TRIAGE_DEFAULT_TYPES = [
     {"name": "phishing",
@@ -2602,6 +2645,38 @@ def guardian_triage_clean_entities(raw):
     return out
 
 
+def guardian_triage_clean_analysis(raw):
+    """The optional ``analysis`` text: whitespace collapsed, secrets scrubbed and cut to
+    GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS. Anything that is not text gives an empty string."""
+    if not isinstance(raw, str):
+        return ""
+    return guardian_scrub_secrets(" ".join(raw.split()), keep_identifiers=True)[:GUARDIAN_TRIAGE_ANALYSIS_MAX_CHARS].strip()
+
+
+def guardian_triage_clean_complexity(raw):
+    """The optional ``complexity``: ``low``, ``medium`` or ``high`` (case and surrounding spaces forgiven), else an empty
+    string."""
+    value = raw.strip().lower() if isinstance(raw, str) else ""
+    return value if value in GUARDIAN_TRIAGE_COMPLEXITIES else ""
+
+
+def guardian_triage_clean_recommendations(raw):
+    """The optional ``recommendations`` list: at most GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS non-empty strings,
+    each whitespace-collapsed, scrubbed of secrets and cut to GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS. A single
+    string stands for a one-item list; anything else gives an empty list."""
+    items = [raw] if isinstance(raw, str) else raw
+    out = []
+    for item in items if isinstance(items, (list, tuple)) else []:
+        if not isinstance(item, str):
+            continue
+        text = guardian_scrub_secrets(" ".join(item.split()), keep_identifiers=True)[:GUARDIAN_TRIAGE_RECOMMENDATION_MAX_CHARS].strip()
+        if text:
+            out.append(text)
+        if len(out) >= GUARDIAN_TRIAGE_RECOMMENDATIONS_MAX_ITEMS:
+            break
+    return out
+
+
 def guardian_triage_validate(raw, table=None):
     """Validate one decoded triage block and return it normalized, or ``None`` when it is not valid.
 
@@ -2610,7 +2685,10 @@ def guardian_triage_validate(raw, table=None):
     forgiven, nothing else); any other value rejects the WHOLE block, never a guess. ``confidence`` is required and
     is clamped to 0-100. ``likely_benign`` and ``escalate`` are booleans (default false when absent, invalid when
     present and not a boolean). ``summary`` must be a non-vague string of at least
-    GUARDIAN_TRIAGE_SUMMARY_MIN_CHARS characters. ``next_step`` is optional. ``key_entities`` is cleaned (see
+    GUARDIAN_TRIAGE_SUMMARY_MIN_CHARS characters. ``next_step`` is optional. ``analysis`` and ``recommendations`` are
+    optional too (see :func:`guardian_triage_clean_analysis` and :func:`guardian_triage_clean_recommendations`): a
+    block without them is just as valid, and a malformed one is read as absent. So is ``complexity`` (``low``, ``medium``
+    or ``high``; anything else is read as absent and the block stays valid). ``key_entities`` is cleaned (see
     :func:`guardian_triage_clean_entities`). Unknown keys are dropped.
 
     Whether the type fits the incident's domain is NOT decided here: that is GuardianTriageResult's call, not the model's
@@ -2658,6 +2736,9 @@ def guardian_triage_validate(raw, table=None):
         "summary": summary[:GUARDIAN_TRIAGE_SUMMARY_MAX_CHARS],
         "key_entities": guardian_triage_clean_entities(raw.get("key_entities")),
         "next_step": next_step,
+        "analysis": guardian_triage_clean_analysis(raw.get("analysis")),
+        "recommendations": guardian_triage_clean_recommendations(raw.get("recommendations")),
+        "complexity": guardian_triage_clean_complexity(raw.get("complexity")),
     }
 
 
@@ -2666,6 +2747,62 @@ def guardian_triage_parse_block(text, table=None):
     object that has an ``investigation_type`` key -- see :func:`guardian_triage_last_candidate`), or ``None`` (no
     such object, malformed JSON, or an invalid one -- see :func:`guardian_triage_validate`)."""
     return guardian_triage_validate(guardian_triage_last_candidate(text), table)
+
+
+# --- Guardian's section of an incident's details -------------------------------------------------------------------
+# GuardianIncidentSummary appends one section to the end of an incident's `details`, behind this marker line (the same
+# marker the Cortex platform edition puts at the end of an issue's description, hence the helper names). The evidence
+# packet, the incident pin, every tool result and the eval harvest drop that section again, so the model never reads
+# Guardian's own earlier conclusion back as if it were evidence about the incident.
+
+GUARDIAN_ISSUE_SECTION_MARKER = "--- Guardian (automated) ---"
+#: What GuardianIncidentSummary puts between the original text and the marker.
+GUARDIAN_ISSUE_SECTION_GAP = "\n\n"
+
+
+def guardian_split_issue_section(text):
+    """``(original, section)``: the details text above the Guardian section, exactly as it was before the section was
+    appended, and the section itself (the marker line to the end; empty when there is none). The gap the writer put
+    before the marker is not part of the original. A marker is a line that holds nothing but the marker text."""
+    import re
+    if not isinstance(text, str):
+        return "", ""
+    match = re.search(r"(?m)^[ \t]*" + re.escape(GUARDIAN_ISSUE_SECTION_MARKER) + r"[ \t\r]*$", text)
+    if match is None:
+        return text, ""
+    original = text[:match.start()]
+    for gap in (GUARDIAN_ISSUE_SECTION_GAP, "\r\n\r\n"):
+        if original.endswith(gap):
+            original = original[:-len(gap)]
+            break
+    return original, text[match.start():]
+
+
+def guardian_strip_issue_section(text):
+    """``text`` without Guardian's section (everything from the marker line to the end). Text that has no marker, and
+    anything that is not text, comes back unchanged."""
+    return guardian_split_issue_section(text)[0] if isinstance(text, str) and GUARDIAN_ISSUE_SECTION_MARKER in text else text
+
+
+def guardian_strip_issue_section_deep(value, _depth=0):
+    """``value`` with Guardian's details section removed from every string in it (dicts and lists are walked, up to
+    eight levels). A string that holds JSON text, where the line breaks are written as ``\\n``, loses the section too: from
+    the marker to the end of that JSON string. Values without the marker come back as they are."""
+    import re
+    if isinstance(value, str):
+        if GUARDIAN_ISSUE_SECTION_MARKER not in value:
+            return value
+        stripped = guardian_strip_issue_section(value)
+        if GUARDIAN_ISSUE_SECTION_MARKER in stripped:
+            stripped = re.sub(r'(?:(?:\\r)?\\n){0,2}' + re.escape(GUARDIAN_ISSUE_SECTION_MARKER) + r'(?:\\.|[^"\\])*', "", stripped)
+        return stripped
+    if _depth >= 8:
+        return value
+    if isinstance(value, dict):
+        return {key: guardian_strip_issue_section_deep(item, _depth + 1) for key, item in value.items()}
+    if isinstance(value, list):
+        return [guardian_strip_issue_section_deep(item, _depth + 1) for item in value]
+    return value
 
 
 # </GUARDIAN_COMMON>

@@ -283,6 +283,55 @@ def test_main_refuses_a_bad_stage(monkeypatch, world):
     assert errors and "stage must be" in errors[0] and not results
 
 
+def _record_writes(monkeypatch, world):
+    writes = []
+
+    def set_context(path, value):
+        writes.append((path, value))
+        world.setdefault("written", {})[path] = value
+
+    monkeypatch.setattr(mc.demisto, "setContext", set_context)
+    return writes
+
+
+def test_main_clears_the_current_choice_before_anything_else(monkeypatch, world):
+    writes = _record_writes(monkeypatch, world)
+    world["routing"] = json.dumps(_routing(triage="gpt-5-mini"))
+    _main(monkeypatch, world, {"stage": "triage"})
+    current = [value for path, value in writes if path == "Guardian.ModelChoiceCurrent"]
+    assert writes[0] == ("Guardian.ModelChoiceCurrent", {}) and current[-1]["model"] == "gpt-5-mini"
+
+
+def test_a_bad_stage_leaves_the_current_choice_empty(monkeypatch, world):
+    writes = _record_writes(monkeypatch, world)
+    world["written"] = {"Guardian.ModelChoiceCurrent": {"stage": "triage", "model": "gpt-5-mini"}}  # an earlier stage's choice
+    results, errors = _main(monkeypatch, world, {"stage": "later"})
+    assert errors and not results
+    assert writes == [("Guardian.ModelChoiceCurrent", {})] and world["written"]["Guardian.ModelChoiceCurrent"] == {}
+
+
+def test_a_failure_while_choosing_leaves_the_current_choice_empty(monkeypatch, world):
+    writes = _record_writes(monkeypatch, world)
+
+    def broken():
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(mc, "guardian_choice_load_routing", broken)
+    results, errors = _main(monkeypatch, world, {"stage": "investigation"})
+    assert errors and "failed unexpectedly" in errors[0] and not results
+    assert {path for path, _v in writes} == {"Guardian.ModelChoiceCurrent"} and all(value == {} for _p, value in writes)
+    assert world["written"]["Guardian.ModelChoiceCurrent"] == {}
+
+
+def test_a_context_write_that_fails_still_reports_the_error(monkeypatch, world):
+    def set_context(path, value):
+        raise RuntimeError("context unavailable")
+
+    monkeypatch.setattr(mc.demisto, "setContext", set_context)
+    results, errors = _main(monkeypatch, world, {"stage": "triage"})
+    assert errors and not results
+
+
 def test_the_yml_matches_the_outputs():
     doc = yaml.safe_load((pathlib.Path(__file__).parent / "GuardianModelChoice.yml").read_text())
     args = {a["name"]: a for a in doc["args"]}
