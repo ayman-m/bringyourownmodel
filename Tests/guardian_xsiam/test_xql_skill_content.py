@@ -29,7 +29,15 @@ VERIFIED_FIELDS = {
         "action_access_isadministrative", "dest_cloud_resource_name", "dest_cloud_service_name",
         "grantedby_cloud_policy_name", "is_last_access_supported", "last_access_time",
     },
+    # the data source health preset (`preset = metrics_view`); `last_seen` is epoch milliseconds
+    "metrics_view": {
+        "total_event_count", "total_event_rate", "total_size_bytes", "last_seen", "data_freshness_max_delay",
+        "data_freshness_median", "_vendor", "_product", "_collector_type", "_collector_name", "_reporting_device_ip",
+        "_final_reporting_device_ip", "_broker_device_name", "_broker_device_ip", "_time",
+    },
 }
+#: The `dataset` shown for a template that works on whichever dataset the caller names (its `dataset` parameter).
+PARAMETRIC_DATASET = "{dataset}"
 #: Fields the skill says to keep out of `fields` because they are very long: named, but not for use in a query.
 NAMED_BUT_AVOIDED = {"raw_log", "operation_name_orig", "backtrace_identities"}
 #: Datasets the skill may name as existing without verified fields.
@@ -111,7 +119,7 @@ def test_the_template_table_agrees_with_the_templates_list():
         rows = [line for line in skill.splitlines() if line.startswith("| `{}` |".format(template["name"]))]
         assert len(rows) == 1, template["name"]
         cells = [c.strip() for c in rows[0].strip("|").split("|")]
-        assert cells[2] == "`{}`".format(template["params"][0]) and len(template["params"]) == 1
+        assert cells[2] == ", ".join("`{}`".format(param) for param in template["params"])
         assert cells[3] == "`{}`".format(template["dataset"])
         assert cells[4] == "{} / {}".format(template["default_hours"], template["max_hours"]), template["name"]
 
@@ -128,7 +136,24 @@ def test_the_identity_activity_account_query_uses_the_split_form_and_no_regex():
 
 def test_every_template_reads_a_verified_dataset():
     for template in _templates():
-        assert template["dataset"] in VERIFIED_FIELDS, template["name"]
+        if template["params"] == ["dataset"]:
+            assert template["dataset"] == PARAMETRIC_DATASET and "{dataset}" in template["query"], template["name"]
+        else:
+            assert template["dataset"] in VERIFIED_FIELDS, template["name"]
+
+
+def test_the_data_source_health_templates_filter_early_aggregate_on_the_server_and_say_how_to_read_last_seen():
+    by_name = {t["name"]: t for t in _templates()}
+    health, senders = by_name["source_ingestion_health"], by_name["reporter_sources"]
+    assert health["query"].startswith("preset = metrics_view | filter ") and senders["query"].startswith("preset = metrics_view | filter ")
+    assert health["params"] == ["vendor", "product"] and (health["default_hours"], health["max_hours"]) == (24, 168)
+    assert senders["params"] == ["ip"] and (senders["default_hours"], senders["max_hours"]) == (24, 168)
+    for template in (health, senders):
+        assert " | comp " in template["query"] and "last_seen_utc" in template["description"] and "format_timestamp(" in template["query"]
+        assert {"total_event_count", "last_seen", "_vendor", "_product"} <= set(re.findall(r"[A-Za-z_]+", template["query"]))
+    for name, stage in (("dataset_raw_volume", "dataset = {dataset} | bin _time span = 1h | comp count() as raw_events by _time"),
+                        ("datamodel_volume", "datamodel dataset = {dataset} | bin _time span = 1h | comp count() as modeled_events by _time")):
+        assert by_name[name]["query"].startswith(stage) and by_name[name]["default_hours"] == 24
 
 
 # --- datasets and fields --------------------------------------------------------------------------------------------

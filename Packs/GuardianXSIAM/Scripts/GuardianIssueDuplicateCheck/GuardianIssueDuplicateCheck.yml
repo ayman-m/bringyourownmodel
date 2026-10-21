@@ -1,0 +1,84 @@
+args:
+- name: max_candidates
+  description: >-
+    How many open issues of the same rule to read for the comparison, oldest first. Default 50, at most 100. A larger
+    group is cut at this limit, which can only make the answer "not a duplicate", never the other way round.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: close_duplicates
+  description: >-
+    "true" closes THIS issue as "Resolved - Duplicate Issue" when it is a duplicate of a lower-numbered open issue.
+    Default "false": the result is only recorded. The original and every other issue are never changed.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - "true"
+  - "false"
+comment: >-
+  Operator-owned: decides, without a model, whether the current issue repeats a lower-numbered open issue of the same rule
+  on the same thing, so the triage model session can be skipped. Two issues match when they carry the same rule id and either
+  share an asset id or (when neither has asset ids) carry the same vendor, product, host, user, address, file hash and
+  domain values. The lowest-numbered issue of a group is never a duplicate. It makes one search for the open issues of the
+  rule, writes the answer to `Guardian.Duplicate` and proposes an issue exclusion for the rule and scope (a proposal; nothing
+  is applied). Any failure means "not a duplicate". With close_duplicates=true it closes only this issue. It is on the
+  denylist: the model can never call it.
+commonfields:
+  id: GuardianIssueDuplicateCheck
+  version: -1
+enabled: true
+name: GuardianIssueDuplicateCheck
+outputs:
+- contextPath: Guardian.Duplicate.issue_id
+  description: "The issue that was checked. The entry is keyed by it."
+  type: String
+- contextPath: Guardian.Duplicate.is_duplicate
+  description: '"true" when a lower-numbered open issue of the same rule matches on the same assets or source, else "false" (also "false" on any failure).'
+  type: String
+- contextPath: Guardian.Duplicate.original_id
+  description: "The lowest-numbered matching open issue; empty when this issue is not a duplicate."
+  type: String
+- contextPath: Guardian.Duplicate.matching_open_ids
+  description: "The ids of the matching open issues, lowest first (at most 20)."
+  type: Unknown
+- contextPath: Guardian.Duplicate.open_in_group
+  description: "The open issues of this rule on the same assets or source, counting this one. 1 means no other."
+  type: Number
+- contextPath: Guardian.Duplicate.rule_id
+  description: "The rule id of the issue."
+  type: String
+- contextPath: Guardian.Duplicate.rule_name
+  description: "The name of the issue."
+  type: String
+- contextPath: Guardian.Duplicate.fingerprint
+  description: "The entity fingerprint the comparison used: the normalized values of vendor, product, host, user, local_ip, remote_ip, file_sha256 and domain that the issue carries."
+  type: Unknown
+- contextPath: Guardian.Duplicate.reason
+  description: "Why the answer is what it is, in one line."
+  type: String
+- contextPath: Guardian.Duplicate.proposed_exclusion
+  description: "For a duplicate, and for an original with later matches: the exclusion or suppression an analyst would add (rule_name, rule_id, scope, reason, suggested_review_days). A proposal only."
+  type: Unknown
+- contextPath: Guardian.Duplicate.proposed_exclusion_text
+  description: "The proposed exclusion as one sentence, for a note."
+  type: String
+- contextPath: Guardian.Duplicate.closed
+  description: '"true" when close_duplicates was set and this issue was closed as a duplicate, else "false".'
+  type: String
+- contextPath: Guardian.Duplicate.close_error
+  description: "Why closing this issue failed; empty otherwise. A failed close never stops the playbook."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

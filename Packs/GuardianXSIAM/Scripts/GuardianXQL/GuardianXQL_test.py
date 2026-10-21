@@ -259,7 +259,7 @@ def test_shipped_templates_are_well_formed():
             assert "{" + param + "}" in t["query"] or "{" + param + "_lc}" in t["query"]
             stripped = stripped.replace("{" + param + "_lc}", "").replace("{" + param + "}", "")
         assert "{" not in stripped
-        assert t["query"].startswith("dataset = ") and t["default_hours"] <= t["max_hours"]
+        assert t["query"].startswith(("dataset = ", "preset = metrics_view | ", "datamodel dataset = ")) and t["default_hours"] <= t["max_hours"]
 
 
 def test_cost_reported_as_a_dict_keyed_by_execution_id_is_summed(tenant):
@@ -529,3 +529,123 @@ def test_context_key_redirects_the_result_and_is_checked(monkeypatch):
     monkeypatch.setattr(xql.demisto, "args", lambda: {"template": "ip_activity", "ip": "1.2.3.4", "context_key": "Guardian.Loop"})
     xql.main()
     assert errors and "context_key" in errors[0] and len(results) == 2
+
+
+# --- the data source health templates ---------------------------------------------------------------------------------------
+
+def test_source_ingestion_health_filters_the_health_rows_case_insensitively_and_aggregates_on_the_server(tenant):
+    fake = tenant(reply=REPLY)
+    out = xql.guardian_xql_run("source_ingestion_health", {"vendor": "ExampleVendor", "product": "Example Product-2.x"}, run_id="9", sequence=1)
+    assert "error" not in out
+    call = fake.query_calls()[0]
+    assert call["query"].startswith('preset = metrics_view | filter lowercase(_vendor) = "examplevendor" and lowercase(_product) = "example product-2.x" | comp ')
+    for needle in ("sum(total_event_count) as events", "max(last_seen) as last_seen", "max(data_freshness_max_delay) as max_delay",
+                   "values(_collector_type) as collectors", "values(_reporting_device_ip) as reporters",
+                   "values(_broker_device_name) as brokers", "by _vendor, _product"):
+        assert needle in call["query"], needle
+    assert call["time_frame"] == "24 hours"
+
+
+def test_source_ingestion_health_allows_a_week_and_notes_anything_longer(tenant):
+    fake = tenant(reply=REPLY)
+    out = xql.guardian_xql_run("source_ingestion_health", {"vendor": "a", "product": "b"}, hours=168)
+    assert not out["advisory"] and fake.query_calls()[0]["time_frame"] == "168 hours"
+    out = xql.guardian_xql_run("source_ingestion_health", {"vendor": "a", "product": "b"}, hours=200)
+    assert any("usual maximum of 168" in note for note in out["advisory"])
+
+
+@pytest.mark.parametrize("missing", [{"vendor": "a"}, {"product": "b"}, {"vendor": "", "product": "b"}, {"vendor": "a", "product": None}, {}])
+def test_both_vendor_and_product_are_required(tenant, missing):
+    fake = tenant(reply=REPLY)
+    out = xql.guardian_xql_run("source_ingestion_health", missing)
+    assert "is required" in out["error"] and fake.query_calls() == []
+
+
+@pytest.mark.parametrize("bad", ['a" | limit 1 | filter "b', "a|b", "a;b", "a`b", "{vendor}", "a{b}", "a\\b", "line\nbreak", "tab\there",
+                                 "a/b", "caf\u00e9", "a+b", "a&b", "x" * 65, "a'b", "a(b)", "a,b"])
+@pytest.mark.parametrize("field", ["vendor", "product"])
+def test_an_unsafe_vendor_or_product_never_reaches_the_query(tenant, field, bad):
+    fake = tenant(reply=REPLY)
+    values = {"vendor": "ExampleVendor", "product": "ExampleProduct"}
+    values[field] = bad
+    out = xql.guardian_xql_run("source_ingestion_health", values)
+    assert "error" in out and fake.query_calls() == []
+
+
+def test_a_vendor_or_product_of_sixty_four_characters_is_accepted(tenant):
+    fake = tenant(reply=REPLY)
+    out = xql.guardian_xql_run("source_ingestion_health", {"vendor": "V" * 64, "product": "p_1 . -" + "x" * 57})
+    assert "error" not in out and len(fake.query_calls()) == 1
+
+
+def test_reporter_sources_matches_the_address_on_all_three_device_fields_and_sorts_oldest_first(tenant):
+    fake = tenant(reply=REPLY)
+    out = xql.guardian_xql_run("reporter_sources", {"ip": "10.0.0.5"}, run_id="9", sequence=1)
+    assert "error" not in out
+    call = fake.query_calls()[0]
+    assert call["query"].startswith('preset = metrics_view | filter _reporting_device_ip = "10.0.0.5" or _final_reporting_device_ip = "10.0.0.5" or _broker_device_ip = "10.0.0.5" | comp ')
+    assert "by _vendor, _product, _collector_type | alter last_seen_utc = format_timestamp(" in call["query"]
+    assert call["query"].endswith('| alter state = if(hours_silent > 2, "stopped", "flowing") | sort asc last_seen')
+    assert call["time_frame"] == "24 hours"
+    assert not xql.guardian_xql_run("reporter_sources", {"ip": "x; drop"}).get("rows")  # an ip must look like an address
+
+
+def test_dataset_volume_templates_count_per_hour_in_the_raw_dataset_and_in_the_data_model(tenant):
+    fake = tenant(reply=REPLY)
+    xql.guardian_xql_run("dataset_raw_volume", {"dataset": "example_vendor_example_product_raw"})
+    xql.guardian_xql_run("datamodel_volume", {"dataset": "example_vendor_example_product_raw"})
+    raw, modeled = [c["query"] for c in fake.query_calls()]
+    assert raw == "dataset = example_vendor_example_product_raw | bin _time span = 1h | comp count() as raw_events by _time | sort asc _time"
+    assert modeled == "datamodel dataset = example_vendor_example_product_raw | bin _time span = 1h | comp count() as modeled_events by _time | sort asc _time"
+    assert all(c["time_frame"] == "24 hours" for c in fake.query_calls())
+
+
+@pytest.mark.parametrize("good", ["a", "okta_okta_raw", "a1_b2", "_x", "9", "a" * 80])
+def test_a_plain_dataset_name_is_accepted(tenant, good):
+    fake = tenant(reply=REPLY)
+    out = xql.guardian_xql_run("dataset_raw_volume", {"dataset": good})
+    assert "error" not in out and "dataset = {} |".format(good) in fake.query_calls()[0]["query"]
+
+
+@pytest.mark.parametrize("bad", ["okta | limit 1", "a b", "Okta_raw", "UPPER", "", "   ", None, 'a"b', "a'b", "a-b", "a.b", "a" * 81, "a\nb", "a\tb",
+                                 "a;b", "a`b", "{x}", "a{b}", "a\\b", "a|b", "caf\u00e9", "a,b", "a)", "a/b", "issues | filter 1=1", "x\n| limit 1"])
+@pytest.mark.parametrize("template", ["dataset_raw_volume", "datamodel_volume"])
+def test_an_unsafe_dataset_never_reaches_the_query(tenant, template, bad):
+    fake = tenant(reply=REPLY)
+    out = xql.guardian_xql_run(template, {"dataset": bad})
+    assert "error" in out and fake.query_calls() == []
+
+
+def test_the_new_templates_are_listed_with_their_parameters(tenant):
+    tenant(reply=REPLY)
+    listed = {t["name"]: t for t in xql.guardian_xql_run("list", {})["templates"]}
+    assert listed["source_ingestion_health"]["parameters"] == ["vendor", "product"]
+    assert listed["reporter_sources"]["parameters"] == ["ip"]
+    assert listed["dataset_raw_volume"]["parameters"] == listed["datamodel_volume"]["parameters"] == ["dataset"]
+    for name in ("source_ingestion_health", "reporter_sources"):
+        assert "last_seen_utc" in listed[name]["description"]
+
+
+def test_main_passes_vendor_product_and_dataset_to_the_template(monkeypatch):
+    results, errors = [], []
+    fake = Fake(reply=REPLY)
+    monkeypatch.setattr(xql.demisto, "executeCommand", fake)
+    monkeypatch.setattr(xql.demisto, "incident", lambda: {"id": "7"})
+    monkeypatch.setattr(xql, "return_results", results.append)
+    monkeypatch.setattr(xql, "return_error", errors.append)
+    monkeypatch.setattr(xql.demisto, "args", lambda: {"template": "source_ingestion_health", "vendor": "ExampleVendor", "product": "ExampleProduct"})
+    xql.main()
+    monkeypatch.setattr(xql.demisto, "args", lambda: {"template": "dataset_raw_volume", "dataset": "example_raw"})
+    xql.main()
+    monkeypatch.setattr(xql.demisto, "args", lambda: {"template": "dataset_raw_volume", "dataset": "bad name"})
+    xql.main()
+    assert len(errors) == 1 and "dataset" in errors[0]
+    assert 'lowercase(_vendor) = "examplevendor"' in fake.query_calls()[0]["query"]
+    assert "dataset = example_raw |" in fake.query_calls()[1]["query"] and len(fake.query_calls()) == 2
+
+
+def test_the_yml_declares_the_new_arguments():
+    import yaml
+    doc = yaml.safe_load((REPO / "Scripts" / "GuardianXQL" / "GuardianXQL.yml").read_text())
+    assert {"vendor", "product", "dataset"} <= {a["name"] for a in doc["args"]}
+    assert set(xql.GUARDIAN_XQL_PARAM_NAMES) <= {a["name"] for a in doc["args"]}

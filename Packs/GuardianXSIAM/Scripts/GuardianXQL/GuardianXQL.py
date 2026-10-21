@@ -10,7 +10,9 @@ what the query cost.
 
 Values are checked before they reach the query text. A value may not contain a quote, a backslash, a pipe, a
 semicolon, a backtick, a brace or a control character, so it cannot end the string it sits in or add a stage
-to the query; an IP must look like an address. The one exception is an `identity` in the exact `DOMAIN\\user` shape
+to the query; an IP must look like an address; a `vendor` or `product` is a plain data source name (ASCII letters, digits,
+space, `_ . -`, at most 64 characters); a `dataset` is written into the query unquoted, so it must be a plain dataset name
+(lowercase letters, digits and `_`, at most 80 characters). The one exception is an `identity` in the exact `DOMAIN\\user` shape
 (written with two backslashes, `DOMAIN\\\\user`, it is read as the same account), whose backslash is escaped for the string
 literal. Nothing else is restricted: any window up to 90 days is accepted
 (the template's `max_hours` is the usual limit, and a longer window only adds a note), and nothing is refused
@@ -2762,13 +2764,18 @@ GUARDIAN_XQL_READABLE_ROWS = 10
 GUARDIAN_XQL_ABSOLUTE_MAX_HOURS = 2160
 GUARDIAN_XQL_MAX_ROWS = 100
 GUARDIAN_XQL_TIMEOUT_SECONDS = 180
-GUARDIAN_XQL_PARAM_NAMES = ("identity", "resource", "ip")
+GUARDIAN_XQL_PARAM_NAMES = ("identity", "resource", "ip", "vendor", "product", "dataset")
 GUARDIAN_XQL_FORBIDDEN_CHARS = set('"\\|;`{}')
 #: The longest template value (identity, resource, ip) accepted. Equal to the triage cap on an entity
 #: (GUARDIAN_TRIAGE_ENTITY_MAX_CHARS, 512), so a long resource id triage passes on arrives whole instead of being
 #: refused here. A raw `query` has no such cap.
 GUARDIAN_XQL_MAX_VALUE_LEN = GUARDIAN_TRIAGE_ENTITY_MAX_CHARS
 GUARDIAN_XQL_IP_CHARS = set("0123456789abcdefABCDEF:.")
+#: A `vendor` or `product` (the `_vendor` and `_product` of a data source): ASCII letters, digits, space and `_ . -`, 1 to 64.
+GUARDIAN_XQL_SOURCE_NAME_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _.-")
+GUARDIAN_XQL_SOURCE_NAME_MAX = 64
+#: A `dataset` name goes into the query unquoted, so only a plain dataset name is accepted: lowercase letters, digits, `_`.
+GUARDIAN_XQL_DATASET_PATTERN = r"[a-z0-9_]{1,80}"
 GUARDIAN_XQL_CONTEXT_PATH = "Guardian.XQL"
 #: Views that cost real compute units to read and whose content the core-get-* commands return for free.
 GUARDIAN_XQL_COSTLY_VIEWS = ("dataset = issues", "dataset = cases", "dataset=issues", "dataset=cases")
@@ -2793,6 +2800,7 @@ def guardian_xql_check_value(name, value):
     (endpoint datasets store accounts as ``DOMAIN\\user``, so the match stays exact: the user part alone would also match
     other domains' accounts). A doubled backslash (``DOMAIN\\\\user``, a model that already escaped it) is read as the same
     single-backslash account first. Any other backslash, a quote or a pipe is refused."""
+    import re
     if not isinstance(value, str) or not value.strip():
         return None, "'{}' is required for this template.".format(name)
     value = value.strip()
@@ -2810,6 +2818,12 @@ def guardian_xql_check_value(name, value):
                       "semicolon, backtick, brace or control character). Use the plain name or id.".format(name))
     if name == "ip" and not (2 <= len(value) <= 45 and all(ch in GUARDIAN_XQL_IP_CHARS for ch in value)):
         return None, "'ip' must be an IPv4 or IPv6 address."
+    if name in ("vendor", "product") and not (
+            len(value) <= GUARDIAN_XQL_SOURCE_NAME_MAX and all(ch in GUARDIAN_XQL_SOURCE_NAME_CHARS for ch in value)):
+        return None, "'{}' must be a data source name of at most {} letters, digits, spaces, underscores, dots or dashes.".format(
+            name, GUARDIAN_XQL_SOURCE_NAME_MAX)
+    if name == "dataset" and not re.fullmatch(GUARDIAN_XQL_DATASET_PATTERN, value):
+        return None, "'dataset' must be a dataset name: lowercase letters, digits and underscores, at most 80 characters."
     return value, None
 
 

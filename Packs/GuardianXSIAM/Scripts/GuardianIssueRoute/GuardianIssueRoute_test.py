@@ -12,6 +12,7 @@ SHIPPED_TABLE = json.loads((REPO_ROOT / "Packs" / "GuardianXSIAM" / "Lists" / "l
 ALL_SKILLS = {
     "cortex_issue_reference", "cortex_detection_investigation", "cortex_posture_misconfiguration",
     "cortex_identity_risk", "cortex_vulnerability_triage", "cortex_attack_path", "cortex_case_investigation",
+    "cortex_data_health",
 }
 
 
@@ -166,3 +167,54 @@ def test_main_overwrites_the_route_instead_of_appending(monkeypatch):
     # the same route is returned as the outputs, keyed by the route row so a re-run merges into one object
     assert results[0].outputs_prefix == "Guardian.Route" and results[0].outputs_key_field == "route_id"
     assert results[0].outputs == written[0][1] and "identity" in results[0].readable_output
+
+
+# --- data-collection health issues get a model session; other health issues do not ---------------------------------------
+
+def _health_issue(name, **custom):
+    fields = {"alert_domain": "DOMAIN_HEALTH", "categoryname": "HEALTH", "family_tags": ["DOM:Health", "DS:ExampleVendor/ExampleProduct"],
+              "ruleid": "rule-health", "_vendor": ["ExampleVendor"], "_product": ["ExampleProduct"]}
+    fields.update(custom)
+    return {"id": "2001", "name": name, "sourceBrand": "CORRELATION", "CustomFields": fields}
+
+
+@pytest.mark.parametrize("name", [
+    "Silent data source (ExampleVendor)", "Yield collapse: modeled events fell to zero", "Events misrouted to unknown",
+    "Source stopped sending events", "No events from ExampleProduct in 24 hours", "Ingestion drop on ExampleProduct",
+    "Parsing failure rate above threshold", "Modeling rule is not matching", "SILENT DATA SOURCE (EXAMPLEVENDOR)",
+])
+def test_a_data_collection_health_issue_routes_to_the_data_health_skill_in_posture_mode(name):
+    result = _route(_health_issue(name))
+    assert result["route_id"] == "data-health" and result["family"] == "data_health"
+    assert result["skill"] == "cortex_data_health" and result["run_model"] == "true"
+    assert result["assessment_mode"] == "posture"  # a posture block writes no threat verdict; mode `none` would accept either block
+    assert result["evidence_plan"] == ["issue", "case", "prior_rules", "memory"]
+
+
+@pytest.mark.parametrize("name", [
+    "Example connector stopped reporting", "Collector certificate expires soon", "Engine disconnected", "License usage above 90 percent", "",
+])
+def test_any_other_health_issue_keeps_the_no_model_route(name):
+    result = _route(_health_issue(name))
+    assert result["route_id"] == "health" and result["run_model"] == "false" and result["skill"] == ""
+
+
+def test_a_name_with_a_health_word_does_not_route_a_non_health_issue_to_the_data_health_skill():
+    for domain in ("DOMAIN_SECURITY", "DOMAIN_POSTURE"):
+        result = _route(_health_issue("Silent data source: ingestion parsing", alert_domain=domain, categoryname="", family_tags=[]))
+        assert result["route_id"] != "data-health" and result["skill"] != "cortex_data_health", domain
+    result = _route(dict(ISSUES["detection"], name="Ingestion of a payload from a silent data source"))
+    assert result["family"] == "detection" and result["skill"] == "cortex_detection_investigation"
+
+
+def test_the_data_health_row_comes_first_and_names_a_shipped_enabled_skill():
+    rows = json.loads(SHIPPED_TABLE)["routes"]
+    assert rows[0]["id"] == "data-health" and rows[0]["match"]["alert_domain"] == ["DOMAIN_HEALTH"]
+    assert all(r["run_model"] is False for r in rows[1:4])
+    assert [r["family"] for r in rows[1:4]] == ["health"] * 3  # the three no-model rows still follow it
+
+
+def test_without_the_data_health_skill_the_route_falls_back_and_says_so():
+    result = _route(_health_issue("Silent data source (ExampleVendor)"), enabled_skills=ALL_SKILLS - {"cortex_data_health"})
+    assert result["route_id"] == "data-health" and result["skill"] == "cortex_issue_reference"
+    assert "'cortex_data_health' is not available" in result["reason"]

@@ -118,9 +118,10 @@ self-modification, the eight-step investigation workflow, how to treat untrusted
 ### 10. `guardian_skills_index` and 11-14. the four `guardian_skill_*` lists: skills
 
 **Role.** A *skill* is a long reference document the agent loads only when it needs it, so it does not fill every prompt. The **index** is the menu: `GuardianPromptBuilder` puts it in the system prompt, which is built once per run; the agent then calls
-`GuardianSkillRead name=<skill>` to open one. The XSOAR 6 pack ships four skills, and the Cortex platform pack ships ten: the four below plus six more:
+`GuardianSkillRead name=<skill>` to open one. The XSOAR 6 pack ships four skills, and the Cortex platform pack ships eleven: the four below plus seven more:
 `cortex_xql`, `cortex_detection_investigation`, `cortex_posture_misconfiguration`, `cortex_identity_risk`,
-`cortex_vulnerability_triage` and `cortex_attack_path`.
+`cortex_vulnerability_triage`, `cortex_attack_path` and `cortex_data_health` (a data-collection health issue: a silent
+source, a modeling yield collapse, misrouted events).
 
 | List (XSOAR 6 / Cortex platform) | Skill (XSOAR 6 / Cortex platform) | What it teaches |
 |---|---|---|

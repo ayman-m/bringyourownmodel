@@ -45,7 +45,7 @@ def _no_repair(conclusion, table, run_id):
 @pytest.mark.parametrize("family, domain", [
     ("detection", "detection"), ("misconfiguration", "posture"), ("identity", "posture"), ("vulnerability", "posture"),
     ("code_risk", "posture"), ("attack_path", "posture"), ("kubernetes_cis", "posture"), ("Kubernetes CIS", "posture"),
-    ("health", "unknown"), ("unknown", "unknown"), ("", "unknown"), (None, "unknown"),
+    ("health", "unknown"), ("data_health", "unknown"), ("unknown", "unknown"), ("", "unknown"), (None, "unknown"),
 ])
 def test_domain_comes_from_the_route_family(family, domain):
     assert tri.guardian_triage_domain({"family": family}) == domain
@@ -668,3 +668,14 @@ def test_complexity_reaches_the_record_and_a_missing_or_invalid_one_is_empty_and
 
 def test_the_repair_prompt_asks_for_complexity_too():
     assert '"complexity"' in tri.guardian_triage_repair_prompt(TABLE)
+
+
+@pytest.mark.parametrize("answer", ["misconfiguration", "identity_threat", "other"])
+def test_a_data_health_issue_goes_to_other_in_the_routes_mode_whatever_type_the_model_names(answer):
+    """The data-health route (family `data_health`, posture mode) is neither a detection nor a scanner finding, so a typed
+    answer cannot reach a scanner or detection sub-playbook: `other` runs the route's own skill in posture mode."""
+    route = {"family": "data_health", "assessment_mode": "posture", "skill": "cortex_data_health"}
+    record, _note, _cost = _run({"triage_block": _block(investigation_type=answer)}, route=route)
+    assert record["domain"] == "unknown" and record["branch"] == "other" and record["sub_playbook"] == "GuardianTriageOther"
+    assert record["assessment_mode"] == "posture" and record["skill"] == ""
+    assert record["domain_mismatch"] is (answer != "other")

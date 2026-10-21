@@ -73,6 +73,23 @@ swapping which integration instance is enabled.
 - **Dashboard**: *Guardian Observability* — cost, tool-call activity, loop health, the approvals
   queue, and a live event feed.
 
+## Duplicate check and data-collection health
+
+- **Duplicate check.** `GuardianIssueDuplicateCheck` (operator-owned, no model, one search; on the denylist) runs in the
+  playbook `GuardianTriageAndInvestigateIssue` before the triage model. An issue that repeats a lower-numbered open issue of
+  the same rule on the same assets (or, for a rule without assets, the same vendor, product, host, user, address, file hash and
+  domain values) gets a note that names the original, counts the open issues of the group and proposes an exclusion, and skips
+  the model. It fails open: when it cannot decide, the model runs. Playbook inputs: `check_duplicates` (default `true`) and
+  `close_duplicates` (default `false`; `true` closes only the duplicate, as `Resolved - Duplicate Issue`). The answer is at
+  `Guardian.Duplicate`.
+- **Data-collection health.** The first row of `guardian_issue_routes` (`data-health`) sends a `DOMAIN_HEALTH` issue about a
+  silent data source, a yield collapse, misrouted events, a source that stopped sending, no events, ingestion, parsing or
+  modeling to the skill `cortex_data_health` in `posture` mode (the run ends with a Confirmed / Not reproducible / Accepted risk
+  candidate block with a priority, never a threat verdict). Every other health issue keeps the no-model route. The skill uses
+  four new `GuardianXQL` templates over the data source health rows and the dataset counts: `source_ingestion_health`
+  (`vendor`, `product`), `reporter_sources` (`ip`), `dataset_raw_volume` and `datamodel_volume` (`dataset`). `last_seen` in those
+  rows is epoch milliseconds.
+
 ## Model-size tiers
 
 Different model sizes need different tool-catalogue treatment: a small model needs a narrower,

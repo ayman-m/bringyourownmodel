@@ -4,7 +4,11 @@ args:
     Which ready-made query to run: identity_activity (what one identity did, needs `identity`),
     resource_change_history (who changed one resource, needs `resource`), resource_access_activity (who read or
     used one resource without changing it, needs `resource`), ip_activity (what one source IP did, needs `ip`),
-    identity_unused_permissions (permissions an identity holds and has not used, needs `identity`).
+    identity_unused_permissions (permissions an identity holds and has not used, needs `identity`),
+    source_ingestion_health (events, last seen, collectors, reporters and brokers of one data source, needs `vendor` and
+    `product`), reporter_sources (every data source that arrives through one sending device, needs `ip`),
+    dataset_raw_volume (raw events per hour of one dataset, needs `dataset`), datamodel_volume (modeled events per hour of
+    one dataset, needs `dataset`).
     Use `list` to see every template and its parameters. Leave it out when you pass `query` or `execution_id`.
   required: false
   isArray: false
@@ -23,7 +27,25 @@ args:
   default: false
   secret: false
 - name: ip
-  description: "The source IP address (IPv4 or IPv6) to look at."
+  description: "The source IP address (IPv4 or IPv6) to look at. For reporter_sources, the address of the sending device (a relay, collector or the source itself) as reported in the data source health rows."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: vendor
+  description: "The data source's vendor as the platform lists it (the `_vendor` of its health rows, for example ExampleVendor). Case does not matter. ASCII letters, digits, space, underscore, dot and dash, at most 64 characters."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: product
+  description: "The data source's product as the platform lists it (the `_product` of its health rows, for example ExampleProduct). Case does not matter. ASCII letters, digits, space, underscore, dot and dash, at most 64 characters."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: dataset
+  description: "The dataset to count events in, for example example_vendor_example_product_raw. Lowercase letters, digits and underscores only, at most 80 characters."
   required: false
   isArray: false
   default: false
@@ -71,7 +93,8 @@ args:
   secret: false
 comment: >-
   Runs a telemetry query and waits for its rows: a ready-made template for a common investigation question (what
-  one identity did, who changed a resource, who only read it, what one IP did, which permissions an identity never used), or your
+  one identity did, who changed a resource, who only read it, what one IP did, which permissions an identity never used, whether
+  a data source is still sending and through which devices, how many raw and modeled events a dataset has per hour), or your
   own XQL with `query`. Returns the rows with the compute units the query cost and what is left today. A query that
   is still running after about a minute returns its execution id; fetch it later with `execution_id`, which costs
   nothing. Read-only.
