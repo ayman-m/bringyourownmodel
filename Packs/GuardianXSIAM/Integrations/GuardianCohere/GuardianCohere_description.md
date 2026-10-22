@@ -46,6 +46,10 @@ North is a **stateful conversation** service reached in two hops per turn:
 - **Tool format** — how tool/function definitions are serialized when the tick sends tools. `openai`
   (default) forwards OpenAI function tools as-is (the North messages layer is OpenAI-compatible);
   `cohere` converts them to Cohere-native `parameter_definitions`.
+- **Tool results** — how a tool call and its result go back to North. `native` (default) sends OpenAI
+  `tool_calls` and `role: tool` messages. Choose `text` when the turn after a tool call never gets a reply
+  (the poll times out, or North shows an empty conversation): the call is then sent as a plain assistant
+  line and the result as a plain user message. Tool definitions are still sent.
 - **Model label** — cosmetic; reported as `Guardian.LLM.Completion.model` and by `!guardian-model`
   (North does not return a model name — the served model is fixed by the agent).
 - **Request timeout** — per-HTTP-call timeout in seconds (default 200; North generation can be slow).

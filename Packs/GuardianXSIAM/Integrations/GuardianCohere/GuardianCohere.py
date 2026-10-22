@@ -82,6 +82,16 @@ TOOL_FORMAT_OPENAI = "openai"
 TOOL_FORMAT_COHERE = "cohere"
 DEFAULT_TOOL_FORMAT = TOOL_FORMAT_OPENAI
 
+# How a tool round-trip is written into the North request. "native" forwards the assistant ``tool_calls`` and the
+# ``role: tool`` messages in their OpenAI shape. "text" rewrites them as plain assistant and user text, for a North
+# deployment that never answers the turn that carries those messages.
+TOOL_RESULT_FORMAT_NATIVE = "native"
+TOOL_RESULT_FORMAT_TEXT = "text"
+TOOL_RESULT_FORMAT_CHOICES = (TOOL_RESULT_FORMAT_NATIVE, TOOL_RESULT_FORMAT_TEXT)
+DEFAULT_TOOL_RESULT_FORMAT = TOOL_RESULT_FORMAT_NATIVE
+# A tool call's arguments are cut to this many characters when written as text.
+TOOL_CALL_TEXT_ARGS_MAX_CHARS = 500
+
 # Conversation poll: the POST normally blocks until North finishes generating (its streamed body is
 # fully drained), so the reply is usually present on the first GET. The poll covers a
 # not-yet-committed write, or a North build that returns 202 (accepted) and generates
@@ -158,13 +168,96 @@ def _messages_after_last_assistant(messages: List[Dict[str, Any]]) -> List[Dict[
     return [m for m in turn if m.get("role") != "system"]
 
 
-def _to_north_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _tool_call_names_by_id(messages: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Map every tool call id in the transcript to the name of the tool it called. Read from the *full*
+    transcript, because in ``reuse`` mode the assistant message that made the call is not part of the
+    messages that are sent."""
+    names: Dict[str, str] = {}
+    for message in messages:
+        for call in message.get("tool_calls") or []:
+            if not isinstance(call, dict):
+                continue
+            function = call.get("function") if isinstance(call.get("function"), dict) else {}
+            name = function.get("name") or call.get("name")
+            if call.get("id") and name:
+                names[str(call["id"])] = str(name)
+    return names
+
+
+def _tool_call_as_text(call: Any) -> str:
+    """``[tool call] getIncidents {"size": "3"}``: one tool call written as a plain line of text."""
+    if not isinstance(call, dict):
+        return f"[tool call] {call}"
+    function = call.get("function") if isinstance(call.get("function"), dict) else {}
+    name = function.get("name") or call.get("name") or "unknown"
+    arguments = function.get("arguments") if "arguments" in function else call.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except ValueError:
+            arguments = arguments.strip()
+    if arguments in (None, "", {}):
+        return f"[tool call] {name}"
+    rendered = arguments if isinstance(arguments, str) else json.dumps(arguments, ensure_ascii=False, default=str)
+    if len(rendered) > TOOL_CALL_TEXT_ARGS_MAX_CHARS:
+        rendered = rendered[:TOOL_CALL_TEXT_ARGS_MAX_CHARS] + "..."
+    return f"[tool call] {name} {rendered}"
+
+
+def _to_north_messages_as_text(messages: List[Dict[str, Any]], tool_names: Dict[str, str]) -> List[Dict[str, Any]]:
+    """``tool_result_format = text``: the same translation as ``_to_north_messages``, except that the tool round-trip
+    is plain text. An assistant message with ``tool_calls`` keeps its own text and gains one ``[tool call]`` line per call
+    (no ``tool_calls`` field). A ``role: tool`` message becomes a ``role: user`` message
+    ``[tool result for <name> (call <id>)]`` plus the result (no ``tool_call_id`` or ``name`` field). Consecutive user
+    messages are merged into one when any of them is a tool result, so North never sees two user turns in a row."""
+    out: List[Dict[str, Any]] = []
+    last_was_tool_result = False
+    for message in messages:
+        role = message.get("role") or "user"
+        if role == "system":
+            continue
+        text = _content_to_text(message.get("content"))
+        if role == "tool":
+            call_id = message.get("tool_call_id")
+            name = message.get("name") or tool_names.get(str(call_id)) or "tool"
+            label = f"{name} (call {call_id})" if call_id else str(name)
+            block = f"[tool result for {label}]\n{text or ''}"
+            if out and out[-1]["role"] == "user":
+                out[-1]["content"] = f"{out[-1]['content']}\n\n{block}"
+            else:
+                out.append({"role": "user", "content": block})
+            last_was_tool_result = True
+            continue
+        if role == "assistant" and message.get("tool_calls"):
+            lines = ([text] if text else []) + [_tool_call_as_text(call) for call in message["tool_calls"]]
+            out.append({"role": "assistant", "content": "\n".join(lines)})
+            last_was_tool_result = False
+            continue
+        entry = _to_north_messages([message])
+        if not entry:
+            continue
+        if role == "user" and last_was_tool_result and out and out[-1]["role"] == "user":
+            out[-1]["content"] = f"{out[-1]['content']}\n\n{entry[0].get('content', '')}"
+        else:
+            out.append(entry[0])
+        last_was_tool_result = False
+    return out
+
+
+def _to_north_messages(
+    messages: List[Dict[str, Any]],
+    tool_result_format: str = TOOL_RESULT_FORMAT_NATIVE,
+    tool_names: Optional[Dict[str, str]] = None,
+) -> List[Dict[str, Any]]:
     """Translate canonical (OpenAI-shaped) messages into North chat messages.
 
-    ``{"role":"user","content":"…"}`` (OpenAI-compatible). The
+    ``{"role":"user","content":"…"}`` (OpenAI-compatible). With ``tool_result_format = native`` the
     assistant/tool round-trip fields (``tool_calls`` / ``tool_call_id`` / ``name``) are forwarded in
     their OpenAI shape for North builds that accept them; a build that ignores them still gets a
-    well-formed text turn. System messages are excluded here (see ``_extract_system_text``)."""
+    well-formed text turn. With ``text`` they are written as plain text (``_to_north_messages_as_text``).
+    System messages are excluded here (see ``_extract_system_text``)."""
+    if tool_result_format == TOOL_RESULT_FORMAT_TEXT:
+        return _to_north_messages_as_text(messages, tool_names or {})
     out: List[Dict[str, Any]] = []
     for message in messages:
         role = message.get("role") or "user"
@@ -559,6 +652,7 @@ class CohereNorthClient(BaseClient):
         proxy: bool,
         timeout: int = DEFAULT_TIMEOUT,
         model_id: str = "",
+        tool_result_format: str = DEFAULT_TOOL_RESULT_FORMAT,
     ) -> None:
         self.endpoint = (endpoint or "").rstrip("/")
         super().__init__(base_url=self.endpoint, verify=verify, proxy=proxy, timeout=timeout)
@@ -570,6 +664,9 @@ class CohereNorthClient(BaseClient):
         self.model_id = (model_id or "").strip()
         self.conversation_mode = conversation_mode or DEFAULT_CONVERSATION_MODE
         self.tool_format = tool_format or DEFAULT_TOOL_FORMAT
+        self.tool_result_format = (
+            tool_result_format if tool_result_format in TOOL_RESULT_FORMAT_CHOICES else DEFAULT_TOOL_RESULT_FORMAT
+        )
         self.request_timeout = timeout
         # Set only for the duration of a chat_completion() that was given a per-call timeout: one
         # wall-clock deadline shared by the baseline read, the submit and the poll (see _budget).
@@ -605,7 +702,9 @@ class CohereNorthClient(BaseClient):
 
         body: Dict[str, Any] = {
             "stream": True,
-            "messages": _to_north_messages(turn_messages),
+            "messages": _to_north_messages(
+                turn_messages, self.tool_result_format, _tool_call_names_by_id(messages)
+            ),
             "agent": {"id": self.agent_id},
             "conversation": {"id": conversation_id},
         }
@@ -826,6 +925,11 @@ def build_client(params: Dict[str, Any], verify: bool, proxy: bool) -> CohereNor
     model_tier_raw = (params.get("model_tier") or DEFAULT_MODEL_TIER).strip().lower()
     model_tier = model_tier_raw if model_tier_raw in MODEL_TIER_CHOICES else DEFAULT_MODEL_TIER
     tool_format = (params.get("tool_format") or DEFAULT_TOOL_FORMAT).strip() or DEFAULT_TOOL_FORMAT
+    # Same rule as the model size: a value outside the two choices means "native".
+    tool_result_format_raw = (params.get("tool_result_format") or DEFAULT_TOOL_RESULT_FORMAT).strip().lower()
+    tool_result_format = (
+        tool_result_format_raw if tool_result_format_raw in TOOL_RESULT_FORMAT_CHOICES else DEFAULT_TOOL_RESULT_FORMAT
+    )
 
     timeout = arg_to_number(params.get("request_timeout")) or DEFAULT_TIMEOUT
 
@@ -839,6 +943,7 @@ def build_client(params: Dict[str, Any], verify: bool, proxy: bool) -> CohereNor
         model_id=(params.get("model_id") or "").strip(),
         conversation_mode=conversation_mode,
         tool_format=tool_format,
+        tool_result_format=tool_result_format,
         verify=verify,
         proxy=proxy,
         timeout=timeout,

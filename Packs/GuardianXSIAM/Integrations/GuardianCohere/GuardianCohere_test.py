@@ -997,3 +997,158 @@ def test_a_namespaced_tool_call_name_is_cleaned_to_the_offered_tool():
         {"id": "c", "function": {"name": "getEntries", "arguments": "{}"}},
     ]})
     assert [c["function"]["name"] for c in calls] == ["getIncidents", "ip", "getEntries"]
+
+
+# --- tool_result_format: the tool round-trip as plain text ------------------------------------------------------------
+
+_CALL_1 = {"id": "call_1", "type": "function", "function": {"name": "getIncidents", "arguments": '{"size": "3"}'}}
+_CALL_2 = {"id": "call_2", "type": "function", "function": {"name": "ip", "arguments": {"ip": "8.8.8.8"}}}
+
+
+def _tool_transcript():
+    return [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "investigate"},
+        {"role": "assistant", "content": "Checking.", "tool_calls": [_CALL_1, _CALL_2]},
+        {"role": "tool", "tool_call_id": "call_1", "name": "getIncidents", "content": "3 incidents"},
+        {"role": "tool", "tool_call_id": "call_2", "content": "clean"},
+    ]
+
+
+def test_tool_result_format_native_keeps_the_openai_round_trip_unchanged():
+    messages = _tool_transcript()[1:]
+    assert _to_north_messages(messages, "native") == _to_north_messages(messages)
+    out = _to_north_messages(messages)
+    assert out[1]["tool_calls"] == [_CALL_1, _CALL_2]
+    assert out[2] == {"role": "tool", "content": "3 incidents", "tool_call_id": "call_1", "name": "getIncidents"}
+    body = _client(conversation_mode=CONVERSATION_MODE_STATELESS).build_request_body({"messages": _tool_transcript()}, "c")
+    assert body["messages"][1]["tool_calls"] == [_CALL_1, _CALL_2] and body["messages"][2]["role"] == "tool"
+
+
+def test_text_mode_turns_an_assistant_tool_call_into_plain_lines():
+    out = _to_north_messages(_tool_transcript()[1:3], "text")
+    assert out[1] == {
+        "role": "assistant",
+        "content": 'Checking.\n[tool call] getIncidents {"size": "3"}\n[tool call] ip {"ip": "8.8.8.8"}',
+    }
+    assert "tool_calls" not in out[1]
+
+
+def test_text_mode_assistant_without_text_or_arguments():
+    bare = {"id": "c", "function": {"name": "whoami", "arguments": "{}"}}
+    out = _to_north_messages([{"role": "assistant", "content": None, "tool_calls": [bare]}], "text")
+    assert out == [{"role": "assistant", "content": "[tool call] whoami"}]
+
+
+def test_text_mode_truncates_long_arguments_and_keeps_unparseable_ones():
+    import GuardianCohere as gc
+
+    long_call = {"id": "c", "function": {"name": "f", "arguments": json.dumps({"q": "x" * 2000})}}
+    text = _to_north_messages([{"role": "assistant", "tool_calls": [long_call]}], "text")[0]["content"]
+    assert text.startswith('[tool call] f {"q": "xxx') and text.endswith("...")
+    assert len(text) <= len("[tool call] f ") + gc.TOOL_CALL_TEXT_ARGS_MAX_CHARS + 3
+    odd = {"id": "c", "function": {"name": "f", "arguments": "not json"}}
+    assert _to_north_messages([{"role": "assistant", "tool_calls": [odd]}], "text")[0]["content"] == "[tool call] f not json"
+
+
+def test_text_mode_turns_consecutive_tool_results_into_one_user_message():
+    out = _to_north_messages(_tool_transcript()[1:], "text", {"call_2": "ip"})
+    assert [m["role"] for m in out] == ["user", "assistant", "user"]
+    assert out[2] == {
+        "role": "user",
+        "content": "[tool result for getIncidents (call call_1)]\n3 incidents\n\n[tool result for ip (call call_2)]\nclean",
+    }
+    assert all(set(m) == {"role", "content"} for m in out)
+
+
+def test_text_mode_merges_a_user_message_that_follows_tool_results_but_not_two_plain_ones():
+    messages = _tool_transcript()[2:] + [{"role": "user", "content": "now summarise"}]
+    out = _to_north_messages(messages, "text")
+    assert [m["role"] for m in out] == ["assistant", "user"]
+    assert out[1]["content"].endswith("clean\n\nnow summarise")
+    plain = [{"role": "user", "content": "a"}, {"role": "user", "content": "b"}]
+    assert _to_north_messages(plain, "text") == [{"role": "user", "content": "a"}, {"role": "user", "content": "b"}]
+
+
+def test_text_mode_names_a_tool_result_without_a_name_or_id_sensibly():
+    out = _to_north_messages([{"role": "tool", "content": "res"}], "text")
+    assert out == [{"role": "user", "content": "[tool result for tool]\nres"}]
+
+
+def test_text_mode_stateless_sends_the_full_transcript_as_text():
+    client = _client(conversation_mode=CONVERSATION_MODE_STATELESS)
+    client.tool_result_format = "text"
+    tools = [{"type": "function", "function": {"name": "f", "parameters": {"type": "object"}}}]
+    body = client.build_request_body({"messages": _tool_transcript(), "tools": tools}, "fresh")
+    assert body["system"] == "sys"
+    assert body["tools"] == tools  # definitions still sent
+    assert [m["role"] for m in body["messages"]] == ["user", "assistant", "user"]
+    assert body["messages"][0] == {"role": "user", "content": "investigate"}
+    assert body["messages"][1]["content"].startswith("Checking.\n[tool call] getIncidents")
+    assert "[tool result for getIncidents (call call_1)]" in body["messages"][2]["content"]
+    assert "[tool result for ip (call call_2)]" in body["messages"][2]["content"]
+    assert "tool_calls" not in json.dumps(body["messages"]) and "tool_call_id" not in json.dumps(body["messages"])
+
+
+def test_text_mode_reuse_sends_only_the_tool_results_and_still_names_the_tools():
+    client = _client(conversation_mode=CONVERSATION_MODE_REUSE)
+    client.tool_result_format = "text"
+    body = client.build_request_body({"messages": _tool_transcript()}, "sess-123")
+    # the assistant message that made the calls is before the slice; its tool names still come from the transcript
+    assert body["messages"] == [
+        {
+            "role": "user",
+            "content": "[tool result for getIncidents (call call_1)]\n3 incidents\n\n"
+            "[tool result for ip (call call_2)]\nclean",
+        }
+    ]
+    assert body["conversation"] == {"id": "sess-123"}
+
+
+def test_text_mode_reuse_chat_completion_end_to_end(mocker):
+    client = _client(conversation_mode=CONVERSATION_MODE_REUSE)
+    client.tool_result_format = "text"
+    baseline = {"messages": [{"role": "USER", "content": [{"text": "hi"}]}, {"role": "CHATBOT", "content": [{"text": "prev"}]}]}
+    grown = {"messages": baseline["messages"] + [
+        {"role": "USER", "content": [{"text": "[tool result ...]"}]}, {"role": "CHATBOT", "content": [{"text": "done"}]}]}
+    mock = _wire(mocker, client, [baseline, grown])
+    result = client.chat_completion({"messages": _tool_transcript()})
+    post = next(c for c in mock.call_args_list if c.kwargs.get("method") == "POST")
+    assert post.kwargs["json_data"]["messages"][0]["role"] == "user"
+    assert "tool_call_id" not in json.dumps(post.kwargs["json_data"])
+    assert result["choices"][0]["message"]["content"] == "done"
+
+
+def test_text_mode_reply_tool_calls_are_still_parsed():
+    client = _client()
+    client.tool_result_format = "text"
+    convo = _convo(text=None, tool_calls=[{"id": "t", "function": {"name": "getIncidents", "arguments": "{}"}}])
+    out = client.normalize_response(convo, "c-1")
+    assert out["choices"][0]["finish_reason"] == "tool_calls"
+    assert out["choices"][0]["message"]["tool_calls"][0]["function"]["name"] == "getIncidents"
+
+
+def test_tool_result_format_param_parsing_and_default():
+    base = {"endpoint_url": "https://h", "agent_id": "a", "session_id": "s", "bearer_token": "t"}
+    assert build_client(dict(base), verify=True, proxy=False).tool_result_format == "native"
+    for given, expected in (("native", "native"), ("text", "text"), (" TEXT ", "text"), ("", "native"),
+                            ("bogus", "native"), (None, "native")):
+        assert build_client(dict(base, tool_result_format=given), verify=True, proxy=False).tool_result_format == expected, given
+    assert _client().tool_result_format == "native"
+    assert CohereNorthClient(
+        endpoint="https://h", agent_id="a", session_id="s", bearer_token="t", model_label="m", model_tier="auto",
+        conversation_mode="reuse", tool_format="openai", verify=False, proxy=False, tool_result_format="weird",
+    ).tool_result_format == "native"
+
+
+def test_the_tool_results_dropdown_is_optional_native_first_and_next_to_tool_format():
+    import pathlib
+
+    import yaml
+
+    spec = yaml.safe_load((pathlib.Path(__file__).resolve().parent / "GuardianCohere.yml").read_text())
+    names = [p["name"] for p in spec["configuration"]]
+    param = spec["configuration"][names.index("tool_result_format")]
+    assert param["type"] == 15 and not param.get("required") and param["defaultvalue"] == "native"
+    assert param["options"] == ["native", "text"] and param["display"] == "Tool results"
+    assert names.index("tool_result_format") == names.index("tool_format") + 1

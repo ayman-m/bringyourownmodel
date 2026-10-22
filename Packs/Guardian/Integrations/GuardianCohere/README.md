@@ -27,6 +27,7 @@ North is a **stateful conversation** service reached in two hops per turn:
 | Bearer token | yes | `Authorization: Bearer <token>`. Stored encrypted (type 4). |
 | Conversation mode | yes | `reuse` (default) or `stateless` — see below. |
 | Tool format | yes | `openai` (default, pass-through) or `cohere` (`parameter_definitions`). |
+| Tool results | no | `native` (default, OpenAI `tool_calls` and `role: tool` messages) or `text`. Choose `text` when the turn after a tool call never gets a reply (the poll times out, or North shows an empty conversation): the tool call is then sent as a plain assistant line and its result as a plain user message. |
 | Model label | no | Cosmetic; reported as `Guardian.LLM.Completion.model` and by `!guardian-model`. Default `cohere-north`. |
 | Request timeout (seconds) | no | Per-HTTP-call timeout. Default `200`. |
 | Trust any certificate | no | For a private/self-signed endpoint. |

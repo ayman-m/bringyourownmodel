@@ -67,6 +67,20 @@ configuration:
     Format of the tool (function) definitions. "openai" (default) sends OpenAI function tools unchanged.
     "cohere" converts them to Cohere `parameter_definitions`, for North builds that need that format. Used
     only when Guardian sends tools.
+- display: Tool results
+  name: tool_result_format
+  type: 15
+  required: false
+  defaultvalue: native
+  options:
+  - native
+  - text
+  additionalinfo: >-
+    How a tool call and its result are sent back to North on the turn after Guardian ran the tool. "native"
+    (default) sends them as OpenAI `tool_calls` and `role: tool` messages. Choose "text" for a North deployment that
+    does not accept those messages: the turn after a tool call never gets a reply (the poll times out, or North shows
+    an empty conversation). "text" sends the tool call as a plain assistant line and the result as a plain user
+    message instead. The tool definitions are still sent, so the model can call the next tool.
 - display: Model label
   name: model
   type: 0

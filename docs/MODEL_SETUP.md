@@ -179,6 +179,7 @@ Cohere North is a private deployment, usually on your own network, so the integr
 | Bearer token | the token. Stored encrypted |
 | Conversation mode | `reuse` (default): all runs share the one conversation, so run **one investigation at a time**. `stateless`: a fresh conversation per call and the full transcript is sent; use it for concurrent investigations if your North accepts client-supplied conversation ids |
 | Tool format | `openai` (default); `cohere` only for North builds that need Cohere-native tool definitions |
+| Tool results | `native` (default); `text` when the turn after a tool call never gets a reply from North |
 | Model label | cosmetic, shown by `!guardian-model` |
 | **Model size** | Informational only; the default is `auto`, which declares nothing (the size comes from the model catalogue). Choose `small` (under 13B), `medium` (13B to 40B, for example Command R 32B) or `large` (over 40B) only to document a model that is not in the catalogue, and set the same value in `guardian_settings.model_tier`. A dropdown that differs from a catalogue-sized model gives one short note; `auto` never does |
 | Request timeout | 200 seconds by default; North can be slow |
