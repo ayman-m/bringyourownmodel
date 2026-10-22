@@ -176,6 +176,11 @@ investigate it:
 1. **Route** (`GuardianIncidentRoute`): the List `guardian_incident_routes` maps the incident's type, category, source,
    name and labels to a family, a domain (`detection` or `posture`) and an evidence plan. Guardian's own run and eval
    incidents, simulations and jobs get a note and no model session. Add a row for your own incident types there.
+   **Duplicate check** (`GuardianIncidentDuplicateCheck`, no model, on by default; playbook input `check_duplicates`): an
+   incident that repeats a lower-numbered open incident with the same type, name and source on the same host, user, addresses,
+   file hash, URL or email sender gets a note that names the original and proposes a pre-process rule or fetch filter, and
+   the model is skipped. Set `close_duplicates` to `true` to also link it to the original and close it as a duplicate (default
+   `false`; closing ends the investigation, so the note may not appear and the check's own War Room entry is the record). When it cannot decide, the model runs. It complements XSOAR's native deduplication.
 2. **Evidence** (`GuardianIncidentEvidence`): the linked indicators with their reputation, other open incidents with the
    same name, how earlier ones were closed, and Guardian memory, pinned at the start of the model session. Read-only.
 3. **Triage session**: a short session (`triage_max_ticks`, default 6) on the `xsoar_triage` skill that ends with a

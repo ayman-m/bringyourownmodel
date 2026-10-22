@@ -1,0 +1,86 @@
+args:
+- name: max_candidates
+  description: >-
+    How many open incidents of the same type and name to read for the comparison, oldest first. Default 50, at most 100. A larger
+    group is cut at this limit, which can only make the answer "not a duplicate", never the other way round.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: close_duplicates
+  description: >-
+    "true" links THIS incident to the lower-numbered original and closes it as a duplicate (the platform's
+    `linkIncidents ... action=duplicate`) when it is one. Default "false": the result is only recorded. The original and every other incident are never changed.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - "true"
+  - "false"
+comment: >-
+  Operator-owned: decides, without a model, whether the current incident repeats a lower-numbered open incident of the same
+  type, name and source on the same thing, so the triage model session can be skipped. Two incidents match when they have the
+  same type, the same normalized name, the same source brand and instance, and equal non-empty entity fingerprints (the
+  host, user, source and destination address, file hash, URL and email sender values they carry). The lowest-numbered incident
+  of a group is never a duplicate. It makes one search for the open incidents of the type and name, writes the answer to
+  `Guardian.Duplicate` and proposes a pre-process rule or fetch filter (a proposal; nothing is applied). Any failure means "not
+  a duplicate". It complements XSOAR's native deduplication (pre-process rules, FindSimilarIncidentsV2): it is a no-model gate
+  in front of Guardian's triage. With close_duplicates=true it links and closes only this incident. It is on the denylist: the model can never
+  call it.
+commonfields:
+  id: GuardianIncidentDuplicateCheck
+  version: -1
+enabled: true
+name: GuardianIncidentDuplicateCheck
+outputs:
+- contextPath: Guardian.Duplicate.incident_id
+  description: "The incident that was checked. The entry is keyed by it."
+  type: String
+- contextPath: Guardian.Duplicate.is_duplicate
+  description: '"true" when a lower-numbered open incident of the same type, name and source matches on the same entities, else "false" (also "false" on any failure).'
+  type: String
+- contextPath: Guardian.Duplicate.original_id
+  description: "The lowest-numbered matching open incident; empty when this incident is not a duplicate."
+  type: String
+- contextPath: Guardian.Duplicate.matching_open_ids
+  description: "The ids of the matching open incidents, lowest first (at most 20)."
+  type: Unknown
+- contextPath: Guardian.Duplicate.open_in_group
+  description: "The open incidents of this type and name on the same entities, counting this one. 1 means no other."
+  type: Number
+- contextPath: Guardian.Duplicate.incident_type
+  description: "The type of the incident."
+  type: String
+- contextPath: Guardian.Duplicate.incident_name
+  description: "The name of the incident."
+  type: String
+- contextPath: Guardian.Duplicate.fingerprint
+  description: "The entity fingerprint the comparison used: the normalized values of host, user, source_ip, destination_ip, file_hash, url and email_sender that the incident carries."
+  type: Unknown
+- contextPath: Guardian.Duplicate.reason
+  description: "Why the answer is what it is, in one line."
+  type: String
+- contextPath: Guardian.Duplicate.proposed_exclusion
+  description: "For a duplicate, and for an original with later matches: the pre-process rule or fetch filter an analyst could add (incident_type, incident_name, scope, mechanism, reason, suggested_review_days). A proposal only."
+  type: Unknown
+- contextPath: Guardian.Duplicate.proposed_exclusion_text
+  description: "The proposed exclusion as one sentence, for a note."
+  type: String
+- contextPath: Guardian.Duplicate.closed
+  description: '"true" when close_duplicates was set and this incident was linked and closed as a duplicate, else "false".'
+  type: String
+- contextPath: Guardian.Duplicate.close_error
+  description: "Why closing this incident failed (including when the platform marked no incident as a duplicate); empty otherwise. A failed close never stops the playbook."
+  type: String
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

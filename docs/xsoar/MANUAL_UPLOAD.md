@@ -53,8 +53,8 @@ A list that shows a wrapper like that was loaded from a pack file: delete it and
 | 2 | Indicator fields | `IndicatorFields/` | nothing | Settings > Objects Setup > Indicators > Fields. No import documented | `POST /incidentfields/import` |
 | 3 | Lists (what each one does: [`../CONTENT_REFERENCE.md`](../CONTENT_REFERENCE.md#1-lists)) | `Lists/` | nothing | Settings > Advanced > Lists > **Add a List** (the guide also lists uploading and downloading a list) | `POST /lists/save` |
 | 4 | Integrations | `Integrations/` | nothing | Settings > Integrations > Instances. The guide does not describe importing an integration file; the toolbar has an upload icon | `POST /settings/integration-conf/upload` |
-| 5 | Automations | `Scripts/` | nothing (no order among the 78) | **Automation** page > the upload automation icon | `POST /automation/import` |
-| 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 22 of the pack's automations). **Upload the seven `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIncident`**, which calls them | **Playbooks** page > the upload button, top right | `POST /playbook/save/yaml` |
+| 5 | Automations | `Scripts/` | nothing (no order among the 79) | **Automation** page > the upload automation icon | `POST /automation/import` |
+| 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 23 of the pack's automations). **Upload the seven `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIncident`**, which calls them | **Playbooks** page > the upload button, top right | `POST /playbook/save/yaml` |
 | 7 | Layouts | `Layouts/` | the incident and indicator fields | Settings > Objects Setup > Incidents > **Layouts**. No import documented | `POST /layouts/import` |
 | 8 | Incident types | `IncidentTypes/` | the layout and the playbooks | Settings > Objects Setup > Incidents > **Types**: the guide lists "create, duplicate, import, export" | `POST /incidenttypes/import` |
 | 9 | Indicator type | `IndicatorTypes/` | the indicator layout (step 7) | Settings > Objects Setup > Indicators > **Types**. No import documented | `POST /reputation/import` |
@@ -69,6 +69,7 @@ Notes:
 - Dashboard sharing is a per-user setting: share the dashboard with your team after importing it.
 - After step 8, confirm that a new *Guardian Agent Run* incident shows the **Guardian** layout tab.
 - Upgrading from a version that shipped `GuardianTriageIncident`: that playbook is now `GuardianTriageAndInvestigateIncident`. Re-point any incident type or Job that used the old name, then delete the old playbook. Upload the new automations `GuardianModelChoice` and `GuardianIncidentSummary` and the new list `guardian_model_routing` before the playbooks.
+- Upgrading to the version with the duplicate check: upload the new automation `GuardianIncidentDuplicateCheck` and replace the list `guardian_tool_denylist` (it now names that automation, and control lists change only when they are replaced), both before `GuardianTriageAndInvestigateIncident`.
 
 **API payloads** (when you use the API column). Send each file on its own, one call at a time, with a pause between calls:
 - Fields and indicator fields: a JSON file `{"incidentFields": [ <the file's content> ]}`, as multipart form field `file`.

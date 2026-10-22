@@ -163,7 +163,7 @@ model catalogue on every run (`guardian_settings.model_tier` is only for a model
 
 ## What's in the pack
 
-`Packs/Guardian` — **3 integrations · 76 automations · 17 playbooks · 19 lists · 15 fields · 2 incident
+`Packs/Guardian` — **3 integrations · 79 automations · 17 playbooks · 19 lists · 15 fields · 2 incident
 types · 6 jobs · 2 layouts · 1 dashboard · 1 pre-process rule.** The Cortex platform edition, `Packs/GuardianXSIAM`, is a separately
 maintained copy (21 playbooks, no pre-process rule; see its `DIVERGENCE.md`).
 
@@ -192,7 +192,10 @@ maintained copy (21 playbooks, no pre-process rule; see its `DIVERGENCE.md`).
   `GuardianRunCapture` remembers the outcome and `GuardianIncidentSummary` writes the conclusion as a War Room note and
   one Guardian section at the end of the incident's details. Optional model routing (`GuardianModelChoice`, List
   `guardian_model_routing`, shipped empty) can send the triage and the investigation to different models. Taxonomy: List
-  `guardian_triage_types`; skill `xsoar_triage`.
+  `guardian_triage_types`; skill `xsoar_triage`. Before the triage model, the operator-owned `GuardianIncidentDuplicateCheck`
+  (no model, one `getIncidents` search) skips the model for an incident that repeats a lower-numbered open incident of the
+  same type, name and source on the same entities; playbook inputs `check_duplicates` (default `true`) and `close_duplicates`
+  (default `false`).
 - **Config lists** — `guardian_settings`, `guardian_persona`, `guardian_prompt_head/tail`,
   `guardian_pricing`, `guardian_model_catalog` (documented model limits), `guardian_policy`, `guardian_preapproved`, `guardian_tool_allowlist`/`denylist`,
   `guardian_skills_index` + 5 `guardian_skill_*` skills, `guardian_kb_soc_investigation`, `guardian_incident_routes`,

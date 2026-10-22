@@ -180,7 +180,8 @@ def test_apply_and_result_are_denylisted_and_not_allowlisted():
 
 
 @pytest.mark.parametrize("name", ["GuardianIncidentRoute", "GuardianIncidentEvidence", "GuardianRunCapture", "GuardianTriageResult",
-                                  "GuardianTriageApply", "GuardianIncidentSummary", "GuardianModelChoice"])
+                                  "GuardianTriageApply", "GuardianIncidentSummary", "GuardianModelChoice",
+                                  "GuardianIncidentDuplicateCheck"])
 def test_the_new_scripts_are_well_formed(name):
     folder = SCRIPTS / name
     doc = yaml.safe_load((folder / (name + ".yml")).read_text())
@@ -377,7 +378,7 @@ def test_no_triage_playbook_uses_a_write_command():
             assert command not in policy, (name, command)
             if command in denied:
                 assert name == PARENT and command in ("GuardianTriageResult", "GuardianTriageApply", "GuardianIncidentSummary",
-                                                      "GuardianModelChoice"), (name, command)
+                                                      "GuardianModelChoice", "GuardianIncidentDuplicateCheck"), (name, command)
             for blocked in ("setincident", "setlist", "addtolist", "closeinvestigation", "isolate", "quarantine", "block", "delete"):
                 assert blocked not in command.lower() or command == "DeleteContext", (name, command)
 
@@ -563,7 +564,8 @@ def test_the_parent_flow_runs_the_preparation_then_triage_then_apply_then_the_br
 
 def test_the_parent_inputs_and_prompt():
     inputs = {i["key"]: i for i in _playbook(PARENT)["inputs"]}
-    assert set(inputs) == {"prompt", "apply_changes", "triage_max_ticks", "investigate_max_ticks"}
+    assert set(inputs) == {"prompt", "apply_changes", "triage_max_ticks", "investigate_max_ticks", "check_duplicates", "close_duplicates"}
+    assert inputs["check_duplicates"]["value"]["simple"] == "true" and inputs["close_duplicates"]["value"]["simple"] == "false"
     assert inputs["apply_changes"]["value"]["simple"] == "true" and inputs["triage_max_ticks"]["value"]["simple"] == "6"
     assert inputs["investigate_max_ticks"]["value"]["simple"] == ""
     assert "Empty (the default)" in " ".join(inputs["investigate_max_ticks"]["description"].split())
@@ -622,7 +624,8 @@ def test_the_parent_writes_the_triage_summary_after_apply_and_the_conclusion_bef
     pred = _predecessors(doc)
     assert {p for p, _l in pred[summaries["triage"]]} == {apply_key}
     assert {p for p, _l in pred[summaries["investigation"]]} == {k for k, t in tasks.items() if t["type"] == "playbook"}
-    assert {p for p, _l in pred[done]} == {summaries["investigation"], by_name["Note - no model session needed"]}
+    assert {p for p, _l in pred[done]} == {summaries["investigation"], by_name["Note - no model session needed"],
+                                           by_name["Note - duplicate of an open incident"]}
     for title in [t for t in tasks.values() if t["type"] == "title" and t["task"]["name"].startswith("Halted")]:
         assert not title.get("nexttasks")
 
@@ -633,7 +636,10 @@ def test_the_parent_chooses_the_triage_model_before_resolving_the_profile_and_th
     by_name = {t["task"]["name"]: key for key, t in tasks.items()}
     choose_triage, resolve = tasks[by_name["Choose the triage model"]], tasks[by_name["Resolve model profile"]]
     assert _command_of(choose_triage) == "GuardianModelChoice" and _arg(choose_triage, "stage") == "triage"
-    assert tasks[by_name["Needs a model session?"]]["nexttasks"]["#default#"] == [by_name["Choose the triage model"]]
+    # the model path goes through the duplicate check first (see the duplicate check tests below), then chooses the model
+    assert tasks[by_name["Needs a model session?"]]["nexttasks"]["#default#"] == [by_name["Duplicate check on?"]]
+    assert tasks[by_name["Duplicate check on?"]]["nexttasks"]["#default#"] == [by_name["Choose the triage model"]]
+    assert tasks[by_name["Duplicate of an open incident?"]]["nexttasks"]["#default#"] == [by_name["Choose the triage model"]]
     assert choose_triage["nexttasks"]["#none#"] == [by_name["Resolve model profile"]]
     assert _arg(resolve, "model") == "${Guardian.ModelChoiceCurrent.model}"
     invest = tasks[by_name["Choose the investigation model"]]
@@ -801,3 +807,87 @@ def test_guardian_strips_its_own_details_section_from_everything_it_reads_back()
                          ("GuardianEvalHarvest", 'guardian_strip_issue_section(incident.get("details") or "")')):
         source = (SCRIPTS / name / (name + ".py")).read_text().split("# </GUARDIAN_COMMON_INJECT>")[1]
         assert needle in source, name
+
+
+# --- duplicate check ---------------------------------------------------------------------------------------------------------
+
+def test_the_duplicate_check_is_operator_owned_denylisted_and_never_a_tool():
+    assert "GuardianIncidentDuplicateCheck" in _denied() and "GuardianIncidentDuplicateCheck" not in _allowed()
+    for name in ("guardian_policy", "guardian_preapproved"):
+        assert "GuardianIncidentDuplicateCheck" not in _list_data(name), name
+    assert not [c for c in _allowed() if "Duplicate" in c]
+
+
+def test_the_duplicate_check_changes_only_the_incident_it_runs_on_through_one_native_call():
+    source = (SCRIPTS / "GuardianIncidentDuplicateCheck" / "GuardianIncidentDuplicateCheck.py").read_text()
+    code = source.split("# </GUARDIAN_COMMON_INJECT>")[1]
+    assert code.count("guardian_execute(GUARDIAN_DUP_CLOSE_COMMAND, {") == 1
+    assert re.findall(r'guardian_execute\(GUARDIAN_DUP_CLOSE_COMMAND, \{\s*(.*?)\}\)', code, re.S) == [
+        '"incidentId": original, "linkedIncidentIDs": incident_id, "action": GUARDIAN_DUP_CLOSE_ACTION']
+    assert 'GUARDIAN_DUP_CLOSE_COMMAND = "linkIncidents"' in code and 'GUARDIAN_DUP_CLOSE_ACTION = "duplicate"' in code
+    assert 'GUARDIAN_DUP_SEARCH_COMMAND = "getIncidents"' in code
+    assert "closeInvestigation" not in code and "setIncident" not in code
+    assert "return_error" not in code.split("def main():", 1)[1]  # fail open: never an error entry
+
+
+def test_the_duplicate_check_yml_documents_its_arguments_and_every_output():
+    doc = yaml.safe_load((SCRIPTS / "GuardianIncidentDuplicateCheck" / "GuardianIncidentDuplicateCheck.yml").read_text())
+    args = {a["name"]: a for a in doc["args"]}
+    assert set(args) == {"max_candidates", "close_duplicates"} and not any(a["required"] for a in args.values())
+    assert args["close_duplicates"]["predefined"] == ["true", "false"]
+    assert {o["contextPath"] for o in doc["outputs"]} == {"Guardian.Duplicate." + k for k in (
+        "incident_id", "is_duplicate", "original_id", "matching_open_ids", "open_in_group", "incident_type", "incident_name",
+        "fingerprint", "reason", "proposed_exclusion", "proposed_exclusion_text", "closed", "close_error")}
+
+
+def test_the_duplicate_check_sits_on_the_model_path_only_between_the_route_and_the_model_choice():
+    doc = _playbook(PARENT)
+    tasks = doc["tasks"]
+    by_name = {t["task"]["name"]: key for key, t in tasks.items()}
+    gate, check = tasks[by_name["Duplicate check on?"]], tasks[by_name["Check for duplicates"]]
+    decide, note = tasks[by_name["Duplicate of an open incident?"]], tasks[by_name["Note - duplicate of an open incident"]]
+    # only the model branch of "Needs a model session?" reaches it; the no-model note path is untouched
+    needs = tasks[by_name["Needs a model session?"]]
+    assert needs["nexttasks"] == {"#default#": [by_name["Duplicate check on?"]], "nomodel": [by_name["Note - no model session needed"]]}
+    assert [k for k, t in tasks.items() if by_name["Duplicate check on?"] in sum(t.get("nexttasks", {}).values(), [])] == [by_name["Needs a model session?"]]
+    # the gate reads the input and, when it is not "true", skips straight to the model choice
+    rule = gate["conditions"][0]["condition"][0][0]
+    assert gate["type"] == "condition" and rule["operator"] == "isEqualString" and rule["ignorecase"] is True
+    assert rule["left"]["value"]["simple"] == "inputs.check_duplicates" and rule["left"]["iscontext"] is True
+    assert rule["right"]["value"]["simple"] == "true"
+    assert gate["nexttasks"] == {"#default#": [by_name["Choose the triage model"]], gate["conditions"][0]["label"]: [by_name["Check for duplicates"]]}
+    # the check passes the input, continues on error and leads to the decision
+    assert _command_of(check) == "GuardianIncidentDuplicateCheck" and _arg(check, "close_duplicates") == "${inputs.close_duplicates}"
+    assert check["continueonerror"] is True and check["continueonerrortype"] == "continue" and check["nexttasks"]["#none#"] == [by_name["Duplicate of an open incident?"]]
+    # the decision: only an affirmative "true" ends the model path; everything else (no result, "false") continues
+    rule = decide["conditions"][0]["condition"][0][0]
+    assert rule["left"]["value"]["simple"] == "Guardian.Duplicate.is_duplicate" and rule["right"]["value"]["simple"] == "true"
+    assert decide["nexttasks"] == {"#default#": [by_name["Choose the triage model"]], decide["conditions"][0]["label"]: [by_name["Note - duplicate of an open incident"]]}
+    # the note says which incident, how many are open, the proposed exclusion, that no model ran, and ends the playbook
+    assert _command_of(note) == "GuardianCaseNote" and note["nexttasks"]["#none#"] == [by_name["Done"]]
+    assert note["continueonerror"] is True and note["continueonerrortype"] == "continue"
+    text = " ".join(_arg(note, "content").split())
+    for needle in ("did not run a model session", "${Guardian.Duplicate.original_id}", "${Guardian.Duplicate.open_in_group}",
+                   "${Guardian.Duplicate.proposed_exclusion_text}", "nothing was applied"):
+        assert needle in text, needle
+    assert "${Guardian.Duplicate.reason}" not in text  # the reason repeats what the note already says
+    # nothing downstream of the duplicate branch runs a model, applies a triage or writes the investigation conclusion
+    order = _flow_order(doc)
+    assert order.index(by_name["Duplicate check on?"]) < order.index(by_name["Choose the triage model"])
+    for name in ("Duplicate check on?", "Check for duplicates", "Duplicate of an open incident?", "Note - duplicate of an open incident"):
+        assert by_name[name] in order and tasks[by_name[name]]["task"]["description"]
+
+
+def test_the_duplicate_check_inputs_are_described_and_the_new_tasks_keep_existing_views():
+    doc = _playbook(PARENT)
+    inputs = {i["key"]: i for i in doc["inputs"]}
+    for key in ("check_duplicates", "close_duplicates"):
+        assert inputs[key]["required"] is False and len(" ".join(inputs[key]["description"].split())) > 80
+    positions = {k: json.loads(t["view"])["position"] for k, t in doc["tasks"].items()}
+    assert len({(p["x"], p["y"]) for p in positions.values()}) == len(positions)  # no two tasks share a place
+    for k in ("43", "44", "45", "46"):  # no new task sits within a card's width and height of another task
+        p = positions[k]
+        for other, q in positions.items():
+            if other != k:
+                assert abs(p["x"] - q["x"]) >= 200 or abs(p["y"] - q["y"]) >= 140, (k, other)
+    assert positions["6"] == {"x": 450, "y": 920} and positions["7"] == {"x": 450, "y": 1065} and positions["37"] == {"x": 800, "y": 1065}

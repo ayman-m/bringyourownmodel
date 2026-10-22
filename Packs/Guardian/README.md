@@ -65,6 +65,13 @@ swapping which integration instance is enabled.
   the operator-owned `GuardianIncidentSummary`). Optional model routing: the operator-owned `GuardianModelChoice` reads
   the protected List `guardian_model_routing` (shipped empty, so every call uses the instance's configured model) and can
   send the triage and the investigation to different models; `GuardianAgentLoop` is never routed.
+  Duplicate check: before the triage model, the operator-owned `GuardianIncidentDuplicateCheck` (no model, one `getIncidents`
+  search, on the denylist) finds an incident that repeats a lower-numbered open incident of the same type, name and source
+  on the same entities (host, user, addresses, file hash, URL, email sender), writes a note with a proposed pre-process rule or
+  fetch filter and skips the model. Playbook inputs: `check_duplicates` (default `true`) and `close_duplicates` (default
+  `false`; `true` links the duplicate to the original and closes it as a duplicate, never the original). It fails open and
+  complements XSOAR's native deduplication (pre-process rules, `FindSimilarIncidentsV2`); it does not replace it. The answer
+  is at `Guardian.Duplicate`.
 - **Core scripts**: `GuardianReasoningTick` (the loop itself), `GuardianToolBridge` (policy-gated tool
   dispatch), `GuardianToolCatalogBuilder` / `GuardianPromptBuilder` (assemble what the model sees each
   tick), `GuardianCompact` (transcript summarization when a run runs long), `GuardianMemory` /

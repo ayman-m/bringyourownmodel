@@ -12,7 +12,9 @@ description: >-
   investigation with the same judging rules as an investigation run. The playbook writes the triage summary and
   the investigation conclusion as War Room notes and appends them to the incident's details in one delimited
   Guardian section (the original text is never changed). Containment and other state changes still wait for a
-  human. The investigation playbook GuardianAgentLoop is unchanged.
+  human. Before the triage session, a deterministic check (no model) finds an incident that repeats a
+  lower-numbered open incident of the same type, name and source on the same entities, writes a note and skips the
+  model for it. The investigation playbook GuardianAgentLoop is unchanged.
 starttaskid: "0"
 tasks:
   "0":
@@ -206,7 +208,7 @@ tasks:
       brand: ""
     nexttasks:
       '#default#':
-      - "37"
+      - "43"
       "nomodel":
       - "7"
     separatecontext: false
@@ -255,6 +257,156 @@ tasks:
         "position": {
           "x": 450,
           "y": 1065
+        }
+      }
+  "43":
+    id: "43"
+    taskid: 883849cd-7eee-400b-bcf1-289f7e2a46ed
+    type: condition
+    task:
+      id: 883849cd-7eee-400b-bcf1-289f7e2a46ed
+      version: -1
+      name: "Duplicate check on?"
+      description: >-
+        Runs the duplicate check only when the playbook input check_duplicates is "true" (the default). Any other
+        value goes straight on to the triage model choice.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "37"
+      "check":
+      - "44"
+    separatecontext: false
+    conditions:
+    - label: "check"
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: inputs.check_duplicates
+            iscontext: true
+          right:
+            value:
+              simple: "true"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 1150,
+          "y": 920
+        }
+      }
+  "44":
+    id: "44"
+    taskid: 4f1d33fe-4628-418a-a768-592182ec209d
+    type: regular
+    task:
+      id: 4f1d33fe-4628-418a-a768-592182ec209d
+      version: -1
+      name: "Check for duplicates"
+      description: >-
+        Asks, without a model, whether this incident repeats a lower-numbered open incident with the same type, name and
+        source: the same host, user, source and destination address, file hash, URL and email sender values. One search for
+        the open incidents of that type and name; the answer is left at Guardian.Duplicate with the original incident, how
+        many are open in the group and a proposed pre-process rule or fetch filter (a proposal; nothing is applied). With
+        close_duplicates set to "true" it also links this incident to the original and closes it as a duplicate (never the
+        original). Operator-owned: the model can never call it. Any failure means "not a duplicate", so the model session
+        runs as before.
+      script: 'GuardianIncidentDuplicateCheck'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "45"
+    scriptarguments:
+      close_duplicates:
+        simple: "${inputs.close_duplicates}"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1150,
+          "y": 1065
+        }
+      }
+  "45":
+    id: "45"
+    taskid: 12ea486a-b7a9-43e1-9c99-ebbd8c1cfab6
+    type: condition
+    task:
+      id: 12ea486a-b7a9-43e1-9c99-ebbd8c1cfab6
+      version: -1
+      name: "Duplicate of an open incident?"
+      description: >-
+        Ends the model path with a note when Guardian.Duplicate.is_duplicate is "true". Anything else, including a
+        failed or missing check, continues to the triage model choice.
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "37"
+      "duplicate":
+      - "46"
+    separatecontext: false
+    conditions:
+    - label: "duplicate"
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: Guardian.Duplicate.is_duplicate
+            iscontext: true
+          right:
+            value:
+              simple: "true"
+          ignorecase: true
+    view: |-
+      {
+        "position": {
+          "x": 1150,
+          "y": 1210
+        }
+      }
+  "46":
+    id: "46"
+    taskid: 67fc3f35-49c8-440e-baf9-d74851703f63
+    type: regular
+    task:
+      id: 67fc3f35-49c8-440e-baf9-d74851703f63
+      version: -1
+      name: "Note - duplicate of an open incident"
+      description: >-
+        Writes one short note saying that no model session ran because this incident repeats an open one, which incident
+        it repeats, how many are open in the group and the exclusion an analyst could add, then the playbook ends.
+      script: 'GuardianCaseNote'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    scriptarguments:
+      content:
+        simple: >-
+          Guardian did not run a model session: this incident repeats open incident #${Guardian.Duplicate.original_id} of
+          the same type and name (${Guardian.Duplicate.open_in_group} open in the group).
+          Proposed exclusion (a proposal, nothing was applied):
+          ${Guardian.Duplicate.proposed_exclusion_text} Closed as a duplicate by this playbook:
+          ${Guardian.Duplicate.closed}. The triage and the investigation of the original incident cover it.
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1150,
+          "y": 1355
         }
       }
   "8":
@@ -1369,6 +1521,26 @@ inputs:
     nothing. Empty (the default) with the List as shipped gives that session the same limit GuardianAgentLoop
     gets: the model size's limit (25, 40 or 60), or the guardian_settings and model profile override. A number
     can only lower that limit.
+  playbookInputQuery: null
+- key: check_duplicates
+  value:
+    simple: "true"
+  required: false
+  description: >-
+    When "true" (the default), a deterministic check runs before the triage model: an incident that repeats a
+    lower-numbered open incident with the same type, name and source on the same entities (host, user, addresses, file
+    hash, URL, email sender) gets a note and skips the model, so a noisy source costs no tokens. Set to "false" to
+    triage every incident. The check fails open: when it cannot decide, the model runs.
+  playbookInputQuery: null
+- key: close_duplicates
+  value:
+    simple: "false"
+  required: false
+  description: >-
+    When "true", a duplicate found by the check is also linked to the original and closed as a duplicate (only that
+    incident; the original is never changed). The default "false" only writes the note. Closing ends the incident's
+    investigation, so the note may not appear; the check's own War Room entry is then the record. Has no effect when
+    check_duplicates is not "true".
   playbookInputQuery: null
 outputs: []
 fromversion: 6.10.0
