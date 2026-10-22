@@ -166,7 +166,8 @@ def test_no_triage_automation_is_allowlisted_and_core_update_issue_is_still_not(
 
 
 @pytest.mark.parametrize("name", ["GuardianTriageResult", "GuardianTriageApply", "GuardianIssueSummary", "GuardianModelChoice",
-                                  "GuardianIssueDuplicateCheck"])
+                                  "GuardianIssueDuplicateCheck",
+                                  "GuardianHealthCheck"])
 def test_the_new_scripts_are_well_formed(name):
     folder = SCRIPTS / name
     doc = yaml.safe_load((folder / (name + ".yml")).read_text())
@@ -1082,7 +1083,7 @@ def test_the_model_choice_and_the_profile_check_document_the_routing_arguments()
     choice = yaml.safe_load((SCRIPTS / "GuardianModelChoice" / "GuardianModelChoice.yml").read_text())
     assert {a["name"] for a in choice["args"]} == {"stage", "investigate_max_ticks"}
     check = yaml.safe_load((SCRIPTS / "GuardianModelProfileCheck" / "GuardianModelProfileCheck.yml").read_text())
-    assert [a["name"] for a in check["args"]] == ["model"]
+    assert [a["name"] for a in check["args"]] == ["read_only", "model"]   # read_only: resolve without saving (the health check)
 
 
 def test_the_triage_result_documents_complexity_and_the_skill_gives_its_rubric():
@@ -1201,3 +1202,12 @@ def test_a_data_health_issue_ends_in_the_other_branch_which_runs_the_routes_skil
     tick = [t for t in _tasks(other, "regular") if _command_of(t) == "GuardianReasoningTick"][0]
     assert _arg(tick, "skill") == "${Guardian.Route.skill}" and _arg(tick, "assessment_mode") == "${Guardian.Route.assessment_mode}"
     assert _taxonomy()["types"][-1]["name"] == "other" and _taxonomy()["types"][-1]["skill"] == ""
+
+
+def test_the_health_check_is_operator_owned_denylisted_and_never_a_tool():
+    assert "GuardianHealthCheck" in _denied() and "GuardianHealthCheck" not in _allowed()
+    for name in ("guardian_policy", "guardian_preapproved"):
+        assert "GuardianHealthCheck" not in _list_data(name), name
+    assert not [c for c in _allowed() if "HealthCheck" in c]
+    for path in PLAYBOOKS.glob("*.yml"):
+        assert "GuardianHealthCheck" not in path.read_text(), path.name   # an operator runs it; no playbook does

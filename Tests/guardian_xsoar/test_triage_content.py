@@ -181,7 +181,8 @@ def test_apply_and_result_are_denylisted_and_not_allowlisted():
 
 @pytest.mark.parametrize("name", ["GuardianIncidentRoute", "GuardianIncidentEvidence", "GuardianRunCapture", "GuardianTriageResult",
                                   "GuardianTriageApply", "GuardianIncidentSummary", "GuardianModelChoice",
-                                  "GuardianIncidentDuplicateCheck"])
+                                  "GuardianIncidentDuplicateCheck",
+                                  "GuardianHealthCheck"])
 def test_the_new_scripts_are_well_formed(name):
     folder = SCRIPTS / name
     doc = yaml.safe_load((folder / (name + ".yml")).read_text())
@@ -787,7 +788,7 @@ def test_the_model_choice_and_the_profile_check_document_the_routing_arguments()
     choice = yaml.safe_load((SCRIPTS / "GuardianModelChoice" / "GuardianModelChoice.yml").read_text())
     assert {a["name"] for a in choice["args"]} == {"stage", "investigate_max_ticks"}
     check = yaml.safe_load((SCRIPTS / "GuardianModelProfileCheck" / "GuardianModelProfileCheck.yml").read_text())
-    assert [a["name"] for a in check["args"]] == ["model"]
+    assert [a["name"] for a in check["args"]] == ["read_only", "model"]   # read_only: resolve without saving (the health check)
     paths = {o["contextPath"] for o in check["outputs"]}
     assert {"Guardian.Preflight.ModelProfile.model", "Guardian.Preflight.ModelProfile.routed"} <= paths
 
@@ -891,3 +892,12 @@ def test_the_duplicate_check_inputs_are_described_and_the_new_tasks_keep_existin
             if other != k:
                 assert abs(p["x"] - q["x"]) >= 200 or abs(p["y"] - q["y"]) >= 140, (k, other)
     assert positions["6"] == {"x": 450, "y": 920} and positions["7"] == {"x": 450, "y": 1065} and positions["37"] == {"x": 800, "y": 1065}
+
+
+def test_the_health_check_is_operator_owned_denylisted_and_never_a_tool():
+    assert "GuardianHealthCheck" in _denied() and "GuardianHealthCheck" not in _allowed()
+    for name in ("guardian_policy", "guardian_preapproved"):
+        assert "GuardianHealthCheck" not in _list_data(name), name
+    assert not [c for c in _allowed() if "HealthCheck" in c]
+    for path in PLAYBOOKS.glob("*.yml"):
+        assert "GuardianHealthCheck" not in path.read_text(), path.name   # an operator runs it; no playbook does

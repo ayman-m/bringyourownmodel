@@ -81,6 +81,9 @@ swapping which integration instance is enabled.
 - **Operator commands**: `!guardian-model` (shows which LLM instance/tier is actually configured),
   `!guardian-probe-model`, plus a small set of `!guardian-*` chat/plan/approval commands for driving
   or inspecting a run from the CLI.
+- **Self-test**: after an install or an upgrade run `!GuardianHealthCheck` in the Playground or in any incident. It checks the package content, the Lists, the
+  integrations, the model, the core scripts and the tool chokepoint, and returns one PASS/WARN/FAIL report with the likely cause and the fix for each problem. It is read-only and
+  never writes a List, toggles the kill switch or runs a Job or playbook (see its README).
 - **Dashboard**: *Guardian Observability* — cost, tool-call activity, loop health, the approvals
   queue, and a live event feed.
 

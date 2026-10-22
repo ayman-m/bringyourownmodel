@@ -1,4 +1,14 @@
 args:
+- name: read_only
+  required: false
+  isArray: false
+  auto: PREDEFINED
+  predefined:
+  - "true"
+  - "false"
+  description: >-
+    "true" resolves the same numbers but saves nothing: the documented profile the catalogue step would have written is
+    used in memory only, and `guardian_model_profile` is not touched. The health check uses it. Default "false".
 - name: model
   required: false
   isArray: false

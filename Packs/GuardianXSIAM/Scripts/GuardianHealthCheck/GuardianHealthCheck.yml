@@ -1,0 +1,128 @@
+args:
+- name: test_model
+  description: >-
+    "true" (the default) makes one tiny model call to check that the enabled provider answers. "false" skips it.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - "true"
+  - "false"
+  defaultValue: "true"
+- name: test_routing
+  description: >-
+    "true" (the default) also makes one tiny call per distinct model named in `guardian_model_routing`, to check that the provider serves it. "false" skips them.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - "true"
+  - "false"
+  defaultValue: "true"
+- name: test_bridge
+  description: >-
+    "true" (the default) probes the tool chokepoint (`GuardianToolBridge`): one allowed read-only tool must pass and one denylisted script must be denied. "false" skips the probes.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - "true"
+  - "false"
+  defaultValue: "true"
+- name: include_xql
+  description: >-
+    "true" runs ONE tiny XQL query (`| limit 1`, a 1-hour window) through `GuardianXQL`, which costs a little compute units. Default "false": no query runs.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - "true"
+  - "false"
+  defaultValue: "false"
+- name: verbose
+  description: >-
+    "true" adds the detail lines under every PASS. Default "false": a PASS is one line.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - "true"
+  - "false"
+  defaultValue: "false"
+- name: max_model_calls
+  description: >-
+    The most model calls the check may make: one for the provider plus one per distinct routed model, never more than this. Default 4, at most 6.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  defaultValue: "4"
+comment: >-
+  Operator-owned: a self-test to run in the War Room after an install or an upgrade. It checks that the whole package is
+  present and working, that the Lists agree with one another, that the model provider is set up and the model answers,
+  that the core scripts run, and that the tool chokepoint enforces the allowlist and the denylist, then returns one
+  report with PASS, WARN, FAIL or SKIP for every check and, for every WARN and FAIL, the likely cause and the fix. It is
+  read-only: it writes no List, toggles no switch, runs no Job or playbook and approves nothing. It is on the denylist:
+  the model can never call it.
+commonfields:
+  id: GuardianHealthCheck
+  version: -1
+enabled: true
+name: GuardianHealthCheck
+outputs:
+- contextPath: Guardian.HealthCheck.status
+  description: "The overall result: PASS, WARN or FAIL."
+  type: String
+- contextPath: Guardian.HealthCheck.pass
+  description: "How many checks passed."
+  type: Number
+- contextPath: Guardian.HealthCheck.warn
+  description: "How many checks warned."
+  type: Number
+- contextPath: Guardian.HealthCheck.fail
+  description: "How many checks failed."
+  type: Number
+- contextPath: Guardian.HealthCheck.skip
+  description: "How many checks were skipped."
+  type: Number
+- contextPath: Guardian.HealthCheck.failed
+  description: "The names of the checks that failed."
+  type: Unknown
+- contextPath: Guardian.HealthCheck.warned
+  description: "The names of the checks that warned."
+  type: Unknown
+- contextPath: Guardian.HealthCheck.ts
+  description: "When the check ran (UTC). The entry is keyed by it."
+  type: String
+- contextPath: Guardian.HealthCheck.edition
+  description: "The edition checked: cortex."
+  type: String
+- contextPath: Guardian.HealthCheck.seconds
+  description: "How long the check took."
+  type: Number
+- contextPath: Guardian.HealthCheck.model_calls
+  description: "How many model calls the check made."
+  type: Number
+- contextPath: Guardian.HealthCheck.model_cost_usd
+  description: "The cost of those calls, from guardian_pricing (0 when a model has no price)."
+  type: Number
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- marketplacev2

@@ -13,7 +13,7 @@ Paths below are relative to the unzipped download (`Guardian-Cortex-Platform-v<v
 | Indicator fields | 10 | `IndicatorFields/` | installed, used by the SOC Agent indicator layout |
 | Lists | 27 | `Lists/` | installed |
 | Integrations (Foundry, Vertex, Cohere), unified YAML | 3 | `Integrations/` | installed |
-| Automations, unified YAML | 80 | `Scripts/` | installed |
+| Automations, unified YAML | 81 | `Scripts/` | installed |
 | Playbooks | **21** | `Playbooks/` | installed, **then adopted** (below) |
 | Layouts (1 issue layout, 1 indicator layout) | 2 | `Layouts/` | installed |
 | Issue (incident) types | 2 | `IncidentTypes/` | installed |
@@ -191,6 +191,9 @@ network: run the instance on an engine that can. Then run `!guardian-model` to c
 ## First run
 
 1. Open any issue's War Room and run `!GuardianBootstrap` once. It creates the runtime lists.
+   Then run `!GuardianHealthCheck` in the same War Room (or in the Playground, after you have added a model provider). It checks that the package is complete, the Lists agree, the model provider answers,
+   the core scripts run and the tool chokepoint enforces the lists, and prints one report with the likely cause and the fix for every WARN and FAIL. It writes nothing, makes at most a few tiny model
+   calls, and runs XQL only with `include_xql=true`.
 2. Run `!guardian-probe-model`, then the `GuardianModelAdaptation` job once.
 3. Investigate an issue: in its War Room run `!DeleteContext key=Guardian`, then `!setPlaybook name=GuardianInvestigateIssue`. A run of four to six ticks takes a few minutes.
    To triage it instead (rate it, name its type, set its severity), run `!setPlaybook name=GuardianTriageAndInvestigateIssue` (see [Triage and investigation](#triage-and-investigation-rate-an-issue-then-investigate-it-by-type)).
@@ -205,7 +208,7 @@ More: [`../CORTEX_PLATFORM_RUNBOOK.md`](../CORTEX_PLATFORM_RUNBOOK.md) (operatio
 
 ## Upgrading
 
-Install the new pack (method A, B or C, or repeat D), run `tools/adopt_playbooks.py` and `tools/create_jobs.py` again. Runtime lists (memory, audit, model profile) are kept.
+Install the new pack (method A, B or C, or repeat D), run `tools/adopt_playbooks.py` and `tools/create_jobs.py` again. Runtime lists (memory, audit, model profile) are kept. Then run `!GuardianHealthCheck`.
 
 ## If something goes wrong
 

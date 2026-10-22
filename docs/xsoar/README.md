@@ -13,7 +13,7 @@ Paths below are relative to the unzipped download (`Guardian-XSOAR-v<version>/`)
 | Indicator fields | 10 | `IndicatorFields/` |
 | Lists | 20 | `Lists/` |
 | Integrations (Foundry, Vertex, Cohere), unified YAML | 3 | `Integrations/` |
-| Automations, unified YAML | 79 | `Scripts/` |
+| Automations, unified YAML | 80 | `Scripts/` |
 | Playbooks | 17 | `Playbooks/` |
 | Layouts (1 incident layout, 1 indicator layout) | 2 | `Layouts/` |
 | Incident types | 2 | `IncidentTypes/` |
@@ -120,6 +120,9 @@ and `!guardian-probe-model` followed by the `GuardianModelAdaptation` job once.
 
 ## First run
 
+Run `!GuardianHealthCheck` in the Playground (or in any incident). It checks that the package is complete, the Lists agree, the model provider is set up and answers, the core scripts run and the
+tool chokepoint enforces the lists, and prints one report with the likely cause and the fix for every WARN and FAIL. It writes nothing and makes at most a few tiny model calls. Fix what it reports, then:
+
 Create an incident of type **Guardian Agent Run** (click Investigate if it sits in Pending). Watch the War Room and the **Guardian** tab: verdict, reasoning trace, tool ledger and
 recommended actions. Approve or deny a proposed action with `!guardian-approve approval_id=<id>` and `!guardian-deny approval_id=<id> reason="..."`. The kill switch is
 `!guardian-killswitch state=on`.
@@ -150,6 +153,7 @@ Re-point any incident type or Job that used the old name, then delete the old pl
 ## Upgrading
 
 Install the new pack (method A, B or C, or repeat D), run `tools/create_jobs.py` again, and keep your runtime lists (memory, audit, model profile): a pack install does not delete them.
+Then run `!GuardianHealthCheck`.
 
 ## If something goes wrong
 

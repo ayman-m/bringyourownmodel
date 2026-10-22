@@ -2200,3 +2200,15 @@ def test_triage_complexity_is_low_medium_or_high_and_anything_else_is_absent(val
 
 def test_triage_block_without_complexity_is_valid_with_an_empty_value():
     assert gc.guardian_triage_validate(_block())["complexity"] == ""
+
+
+def test_pricing_entry_exact_then_longest_boundary_prefix():
+    pricing = {"gpt-5": {"input_per_1m": 1}, "gpt-5-mini": {"input_per_1m": 2}, "command-r": {"input_per_1m": 3}, "bad": "x"}
+    assert gc.guardian_pricing_entry(pricing, "gpt-5-mini") == {"input_per_1m": 2}
+    assert gc.guardian_pricing_entry(pricing, "gpt-5-mini-2025-08-07") == {"input_per_1m": 2}   # the longest row wins
+    assert gc.guardian_pricing_entry(pricing, "GPT-5-2025-08-07") == {"input_per_1m": 1}
+    assert gc.guardian_pricing_entry(pricing, "command-r:35b") == {"input_per_1m": 3}
+    assert gc.guardian_pricing_entry(pricing, "gpt-5mini") is None and gc.guardian_pricing_entry(pricing, "gpt-55") is None
+    assert gc.guardian_pricing_entry(pricing, "bad-model") is None
+    assert gc.guardian_pricing_entry(pricing, "") is None and gc.guardian_pricing_entry(pricing, None) is None
+    assert gc.guardian_pricing_entry(None, "gpt-5") is None and gc.guardian_pricing_entry([], "gpt-5") is None

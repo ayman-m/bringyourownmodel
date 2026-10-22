@@ -252,6 +252,37 @@ def test_a_known_model_gets_a_documented_profile_and_the_list_is_created_when_mi
     assert written["Guardian.ModelProfile"]["max_input_tokens"] == GPT5_MINI_BUDGET
 
 
+def test_read_only_resolves_the_documented_profile_without_saving_anything(monkeypatch):
+    store = {}
+    written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store=store)
+    r = mtc.guardian_tiercheck_run(read_only=True)
+    assert "setList" not in store["commands"] and "createList" not in store["commands"] and "profile" not in store
+    # the numbers are the ones the writing run resolves, and the output does not claim a profile was written
+    assert r["max_input_tokens"] == GPT5_MINI_BUDGET and r["profile_source"] == "documented" and r["catalog_action"] == "none"
+    assert not [line for line in r["lines"] if "was written" in line]
+    assert written["Guardian.ModelProfile"]["max_input_tokens"] == GPT5_MINI_BUDGET
+
+
+def test_read_only_activates_an_existing_record_in_memory_only(monkeypatch):
+    store = {}
+    existing = _plist(_record("documented"))
+    existing["active"] = "some-other-instance"
+    _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store=store, profile=existing)
+    r = mtc.guardian_tiercheck_run(read_only=True)
+    assert "setList" not in store["commands"] and "createList" not in store["commands"] and "profile" not in store
+    assert r["catalog_action"] == "none" and r["profile_source"] == "documented"
+
+
+def test_main_passes_read_only_through(monkeypatch):
+    seen = []
+    monkeypatch.setattr(mtc.demisto, "args", lambda: {"read_only": "true", "model": ""})
+    monkeypatch.setattr(mtc, "guardian_tiercheck_run", lambda model=None, read_only=False: seen.append((model, read_only)) or {
+        "lines": [], "warnings": [], "tier": "small"})
+    monkeypatch.setattr(mtc, "return_results", lambda value: None)
+    mtc.main()
+    assert seen == [("", True)]
+
+
 def test_nothing_in_the_output_calls_a_documented_figure_measured_or_probed(monkeypatch):
     store = {}
     written = _install(monkeypatch, {"model_tier": "medium"}, _foundry(), catalog=CATALOG, store=store)
@@ -745,6 +776,7 @@ def test_the_snapshot_with_the_new_keys_is_still_a_valid_run_snapshot(monkeypatc
 def test_the_yml_declares_the_model_argument_and_the_new_outputs():
     import yaml
     doc = yaml.safe_load((Path(__file__).parent / "GuardianModelProfileCheck.yml").read_text())
-    assert [a["name"] for a in doc["args"]] == ["model"] and doc["args"][0]["required"] is False
+    assert [a["name"] for a in doc["args"]] == ["read_only", "model"] and not any(a["required"] for a in doc["args"])
+    assert doc["args"][0]["predefined"] == ["true", "false"]
     paths = {o["contextPath"] for o in doc["outputs"]}
     assert {"Guardian.Preflight.ModelProfile.model", "Guardian.Preflight.ModelProfile.routed"} <= paths

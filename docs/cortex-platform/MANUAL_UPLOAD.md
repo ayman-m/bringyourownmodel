@@ -60,7 +60,7 @@ A list that shows a wrapper like that was loaded from a pack file: delete it and
 | 2 | Indicator fields | `IndicatorFields/` | nothing | Settings > Configurations > Object Setup > Indicators > **Fields** > New Field. No import documented | `POST /incidentfields/import` |
 | 3 | Lists (what each one does: [`../CONTENT_REFERENCE.md`](../CONTENT_REFERENCE.md#1-lists)) | `Lists/` | nothing | Settings > Configurations > Object Setup > **Lists** > **Add a List**. No import documented | `POST /lists/save` |
 | 4 | Integrations | `Integrations/` | nothing | No console import is documented | `POST /settings/integration-conf/upload` |
-| 5 | Automations | `Scripts/` | nothing (no order among the 80) | No console import is documented (an object created "by importing a file" counts as a custom object) | `POST /automation/import` |
+| 5 | Automations | `Scripts/` | nothing (no order among the 81) | No console import is documented (an object created "by importing a file" counts as a custom object) | `POST /automation/import` |
 | 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 24 of the pack's automations, plus commands of the Core, XQL and Attack Surface Management integrations). **Upload the ten `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIssue`**, which calls them | No console import is documented. Their YAML carries `adopted: true`, so a playbook saved through the API is already adopted | `POST /playbook/save/yaml` |
 | 7 | Layouts | `Layouts/` | the fields | Settings > Configurations > Object Setup > Issues > **Layouts** > **Import** (JSON): documented | `POST /layouts/import` |
 | 8 | Issue types | `IncidentTypes/` | the layout and the playbooks | No page for importing issue types is documented | `POST /incidenttypes/import` |
@@ -77,3 +77,5 @@ Skip the widgets and the `Dashboards/` folder: Cortex platform does not install 
 - Incident types and the indicator type: a JSON file holding an **array** with the file's content as its one element, as multipart form field `file`.
 - Layouts, integrations, automations (scripts) and playbooks: the file as it is, as multipart form field `file`.
 - Lists: a JSON body `{"id": "<name>", "name": "<name>", "data": "<the file's whole text>", "type": "json" or "markdown", "version": -1}`.
+
+**After the last step**, add a model provider (step 11), then run `!GuardianHealthCheck` in the Playground or in any issue: it reports what is missing or wrong, with the fix. When you upgrade, upload the new automation `GuardianHealthCheck`, the changed `GuardianModelProfileCheck` (it gained the `read_only` argument; an older copy would save the model profile when the health check runs it) and the replaced list `guardian_tool_denylist` (it now names the health check) before you run it.

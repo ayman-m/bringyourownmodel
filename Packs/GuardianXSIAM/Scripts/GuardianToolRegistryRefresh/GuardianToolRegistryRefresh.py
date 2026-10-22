@@ -2345,6 +2345,26 @@ def guardian_duration_text(seconds):
     return "{}s".format(secs)
 
 
+def guardian_pricing_entry(pricing, model):
+    """The `guardian_pricing` row for a model, or ``None``. An exact key wins; else the LONGEST row name the model name
+    starts with, at a ``-`` / ``:`` / ``@`` / ``.`` boundary (case-insensitive), because a provider reports
+    `gpt-5-mini-2025-08-07` where the operator wrote the row `gpt-5-mini`, and `gpt-5` must never price `gpt-5-mini`.
+    Pure; never raises."""
+    if not isinstance(pricing, dict) or not isinstance(model, str) or not model:
+        return None
+    entry = pricing.get(model)
+    if isinstance(entry, dict):
+        return entry
+    lowered = model.lower()
+    best, found = None, None
+    for key, value in pricing.items():
+        name = str(key).lower()
+        if (isinstance(value, dict) and lowered.startswith(name) and len(lowered) > len(name)
+                and lowered[len(name)] in "-:@." and (best is None or len(name) > len(best))):
+            best, found = name, value
+    return found
+
+
 # --- Triage block: the machine-checked answer of a triage session --------------------------------------------------
 # One parser and one validator, shared by the reasoning tick (which decides whether a conclusion is accepted) and by
 # GuardianTriageResult (which repairs, merges and writes the result), so the two can never disagree about what a

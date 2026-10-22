@@ -591,6 +591,7 @@ def test_guardian_model_calibration_referenced_only_where_expected():
         "GuardianBootstrap/GuardianBootstrap.py",
         "GuardianBootstrap/GuardianBootstrap.yml",  # the command description names the List it seeds
         "GuardianBootstrap/GuardianBootstrap_test.py",
+        "GuardianHealthCheck/GuardianHealthCheck.py",  # names it as a known run-time List (so it is not reported unknown); never reads it
         "Guardian/README.md",  # the pack's own top-level docs mentioning the List's existence/purpose
         "ReleaseNotes/1_0_1.md",  # the release notes describe the probe's record and the Job
         # is documentation, not behavior wiring -- see the README's own "Design notes" section.

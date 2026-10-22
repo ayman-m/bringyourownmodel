@@ -2408,6 +2408,26 @@ def guardian_duration_text(seconds):
     return "{}s".format(secs)
 
 
+def guardian_pricing_entry(pricing, model):
+    """The `guardian_pricing` row for a model, or ``None``. An exact key wins; else the LONGEST row name the model name
+    starts with, at a ``-`` / ``:`` / ``@`` / ``.`` boundary (case-insensitive), because a provider reports
+    `gpt-5-mini-2025-08-07` where the operator wrote the row `gpt-5-mini`, and `gpt-5` must never price `gpt-5-mini`.
+    Pure; never raises."""
+    if not isinstance(pricing, dict) or not isinstance(model, str) or not model:
+        return None
+    entry = pricing.get(model)
+    if isinstance(entry, dict):
+        return entry
+    lowered = model.lower()
+    best, found = None, None
+    for key, value in pricing.items():
+        name = str(key).lower()
+        if (isinstance(value, dict) and lowered.startswith(name) and len(lowered) > len(name)
+                and lowered[len(name)] in "-:@." and (best is None or len(name) > len(best))):
+            best, found = name, value
+    return found
+
+
 # --- Triage block: the machine-checked answer of a triage session --------------------------------------------------
 # One parser and one validator, shared by the reasoning tick (which decides whether a conclusion is accepted) and by
 # GuardianTriageResult (which repairs, merges and writes the result), so the two can never disagree about what a
@@ -2989,24 +3009,9 @@ def guardian_cost_ledger_price_for_model(pricing, model):
     if not model or not isinstance(model, str):
         return dict(GUARDIAN_COST_LEDGER_ZERO_PRICE), "no 'model' provided -- cost computed as $0."
 
-    entry = pricing.get(model) if isinstance(pricing, dict) else None
-    if not isinstance(entry, dict) and isinstance(pricing, dict):
-        # A provider reports the model as `gpt-5-mini-2025-08-07` or `command-r:35b-...`, the operator
-        # writes the row as `gpt-5-mini`: take the LONGEST row name the model name starts with, at a
-        # `-` / `:` / `@` / `.` boundary (so `gpt-5` never prices `gpt-5-mini`).
-        lowered = model.lower()
-        best = None
-        for key in pricing:
-            k = str(key).lower()
-            if (
-                isinstance(pricing[key], dict)
-                and lowered.startswith(k)
-                and len(lowered) > len(k)
-                and lowered[len(k)] in "-:@."
-                and (best is None or len(k) > len(best))
-            ):
-                best = k
-                entry = pricing[key]
+    # A provider reports `gpt-5-mini-2025-08-07` where the operator wrote the row `gpt-5-mini`: the shared lookup takes
+    # the exact key, else the longest row name the model starts with at a boundary.
+    entry = guardian_pricing_entry(pricing, model)
     if not isinstance(entry, dict):
         return (
             dict(GUARDIAN_COST_LEDGER_ZERO_PRICE),

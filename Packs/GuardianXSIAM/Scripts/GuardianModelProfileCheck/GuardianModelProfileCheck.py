@@ -2351,6 +2351,26 @@ def guardian_duration_text(seconds):
     return "{}s".format(secs)
 
 
+def guardian_pricing_entry(pricing, model):
+    """The `guardian_pricing` row for a model, or ``None``. An exact key wins; else the LONGEST row name the model name
+    starts with, at a ``-`` / ``:`` / ``@`` / ``.`` boundary (case-insensitive), because a provider reports
+    `gpt-5-mini-2025-08-07` where the operator wrote the row `gpt-5-mini`, and `gpt-5` must never price `gpt-5-mini`.
+    Pure; never raises."""
+    if not isinstance(pricing, dict) or not isinstance(model, str) or not model:
+        return None
+    entry = pricing.get(model)
+    if isinstance(entry, dict):
+        return entry
+    lowered = model.lower()
+    best, found = None, None
+    for key, value in pricing.items():
+        name = str(key).lower()
+        if (isinstance(value, dict) and lowered.startswith(name) and len(lowered) > len(name)
+                and lowered[len(name)] in "-:@." and (best is None or len(name) > len(best))):
+            best, found = name, value
+    return found
+
+
 # --- Triage block: the machine-checked answer of a triage session --------------------------------------------------
 # One parser and one validator, shared by the reasoning tick (which decides whether a conclusion is accepted) and by
 # GuardianTriageResult (which repairs, merges and writes the result), so the two can never disagree about what a
@@ -3543,13 +3563,15 @@ def guardian_tiercheck_write_active(key, loaded):
     return {"ok": True, "error": None, "data": merged}
 
 
-def guardian_tiercheck_catalog_sync(settings, response, loaded):
+def guardian_tiercheck_catalog_sync(settings, response, loaded, read_only=False):
     """The catalogue step of the preflight: look the model up and, when the rules allow, write a documented
     record. Never raises (fail-open): a problem becomes a warning.
 
     :param settings: The raw `guardian_settings` dict.
     :param response: The integration-search response, or ``None``.
     :param loaded: :func:`guardian_tiercheck_profile_read`'s result.
+    :param read_only: Work out the profile the step would write, use it for the numbers, and save nothing. The action is
+        then ``"none"`` and the lines about a written profile are left out.
     :return: ``{"action": "written" | "activated" | "none" | "failed", "reason", "model_id", "lines": [str],
         "warnings": [str], "plist": the profile dict as it stands now}``.
     """
@@ -3566,6 +3588,14 @@ def guardian_tiercheck_catalog_sync(settings, response, loaded):
         plan = guardian_tiercheck_documented_plan(catalog, provider, loaded["data"], settings)
         out["reason"], out["model_id"] = plan["reason"], plan["model_id"]
         out["lines"] = list(plan["lines"])
+        if read_only and plan["action"] in ("activate", "write"):
+            merged = dict(loaded["data"])
+            profiles = dict(merged["profiles"]) if isinstance(merged.get("profiles"), dict) else {}
+            if plan["action"] == "write":
+                profiles[plan["key"]] = plan["record"]
+            merged["profiles"], merged["active"] = profiles, plan["key"]
+            out["plist"], out["lines"] = merged, []
+            return out
         if plan["action"] == "activate":
             switched = guardian_tiercheck_write_active(plan["key"], loaded)
             if not switched["ok"]:
@@ -3672,7 +3702,7 @@ def guardian_tiercheck_routed_run(settings, response, loaded, model):
     }
 
 
-def guardian_tiercheck_run(model=None):
+def guardian_tiercheck_run(model=None, read_only=False):
     """Resolve the run's model numbers, snapshot them into context and collect the warnings.
 
     With ``model`` (the investigation model the routing chose) that differs from the instance's configured one, the
@@ -3681,6 +3711,9 @@ def guardian_tiercheck_run(model=None):
 
     Before it resolves, the model catalogue step may write a ``documented`` profile record for a known model
     (see :func:`guardian_tiercheck_catalog_sync`); the numbers are then resolved exactly as they always were.
+
+    ``read_only`` (the health check uses it) resolves the same numbers but never writes ``guardian_model_profile``: the
+    documented profile the catalogue step would have saved is used in memory only.
 
     :return: ``{"tier", "tier_source", "max_input_tokens", "max_tool_def_tokens", "limits", "mismatch": bool, "warning": str or
         None, "profile_age_days": int or None, "profile_source": str or None, "lines": [str], "warnings":
@@ -3692,7 +3725,7 @@ def guardian_tiercheck_run(model=None):
     requested = (model or "").strip()
     if requested and requested.lower() != str((guardian_tiercheck_enabled_provider(response) or {}).get("configured_model") or "").lower():
         return guardian_tiercheck_routed_run(settings, response, loaded, requested)
-    sync = guardian_tiercheck_catalog_sync(settings, response, loaded)
+    sync = guardian_tiercheck_catalog_sync(settings, response, loaded, read_only=read_only)
     configured = sync["configured_model"] or (guardian_tiercheck_enabled_provider(response) or {}).get("configured_model")
     if loaded["ok"]:
         # The model's size comes from the catalogue as it is NOW (found by the active record's catalogue id,
@@ -3764,7 +3797,8 @@ def guardian_tiercheck_run(model=None):
 
 def main():
     try:
-        result = guardian_tiercheck_run(demisto.args().get("model"))
+        args = demisto.args()
+        result = guardian_tiercheck_run(args.get("model"), read_only=argToBoolean(args.get("read_only") or "false"))
     except Exception as ex:  # a preflight check must never surface a traceback
         return_error("GuardianModelProfileCheck failed unexpectedly: {}".format(ex))
         return
