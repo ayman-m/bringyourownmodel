@@ -678,3 +678,22 @@ def test_main_calls_return_error_on_failure(monkeypatch):
 
     assert errors
     assert "NEEDS_CONTEXT" in errors[0]
+
+
+def test_write_accepts_warning_status(monkeypatch):
+    """"warning" is the status of the `verdict_format_violation` and `triage_format_violation` rows: it happened and
+    needs a look, but it is not a failed call."""
+    _install_happy_path(monkeypatch)
+
+    result = gaw.guardian_audit_write(action="verdict_format_violation", status="warning")
+
+    assert result["ok"] is True
+    assert result["data"]["row"]["status"] == "warning"
+
+
+def test_the_yml_lists_the_warning_status():
+    import pathlib
+    import yaml
+    doc = yaml.safe_load((pathlib.Path(__file__).parent / "GuardianAuditWrite.yml").read_text())
+    status = next(a for a in doc["args"] if a["name"] == "status")
+    assert "warning" in status["predefined"] and "warning" in status["description"]

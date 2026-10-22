@@ -168,6 +168,17 @@ outputs:
 - contextPath: Guardian.Loop.verdict.summary
   description: "The one-line rationale."
   type: String
+- contextPath: Guardian.Loop.verdict.source
+  description: >-
+    Where the verdict came from, when it was not the model's own verdict block: `extracted` (recovered from the
+    conclusion by a structured-output call) or `unstructured` (the Inconclusive placeholder recorded when the model
+    returned no usable verdict). Absent for the model's own verdict.
+  type: String
+- contextPath: Guardian.Loop.format_violation
+  description: >-
+    Set when the model did not return the required verdict format: `stage` (`verdict`), `reason` (`no_conclusion`,
+    `extraction_failed`, `label_not_in_text` or `extraction_error`) and `tick`. Absent otherwise.
+  type: Unknown
 - contextPath: Guardian.Loop.triage_block
   description: >-
     Triage runs only. The validated triage block parsed from the conclusion (severity, investigation_type,

@@ -401,3 +401,12 @@ def test_main_unexpected_exception_calls_return_error(monkeypatch):
     geh.main()
 
     assert "kaboom" in called["msg"]
+
+
+def test_build_case_skips_the_format_violation_placeholder():
+    incident = _incident("300", verdict="Inconclusive")
+    incident["CustomFields"]["guardianblastradius"] = "[Format violation: no verdict block] The model answered in chat instead."
+    case, reason = geh.guardian_eval_harvest_build_case(incident)
+    assert case is None and "format-violation placeholder" in reason
+    incident["CustomFields"]["guardianblastradius"] = "The model's own Inconclusive summary."
+    assert geh.guardian_eval_harvest_build_case(incident)[0]["expected_verdict"] == "Inconclusive"

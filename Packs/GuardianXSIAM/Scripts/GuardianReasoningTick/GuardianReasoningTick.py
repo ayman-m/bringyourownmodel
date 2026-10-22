@@ -7524,6 +7524,8 @@ def guardian_tick_write_parsed_verdict(parsed, incident_id, source=None, loop_st
         if parsed.get("kind"):
             loop_state["verdict"]["kind"] = parsed["kind"]
             loop_state["verdict"]["priority"] = parsed.get("priority")
+        if source:
+            loop_state["verdict"]["source"] = source
         loop_state["verdict_save"] = {"status": save_status, "reason": save_reason}
     if save_status != "ok":
         verdict_detail["fields"] = save_status
@@ -7639,6 +7641,78 @@ def guardian_tick_extract_verdict(conclusion, mode="verdict"):
     return parsed, turns
 
 
+#: A run whose final answer has no usable verdict still records what the model said. The verdict is Inconclusive with
+#: confidence 0, the summary is the model's own words behind this marker (so a reader of the issue field alone, such as
+#: the eval harvest, can tell the placeholder from a verdict), and the audit row's source is ``"unstructured"``.
+GUARDIAN_UNSTRUCTURED_SOURCE = "unstructured"
+GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER = "[Format violation: no verdict block] "
+GUARDIAN_UNSTRUCTURED_NO_CONCLUSION_TEXT = "The model returned no conclusion text, so there is nothing to record."
+GUARDIAN_FORMAT_VIOLATION_ACTION = "verdict_format_violation"
+GUARDIAN_UNSTRUCTURED_REASON_TEXT = {
+    "no_conclusion": "the final answer contains no written conclusion to take a verdict from",
+    "extraction_failed": "structured extraction found no valid verdict in the conclusion",
+    "label_not_in_text": "the extracted verdict is not stated in the conclusion",
+    "extraction_error": "the verdict extraction call failed with an error",
+}
+
+
+def guardian_tick_unstructured_parsed(prose, raw_answer):
+    """The Inconclusive verdict for an answer without a usable verdict, validated like any verdict. The summary is the
+    first non-empty of the written prose, the raw answer and a fixed sentence, behind the marker, cut to the field
+    limit, with secrets masked."""
+    limit = GUARDIAN_BLASTRADIUS_MAXLEN - len(GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER)
+    for candidate in (prose, raw_answer, GUARDIAN_UNSTRUCTURED_NO_CONCLUSION_TEXT):
+        text = " ".join(str(candidate or "").split())
+        if not text:
+            continue
+        text = " ".join(guardian_scrub_secrets(text, keep_identifiers=True).split())
+        if len(text) > limit:
+            text = text[:limit - 1].rstrip() + "\u2026"
+        parsed = guardian_tick_validate_verdict({
+            "verdict": "Inconclusive", "confidence": 0, "techniques": [],
+            "summary": GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER + text,
+        })
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def guardian_tick_record_unstructured_outcome(conclusion_prose, raw_answer, incident_id, loop_state, reason, tick=None, detail=""):
+    """The model broke the output format, so record its outcome and make the violation visible. Writes an
+    Inconclusive verdict (confidence 0, no techniques, the model's own words as the summary) through the same path as
+    any verdict, with ``source="unstructured"``; sets ``loop_state["format_violation"]``; writes one
+    ``verdict_format_violation`` audit row. `reason` is one of ``no_conclusion``, ``extraction_failed``,
+    ``label_not_in_text``, ``extraction_error``. Returns the narration note. Never raises."""
+    reason_text = GUARDIAN_UNSTRUCTURED_REASON_TEXT.get(reason, reason)
+    if detail:
+        reason_text = "{} ({})".format(reason_text, detail)
+    recorded = False
+    try:
+        parsed = guardian_tick_unstructured_parsed(conclusion_prose, raw_answer)
+        if parsed is not None:
+            recorded = guardian_tick_write_parsed_verdict(
+                parsed, incident_id, source=GUARDIAN_UNSTRUCTURED_SOURCE, loop_state=loop_state)
+    except Exception as exc:
+        demisto.error("unstructured outcome could not be recorded: {}".format(exc))
+    if isinstance(loop_state, dict):
+        loop_state["format_violation"] = {"stage": "verdict", "reason": reason, "tick": tick}
+    try:
+        audit = json.dumps({"stage": "verdict", "reason": reason, "tick": tick, "recorded": bool(recorded)})
+        row = {"action": GUARDIAN_FORMAT_VIOLATION_ACTION, "target": str(incident_id), "status": "warning", "detail": audit}
+        written = guardian_execute("GuardianAuditWrite", row)
+        if isinstance(written, dict) and written.get("ok") is False:
+            # An older GuardianAuditWrite does not know the status "warning"; the row must not be lost.
+            guardian_execute("GuardianAuditWrite", dict(row, status="error"))
+    except Exception as exc:
+        demisto.debug("GuardianReasoningTick: could not write the format violation audit row: {}".format(exc))
+    if not recorded:
+        return ("\n\n(The model did not return the required verdict format; the outcome could not be recorded, "
+                "see the error log. Reason: {}.)").format(reason_text)
+    note = ("\n\n(The model did not return the required verdict format; recorded as Inconclusive (confidence 0) "
+            "with the model's own conclusion. Reason: {}.)").format(reason_text)
+    return note + guardian_tick_verdict_save_note(loop_state)
+
+
 def guardian_tick_verdict_extraction_fallback(conclusion, incident_id, run_id, loop_state, trigger, tick):
     """Run :func:`guardian_tick_extract_verdict`, charge its call(s), and write the verdict with
     ``source="extracted"``. Returns a one-line narration note. Never raises.
@@ -7646,26 +7720,36 @@ def guardian_tick_verdict_extraction_fallback(conclusion, incident_id, run_id, l
     Two guards, because a wrong extracted verdict is worse than none (a false Benign hides a real
     threat): extraction runs only on a written conclusion (see
     :data:`GUARDIAN_VERDICT_EXTRACTION_MIN_PROSE_CHARS`), and the extracted label must itself appear
-    in that prose -- a verdict the model never wrote down is discarded, not recorded."""
+    in that prose -- a verdict the model never wrote down is discarded, not recorded. When a guard (or the
+    extraction itself) fails, the model's outcome is still recorded as an Inconclusive placeholder with a
+    format violation (:func:`guardian_tick_record_unstructured_outcome`)."""
+    prose = ""
+    wrote = False
     try:
         prose = guardian_tick_conclusion_prose(conclusion)
         if len(prose) < GUARDIAN_VERDICT_EXTRACTION_MIN_PROSE_CHARS:
-            return "\n\n(No verdict block, and the final answer contains no written conclusion to take one from -- none recorded.)"
+            return guardian_tick_record_unstructured_outcome(prose, conclusion, incident_id, loop_state, "no_conclusion", tick)
         mode = loop_state.get("assessment_mode") if isinstance(loop_state, dict) else None
         parsed, turns = guardian_tick_extract_verdict(prose, "posture" if mode == "posture" else "verdict")
         for turn in turns:
             guardian_tick_charge_turn_cost(turn, run_id, loop_state, trigger, tick_count=tick + 1)
         if parsed is None:
-            return "\n\n(No verdict block, and structured extraction found no valid verdict in the conclusion -- none recorded.)"
+            return guardian_tick_record_unstructured_outcome(prose, conclusion, incident_id, loop_state, "extraction_failed", tick)
         if not re.search(r"\b{}\b".format(parsed["verdict"].lower()), prose.lower()):
-            return "\n\n(No verdict block; the extracted verdict {} is not stated in the conclusion, so none was recorded.)".format(
-                parsed["verdict"])
-        guardian_tick_write_parsed_verdict(parsed, incident_id, source="extracted", loop_state=loop_state)
+            return guardian_tick_record_unstructured_outcome(
+                prose, conclusion, incident_id, loop_state, "label_not_in_text", tick,
+                detail="the extracted verdict was {}".format(parsed["verdict"]))
+        wrote = guardian_tick_write_parsed_verdict(parsed, incident_id, source="extracted", loop_state=loop_state)
         return "\n\n(No verdict block in the final answer; recorded verdict **{}** ({}) extracted from the conclusion.){}".format(
             parsed["verdict"], parsed["confidence"], guardian_tick_verdict_save_note(loop_state))
     except Exception as exc:
         demisto.error("verdict extraction fallback failed: {}".format(exc))
-        return ""
+        if wrote:
+            return ""
+        try:
+            return guardian_tick_record_unstructured_outcome(prose, conclusion, incident_id, loop_state, "extraction_error", tick)
+        except Exception:
+            return ""
 
 
 #: A triage run stores its conclusion text in `Guardian.Loop.conclusion` (cut to this many characters) and the parsed
@@ -8176,7 +8260,7 @@ def guardian_reasoning_tick_run(args):
                         conclusion += held_note
                 if _forced_wrote:
                     conclusion += guardian_tick_verdict_save_note(loop_state)
-                if not _forced_wrote and incident_id_for_merge and len(conclusion.strip()) > 80:
+                if not _forced_wrote and incident_id_for_merge:
                     conclusion += guardian_tick_verdict_extraction_fallback(
                         conclusion, incident_id_for_merge, run_id, loop_state, trigger, tick)
         elif final["kind"] == "content_filter":
@@ -9080,9 +9164,10 @@ def guardian_reasoning_tick_run(args):
         )
 
     extraction_note = ""
-    if not wrote_verdict and _looks_like_a_real_conclusion and incident_id_for_merge:
+    if not wrote_verdict and incident_id_for_merge:
+        # The model's own reply, not `conclusion`: that has Guardian's gate notes (or the no-content placeholder) added.
         extraction_note = guardian_tick_verdict_extraction_fallback(
-            conclusion, incident_id_for_merge, run_id, loop_state, trigger, tick)
+            assistant_message.get("content") or "", incident_id_for_merge, run_id, loop_state, trigger, tick)
 
     conclusion = guardian_tick_with_held_conclusion(loop_state, conclusion)
     loop_state["status"] = "done"
@@ -9122,8 +9207,8 @@ def guardian_reasoning_tick_run(args):
 #: The run-level fields a concluded run returns as its command outputs (merged into `Guardian.Loop` by `run_id`).
 #: The transcript, the executed-call map and the conclusion text stay in the context only: they are large.
 GUARDIAN_LOOP_CONTEXT_PATH = "{}.{}".format(GUARDIAN_CONTEXT_NAMESPACE, GUARDIAN_LOOP_CONTEXT_KEY)
-GUARDIAN_TICK_OUTPUT_FIELDS = ("run_id", "status", "tick", "assessment_mode", "skill", "cost_usd", "cost_tokens_total")
-GUARDIAN_TICK_OUTPUT_VERDICT_FIELDS = ("verdict", "confidence", "techniques", "summary", "kind", "priority")
+GUARDIAN_TICK_OUTPUT_FIELDS = ("run_id", "status", "tick", "assessment_mode", "skill", "cost_usd", "cost_tokens_total", "format_violation")
+GUARDIAN_TICK_OUTPUT_VERDICT_FIELDS = ("verdict", "confidence", "techniques", "summary", "kind", "priority", "source")
 
 
 def guardian_tick_concluding_outputs(loop_state):

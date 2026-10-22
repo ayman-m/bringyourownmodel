@@ -80,6 +80,15 @@ outputs:
 - contextPath: Guardian.Triage.input_sources
   description: "For each input: issue, model, 'model UPN with the same account name (domain matched)' or '(domain not matched)' (the issue's DOMAIN\\account was replaced by the model's user principal name for the same account name; 'domain matched' means the UPN's domain contains the DOMAIN) or empty."
   type: Unknown
+- contextPath: Guardian.Triage.format_violation
+  description: "Empty when the model returned a valid triage block (or the repair call recovered one). Otherwise why the result is a fallback: no_usable_conclusion (the session left no conclusion text), repair_call_failed (the repair call errored) or repair_output_invalid (the repair reply was not a valid block). A fallback never changes severity."
+  type: String
+- contextPath: Guardian.Triage.raw_answer
+  description: "On a format violation, the model session's own conclusion text (secrets masked, cut to 2000 characters). Empty otherwise."
+  type: String
+- contextPath: Guardian.Triage.repair_answer
+  description: "On a format violation, the repair call's reply when it gave one that was not a valid block (secrets masked, cut to 2000 characters). Empty otherwise."
+  type: String
 script: '-'
 system: false
 tags: []

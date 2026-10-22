@@ -5483,11 +5483,43 @@ def test_verdict_write_failure_is_not_audited_as_ok(monkeypatch):
     assert "REST unavailable" in detail["reason"]
 
 
-def test_extraction_that_finds_no_valid_verdict_writes_nothing(monkeypatch):
-    outcome, llm, verdict_writes, _ = _run_step9_with_retry_spent(
-        monkeypatch, [_completion(content=_prose_conclusion()), _completion(content='{"verdict": "Unclear"}')])
+def _assert_unstructured_record(outcome, verdict_writes, audits, reason, summary_contains):
+    """The model broke the verdict format: an Inconclusive/0 placeholder with the model's own words, a distinct source,
+    the format violation on the loop state, one audit row for it, and a plain note in the narration."""
     assert outcome["reschedule"] is False
-    assert verdict_writes == []
+    assert len(verdict_writes) == 1
+    write = verdict_writes[0]
+    assert write["guardianverdict"] == "Inconclusive" and write["guardianconfidence"] == 0
+    assert write["guardianattacktechniques"] == []
+    assert write["guardianblastradius"].startswith(tick.GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER)
+    assert summary_contains in write["guardianblastradius"]
+    assert len(write["guardianblastradius"]) <= tick.GUARDIAN_BLASTRADIUS_MAXLEN
+    verdict_audit = [a for a in audits if a.get("action") == "verdict_write"]
+    assert len(verdict_audit) == 1 and json.loads(verdict_audit[0]["detail"])["source"] == "unstructured"
+    violation = [a for a in audits if a.get("action") == "verdict_format_violation"]
+    assert len(violation) == 1 and violation[0]["status"] == "warning" and violation[0]["target"] == "999"
+    assert json.loads(violation[0]["detail"])["reason"] == reason
+    loop = outcome["loop_state"]
+    assert loop["format_violation"] == {"stage": "verdict", "reason": reason, "tick": loop["format_violation"]["tick"]}
+    assert isinstance(loop["format_violation"]["tick"], int)
+    assert loop["verdict"]["verdict"] == "Inconclusive" and loop["verdict"]["source"] == "unstructured"
+    assert "did not return the required verdict format; recorded as Inconclusive (confidence 0)" in outcome["narration"]
+    assert "with the model's own conclusion" in outcome["narration"]
+
+
+def test_extraction_that_finds_no_valid_verdict_records_the_unstructured_outcome(monkeypatch):
+    outcome, llm, verdict_writes, audits = _run_step9_with_retry_spent(
+        monkeypatch, [_completion(content=_prose_conclusion()), _completion(content='{"verdict": "Unclear"}')])
+    _assert_unstructured_record(outcome, verdict_writes, audits, "extraction_failed", "confirmed lateral movement")
+    assert "structured extraction found no valid verdict" in outcome["narration"]
+
+
+def test_a_provider_that_ignores_response_format_still_leaves_a_visible_outcome(monkeypatch):
+    """Live shape: the extraction call is answered conversationally, not with the JSON object."""
+    chatty = "Sure! Here is a summary of the analyst's conclusion in plain words: the host was compromised."
+    outcome, llm, verdict_writes, audits = _run_step9_with_retry_spent(
+        monkeypatch, [_completion(content=_prose_conclusion()), _completion(content=chatty)])
+    _assert_unstructured_record(outcome, verdict_writes, audits, "extraction_failed", "PsExec")
 
 
 def test_a_valid_verdict_block_never_triggers_extraction(monkeypatch):
@@ -5512,22 +5544,219 @@ def _echoed_audit_conclusion():
 def test_no_extraction_from_an_answer_with_no_written_conclusion(monkeypatch):
     """The regurgitated-record 'conclusion' that extraction once turned into Benign/100 on a
     confirmed C2 case: no extraction call may be made, and nothing may be written."""
-    outcome, llm, verdict_writes, _ = _run_step9_with_retry_spent(
+    outcome, llm, verdict_writes, _audits = _run_step9_with_retry_spent(
         monkeypatch, [_completion(content=_echoed_audit_conclusion()),
                       _completion(content=json.dumps({"verdict": "Benign", "confidence": 100, "techniques": [], "summary": _VALID_SUMMARY}))])
     assert len(llm.calls) == 1  # the final turn only -- no extraction call
-    assert verdict_writes == []
+    _assert_unstructured_record(outcome, verdict_writes, _audits, "no_conclusion", "Guardian Case Note")
     assert "no written conclusion" in outcome["narration"]
 
 
 def test_an_extracted_verdict_the_conclusion_never_states_is_discarded(monkeypatch):
     """The prose says malicious; an extraction that answers Benign is not grounded and is dropped."""
-    outcome, llm, verdict_writes, _ = _run_step9_with_retry_spent(
+    outcome, llm, verdict_writes, audits = _run_step9_with_retry_spent(
         monkeypatch, [_completion(content=_prose_conclusion()),
                       _completion(content=json.dumps({"verdict": "Benign", "confidence": 95, "techniques": [], "summary": _VALID_SUMMARY}))])
     assert len(llm.calls) == 2
-    assert verdict_writes == []
+    _assert_unstructured_record(outcome, verdict_writes, audits, "label_not_in_text", "confirmed lateral movement")
     assert "not stated in the conclusion" in outcome["narration"]
+    assert verdict_writes[0]["guardianverdict"] != "Benign"  # the ungrounded label is never recorded
+
+
+def test_a_forced_conclusion_without_a_verdict_block_records_the_unstructured_outcome(monkeypatch):
+    writes = []
+    monkeypatch.setattr(tick, "guardian_set_incident_fields", lambda iid, fields: writes.append(fields) or {"ok": True, "data": {}})
+    ctx, llm, audits = _fields_install(
+        monkeypatch,
+        [_completion(content=_prose_conclusion()), _completion(content="Sure, here is the summary.")],
+        settings={"MAX_TICKS": 1, "tick_cadence_seconds": 12, "batch_cap": 25},
+    )
+
+    outcome = tick.guardian_reasoning_tick_run({"prompt": "Investigate 8.8.8.8"})
+
+    assert outcome["reschedule"] is False and "tick ceiling" in outcome["narration"]
+    verdict_writes = [w for w in writes if "guardianverdict" in w]
+    _assert_unstructured_record(outcome, verdict_writes, audits, "extraction_failed", "confirmed lateral movement")
+
+
+def _install_spent_gate_run(monkeypatch, completions, gaps):
+    """A concluding run whose gate retry is spent, so the gate's own note is added to the conclusion."""
+    writes, audits = [], []
+    monkeypatch.setattr(tick, "guardian_set_incident_fields", lambda iid, fields: writes.append(fields) or {"ok": True, "data": {}})
+    monkeypatch.setattr(tick, "guardian_tick_conclusion_gaps", lambda *a, **k: gaps)
+    ctx = _install(monkeypatch, incident_id="999", command_handlers={
+        "GuardianPromptBuilder": _prompt_builder_handler(), "GuardianToolCatalogBuilder": _catalog_builder_handler([]),
+        "guardian-llm-chat": _llm_handler_sequence(completions),
+        "GuardianAuditWrite": lambda args: audits.append(args) or [{"Type": 1, "Contents": "ok"}]})
+    ctx["Guardian"] = {"Loop": {
+        "messages": [{"role": "system", "content": "x"}, {"role": "user", "content": "y"}], "tick": 3, "run_id": "999",
+        "status": "running", "consec_fails": 0, "empty_turns": 0, "no_verdict_fails": tick.GUARDIAN_NO_VERDICT_RETRY_LIMIT,
+        "conclusion_gap_retries": tick.GUARDIAN_CONCLUSION_GAP_RETRY_LIMIT,
+        "pending": None, "pending_ticks": 0, "dropped_count": 0}, "ToolCatalog": []}
+    outcome = tick.guardian_reasoning_tick_run({"prompt": "Investigate the case"})
+    return outcome, [w for w in writes if "guardianverdict" in w], audits
+
+
+def test_the_recorded_summary_holds_the_models_words_not_guardians_own_gate_note(monkeypatch):
+    outcome, verdict_writes, audits = _install_spent_gate_run(
+        monkeypatch, [_completion(content=_prose_conclusion()), _completion(content="chatty")],
+        (["write the case note (GuardianCaseNote)"], False))
+    _assert_unstructured_record(outcome, verdict_writes, audits, "extraction_failed", "confirmed lateral movement")
+    assert "Guardian note" not in verdict_writes[0]["guardianblastradius"]
+    assert "the run ended without" not in verdict_writes[0]["guardianblastradius"]
+    assert "Guardian note: the run ended without" in outcome["narration"]  # the gate note still reaches the narration
+
+
+def test_an_empty_reply_is_recorded_with_the_fixed_sentence(monkeypatch):
+    writes, audits = [], []
+    monkeypatch.setattr(tick, "guardian_set_incident_fields", lambda iid, fields: writes.append(fields) or {"ok": True, "data": {}})
+    monkeypatch.setattr(tick, "guardian_execute", lambda command, args: audits.append(args) or {"ok": True, "data": [], "error": None})
+    loop = {}
+    note = tick.guardian_tick_verdict_extraction_fallback("", "42", "r1", loop, "trigger", 1)
+    assert writes[0]["guardianblastradius"] == tick.GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER + tick.GUARDIAN_UNSTRUCTURED_NO_CONCLUSION_TEXT
+    assert loop["format_violation"]["reason"] == "no_conclusion" and "did not return the required verdict format" in note
+
+
+def test_a_recording_that_raises_is_not_narrated_as_recorded(monkeypatch):
+    errors = []
+
+    def boom(*args, **kwargs):
+        monkeypatch.setattr(tick.demisto, "error", lambda msg: errors.append(msg))  # _install resets it first
+        raise TypeError("scrub_secrets() got an unexpected keyword argument")
+
+    monkeypatch.setattr(tick, "guardian_scrub_secrets", boom)
+    outcome, llm, verdict_writes, audits = _run_step9_with_retry_spent(
+        monkeypatch, [_completion(content=_prose_conclusion()), _completion(content="chatty")])
+    assert verdict_writes == []  # nothing was written, so nothing is claimed
+    assert "could not be recorded" in outcome["narration"] and "recorded as Inconclusive" not in outcome["narration"]
+    assert outcome["loop_state"]["format_violation"]["reason"] == "extraction_failed"
+    violation = [a for a in audits if a.get("action") == "verdict_format_violation"]
+    assert len(violation) == 1 and json.loads(violation[0]["detail"])["recorded"] is False
+    assert any("could not be recorded" in e for e in errors)
+
+
+def test_a_short_answer_with_no_verdict_block_is_recorded_too(monkeypatch):
+    outcome, llm, verdict_writes, audits = _run_step9_with_retry_spent(monkeypatch, [_completion(content="No threat found.")])
+    assert len(llm.calls) == 1
+    _assert_unstructured_record(outcome, verdict_writes, audits, "no_conclusion", "No threat found.")
+
+
+def test_an_extraction_call_that_raises_records_the_unstructured_outcome_without_hiding_the_error(monkeypatch):
+    errors = []
+
+    def boom(conclusion, mode="verdict"):
+        monkeypatch.setattr(tick.demisto, "error", lambda msg: errors.append(msg))  # _install resets it first
+        raise RuntimeError("provider exploded")
+
+    monkeypatch.setattr(tick, "guardian_tick_extract_verdict", boom)
+    outcome, llm, verdict_writes, audits = _run_step9_with_retry_spent(monkeypatch, [_completion(content=_prose_conclusion())])
+    _assert_unstructured_record(outcome, verdict_writes, audits, "extraction_error", "confirmed lateral movement")
+    assert any("provider exploded" in e for e in errors)
+
+
+def test_an_exception_after_a_valid_extracted_verdict_never_replaces_it(monkeypatch):
+    extracted = json.dumps({"verdict": "Malicious", "confidence": 90, "techniques": [], "summary": _VALID_SUMMARY})
+
+    def broken_note(loop_state):
+        raise RuntimeError("note formatting failed")
+
+    monkeypatch.setattr(tick, "guardian_tick_verdict_save_note", broken_note)
+    outcome, llm, verdict_writes, audits = _run_step9_with_retry_spent(
+        monkeypatch, [_completion(content=_prose_conclusion()), _completion(content=extracted)])
+    assert [w["guardianverdict"] for w in verdict_writes] == ["Malicious"]
+    assert not [a for a in audits if a.get("action") == "verdict_format_violation"]
+    assert "format_violation" not in outcome["loop_state"]
+
+
+def test_a_valid_extraction_is_not_a_format_violation_of_the_verdict_stage(monkeypatch):
+    extracted = json.dumps({"verdict": "Malicious", "confidence": 90, "techniques": [], "summary": _VALID_SUMMARY})
+    outcome, _llm, verdict_writes, audits = _run_step9_with_retry_spent(
+        monkeypatch, [_completion(content=_prose_conclusion()), _completion(content=extracted)])
+    assert [w["guardianverdict"] for w in verdict_writes] == ["Malicious"]
+    assert not [a for a in audits if a.get("action") == "verdict_format_violation"]
+    assert "format_violation" not in outcome["loop_state"]
+
+
+def test_the_violation_audit_row_falls_back_to_error_when_the_audit_writer_rejects_warning(monkeypatch):
+    rows = []
+
+    def audit(args):
+        rows.append(dict(args))
+        if args.get("status") == "warning":
+            return [{"Type": 4, "Contents": "NEEDS_CONTEXT: 'status' must be one of ('ok', 'error')"}]
+        return [{"Type": 1, "Contents": "ok"}]
+
+    monkeypatch.setattr(tick, "guardian_set_incident_fields", lambda iid, fields: {"ok": True, "data": {}})
+    ctx = _install(monkeypatch, command_handlers={
+        "GuardianPromptBuilder": _prompt_builder_handler(), "GuardianToolCatalogBuilder": _catalog_builder_handler([]),
+        "guardian-llm-chat": _llm_handler_sequence([_completion(content=_prose_conclusion()), _completion(content="chatty")]),
+        "GuardianAuditWrite": audit})
+    ctx["Guardian"] = {"Loop": {
+        "messages": [{"role": "system", "content": "x"}, {"role": "user", "content": "y"}], "tick": 3, "run_id": "999",
+        "status": "running", "consec_fails": 0, "empty_turns": 0, "no_verdict_fails": tick.GUARDIAN_NO_VERDICT_RETRY_LIMIT,
+        "pending": None, "pending_ticks": 0, "dropped_count": 0}, "ToolCatalog": []}
+    tick.guardian_reasoning_tick_run({"prompt": "Investigate the case"})
+    statuses = [r["status"] for r in rows if r.get("action") == "verdict_format_violation"]
+    assert statuses == ["warning", "error"]
+
+
+def test_unstructured_summary_uses_prose_then_the_raw_answer_then_a_fixed_sentence():
+    marker = tick.GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER
+    assert tick.guardian_tick_unstructured_parsed("The host beaconed to a known C2 address.", "raw")["summary"] == (
+        marker + "The host beaconed to a known C2 address.")
+    assert tick.guardian_tick_unstructured_parsed("", "  raw   answer\ntext ")["summary"] == marker + "raw answer text"
+    fixed = tick.guardian_tick_unstructured_parsed("", "   ")
+    assert fixed["summary"] == marker + tick.GUARDIAN_UNSTRUCTURED_NO_CONCLUSION_TEXT
+    assert fixed["verdict"] == "Inconclusive" and fixed["confidence"] == 0 and fixed["techniques"] == []
+    long = tick.guardian_tick_unstructured_parsed("word " * 400, "")
+    assert len(long["summary"]) <= tick.GUARDIAN_BLASTRADIUS_MAXLEN and long["summary"].endswith("\u2026")
+
+
+def test_unstructured_summary_masks_secrets():
+    secret = "hunter2" + "hunter2"
+    sha256 = "a" * 32 + "1" * 32
+    parsed = tick.guardian_tick_unstructured_parsed(
+        "The user pasted password=" + secret + " into the ticket; the dropped file hash is " + sha256 + ".", "")
+    assert secret not in parsed["summary"]
+    assert sha256 in parsed["summary"]  # an indicator the analyst needs is kept
+
+
+def test_unstructured_with_no_text_at_all_still_records_the_fixed_sentence(monkeypatch):
+    audits, writes = [], []
+    monkeypatch.setattr(tick, "guardian_set_incident_fields", lambda iid, fields: writes.append(fields) or {"ok": True, "data": {}})
+    monkeypatch.setattr(tick, "guardian_execute", lambda command, args: audits.append(args) or {"ok": True, "data": [], "error": None})
+    loop = {}
+    note = tick.guardian_tick_record_unstructured_outcome("", "", "42", loop, "no_conclusion", 3)
+    assert tick.GUARDIAN_UNSTRUCTURED_NO_CONCLUSION_TEXT in writes[0]["guardianblastradius"]
+    assert loop["format_violation"] == {"stage": "verdict", "reason": "no_conclusion", "tick": 3}
+    assert "did not return the required verdict format" in note
+
+
+def test_the_unstructured_verdict_is_never_a_model_stated_verdict_for_the_gate_or_the_run_memory():
+    """The calibration gate reads the model's own block (`guardian_tick_parse_verdict_block`), never the written
+    field, and the run memory skips the placeholder."""
+    placeholder = "[Format violation: no verdict block] The host was compromised."
+    assert tick.guardian_tick_parse_verdict_block(placeholder) is None
+    assert tick.GUARDIAN_UNSTRUCTURED_SOURCE not in tick.GUARDIAN_VERDICT_ENUM
+
+
+def test_write_parsed_verdict_keeps_the_source_on_the_loop_state(monkeypatch):
+    monkeypatch.setattr(tick, "guardian_set_incident_fields", lambda iid, fields: {"ok": True, "data": {}})
+    monkeypatch.setattr(tick, "guardian_execute", lambda command, args: {"ok": True, "data": [], "error": None})
+    loop = {}
+    parsed = {"verdict": "Suspicious", "confidence": 70, "techniques": [], "summary": _VALID_SUMMARY}
+    tick.guardian_tick_write_parsed_verdict(parsed, "42", loop_state=loop)
+    assert "source" not in loop["verdict"]
+    tick.guardian_tick_write_parsed_verdict(parsed, "42", source="extracted", loop_state=loop)
+    assert loop["verdict"]["source"] == "extracted"
+
+
+def test_concluding_outputs_carry_the_format_violation_and_the_verdict_source():
+    loop = {"run_id": "r1", "status": "done", "tick": 4, "format_violation": {"stage": "verdict", "reason": "no_conclusion", "tick": 3},
+            "verdict": {"verdict": "Inconclusive", "confidence": 0, "techniques": [], "summary": "s", "source": "unstructured"}}
+    outputs = tick.guardian_tick_concluding_outputs(loop)
+    assert outputs["format_violation"] == {"stage": "verdict", "reason": "no_conclusion", "tick": 3}
+    assert outputs["verdict"]["source"] == "unstructured"
 
 
 def test_conclusion_prose_strips_echoed_records():
@@ -7444,6 +7673,28 @@ def test_posture_extraction_uses_the_posture_prompt(monkeypatch):
     assert parsed["kind"] == "posture" and "Confirmed, Not reproducible" in seen[0]
     parsed, _turns = tick.guardian_tick_extract_verdict("x" * 60, "verdict")
     assert "Malicious, Suspicious, Benign, Inconclusive" in seen[-1]
+
+
+def test_a_posture_run_with_no_usable_block_still_records_the_inconclusive_placeholder(monkeypatch):
+    """A posture run has no neutral assessment, and the posture validator rejects a verdict-shaped dict; the placeholder
+    makes no threat claim, so it goes through the verdict path in every mode."""
+    writes, audits = [], []
+    monkeypatch.setattr(tick, "guardian_set_incident_fields", lambda iid, fields: writes.append(fields) or {"ok": True, "data": {}})
+    monkeypatch.setattr(tick, "guardian_execute", lambda command, args: audits.append(args) or {"ok": True, "data": [], "error": None})
+    monkeypatch.setattr(tick, "guardian_tick_call_llm",
+                        lambda *a, **k: {"kind": "message", "message": {"content": "Sure, the storage account is open."}})
+    monkeypatch.setattr(tick, "guardian_tick_charge_turn_cost", lambda *a, **k: None)
+    loop = {"assessment_mode": "posture"}
+    prose = "The storage account still allows traffic from all networks, so the finding stands and the owner should be told. " * 2
+
+    note = tick.guardian_tick_verdict_extraction_fallback(prose, "42", "r1", loop, "trigger", 2)
+
+    assert writes[0]["guardianverdict"] == "Inconclusive" and writes[0]["guardianconfidence"] == 0
+    assert writes[0]["guardianblastradius"].startswith(tick.GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER)
+    assert loop["format_violation"] == {"stage": "verdict", "reason": "extraction_failed", "tick": 2}
+    assert loop["verdict"]["source"] == "unstructured" and "kind" not in loop["verdict"]
+    assert [a["status"] for a in audits if a.get("action") == "verdict_format_violation"] == ["warning"]
+    assert "did not return the required verdict format" in note
 
 
 # --- review fixes: modes, the condition read, real XQL cost shapes, the capped priority ----------------------

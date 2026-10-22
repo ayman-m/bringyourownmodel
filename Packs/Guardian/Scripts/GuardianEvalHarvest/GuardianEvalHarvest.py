@@ -2813,6 +2813,10 @@ def guardian_strip_issue_section_deep(value, _depth=0):
 #: is just avoiding a wasted write.
 GUARDIAN_EVAL_HARVEST_VALID_VERDICTS = ("Malicious", "Suspicious", "Benign", "Inconclusive")
 
+#: The summary prefix GuardianReasoningTick writes (to `guardianblastradius`) on the Inconclusive placeholder it records
+#: when the model returned no usable verdict block. Such an incident carries no model verdict to use as ground truth.
+GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER = "[Format violation: no verdict block]"
+
 #: How far back each sweep looks for newly-closed cases. Generous relative
 #: to the Job's own cadence (see `Jobs/job-guardianevalharvest.json`) so a
 #: missed/delayed run never silently drops a case -- safe to overlap because
@@ -2889,6 +2893,8 @@ def guardian_eval_harvest_build_case(incident):
         return None, "guardianverdict {!r} is not one of {}".format(
             fields.get("guardianverdict"), GUARDIAN_EVAL_HARVEST_VALID_VERDICTS
         )
+    if str(fields.get("guardianblastradius") or "").startswith(GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER):
+        return None, "the verdict is a format-violation placeholder, not a model verdict"
 
     # Guardian's own details section is the model's earlier answer, never part of a case to replay.
     details = guardian_strip_issue_section(incident.get("details") or "").strip()

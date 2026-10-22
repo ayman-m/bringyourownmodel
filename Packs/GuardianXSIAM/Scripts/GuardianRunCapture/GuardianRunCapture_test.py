@@ -80,3 +80,14 @@ def test_route_and_evidence_survive_an_appended_second_copy(monkeypatch):
     assert cap.guardian_run_capture_ctx_latest("Route") == {"family": "attack_path"}
     assert cap.guardian_run_capture_ctx_latest("Evidence") == {"issue_id": "1"}
     assert cap.guardian_run_capture_ctx_latest("Loop") is None
+
+
+def test_the_unstructured_placeholder_verdict_is_not_remembered(monkeypatch):
+    fake = Fake()
+    monkeypatch.setattr(cap.demisto, "executeCommand", fake)
+    loop = {"verdict": dict(LOOP["verdict"], verdict="Inconclusive", confidence=0, source="unstructured")}
+    assert cap.guardian_run_capture_row("1", loop, ROUTE, "d") is None
+    assert cap.guardian_run_capture_run({"id": "9"}, loop, ROUTE, "d")[0] == "skipped"
+    assert fake.calls == []
+    extracted = {"verdict": dict(LOOP["verdict"], source="extracted")}
+    assert cap.guardian_run_capture_row("1", extracted, ROUTE, "d") is not None

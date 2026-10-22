@@ -2761,6 +2761,9 @@ def guardian_run_capture_row(incident_id, loop, route, today):
     verdict = loop.get("verdict") if isinstance(loop.get("verdict"), dict) else None
     if not verdict or not verdict.get("verdict"):
         return None
+    # The Inconclusive placeholder written when the model broke the verdict format is not an outcome to learn from.
+    if verdict.get("source") == "unstructured":
+        return None
     signals = route.get("signals") if isinstance(route.get("signals"), dict) else {}
     family = str(route.get("family") or "unknown")
     rule_id = " ".join(str(signals.get("rule_id") or "").split())

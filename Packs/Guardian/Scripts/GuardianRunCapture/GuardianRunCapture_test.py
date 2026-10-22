@@ -71,3 +71,14 @@ def test_summary_is_capped_and_flattened():
     loop = {"verdict": {"verdict": "Benign", "confidence": 80, "summary": "word\n" * 400}}
     _key, value, _tags = cap.guardian_run_capture_row("1", loop, {}, "d")
     assert "\n" not in value and len(value) < 450
+
+
+def test_the_unstructured_placeholder_verdict_is_not_remembered(monkeypatch):
+    fake = Fake()
+    monkeypatch.setattr(cap.demisto, "executeCommand", fake)
+    loop = {"verdict": dict(LOOP["verdict"], verdict="Inconclusive", confidence=0, source="unstructured")}
+    assert cap.guardian_run_capture_row("1", loop, ROUTE, "d") is None
+    assert cap.guardian_run_capture_run({"id": "9"}, loop, ROUTE, "d")[0] == "skipped"
+    assert fake.calls == []
+    extracted = {"verdict": dict(LOOP["verdict"], source="extracted")}
+    assert cap.guardian_run_capture_row("1", extracted, ROUTE, "d") is not None

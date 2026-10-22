@@ -1770,3 +1770,14 @@ def test_launch_case_gives_up_after_the_retry_budget(monkeypatch):
     result = ge.guardian_eval_launch_case(ge.GUARDIAN_EVAL_CASES[0])
     assert result["ok"] is False and "after {} attempts".format(ge.GUARDIAN_EVAL_LOOKUP_ATTEMPTS) in result["error"]
     assert lookups["n"] == ge.GUARDIAN_EVAL_LOOKUP_ATTEMPTS
+
+
+def test_score_one_reads_the_format_violation_placeholder_as_no_verdict(monkeypatch):
+    monkeypatch.setattr(ge.demisto, "executeCommand", _multi_command_stub({"getList": _list_contents("[]")}))
+    incident = {
+        "id": "43", "name": "Guardian Eval - cred-phish-okta-clone - abc12345", "runStatus": "completed",
+        "CustomFields": {"guardianverdict": "Inconclusive", "guardianblastradius": "[Format violation: no verdict block] The model answered in chat instead."},
+    }
+    assert ge.guardian_eval_score_one(incident)["data"]["actual_verdict"] is None
+    incident["CustomFields"]["guardianblastradius"] = "The evidence is thin."
+    assert ge.guardian_eval_score_one(incident)["data"]["actual_verdict"] == "Inconclusive"

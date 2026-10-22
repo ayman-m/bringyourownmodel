@@ -14,7 +14,7 @@ args:
   secret: false
 - name: status
   description: 'Outcome of the audited call. One of: ok, error, denied,
-    halted, pending_approval, approved, skipped.'
+    halted, pending_approval, approved, skipped, warning.'
   required: true
   isArray: false
   default: false
@@ -27,6 +27,7 @@ args:
   - halted
   - pending_approval
   - skipped
+  - warning
 - name: duration_ms
   description: Optional call duration in milliseconds.
   required: false
@@ -85,7 +86,7 @@ outputs:
   description: The target of the action, if any.
   type: String
 - contextPath: Guardian.AuditRow.status
-  description: 'One of: ok, error, denied, halted, pending_approval, approved, skipped.'
+  description: 'One of: ok, error, denied, halted, pending_approval, approved, skipped, warning.'
   type: String
 - contextPath: Guardian.AuditRow.duration_ms
   description: Call duration in milliseconds, if provided.

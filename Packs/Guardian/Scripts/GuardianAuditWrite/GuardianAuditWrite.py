@@ -2870,7 +2870,9 @@ GUARDIAN_AUDIT_LIST_NOT_FOUND_HINT = "item not found"
 #: execution are different moments, potentially different ticks, and
 #: conflating them under one status would lose that distinction. A denied
 #: resolution reuses the `"denied"` status (both mean "not executed").
-GUARDIAN_AUDIT_VALID_STATUSES = ("ok", "error", "denied", "halted", "pending_approval", "approved", "skipped")
+#: ``"warning"`` marks something that happened and needs a human look but is not a failed call, such as a model that
+#: broke the required output format (``verdict_format_violation``).
+GUARDIAN_AUDIT_VALID_STATUSES = ("ok", "error", "denied", "halted", "pending_approval", "approved", "skipped", "warning")
 
 #: Context sub-path (under the `Guardian.` namespace `guardian_ctx_read`/
 #: `guardian_ctx_write` apply) holding this incident's own rolling buffer of

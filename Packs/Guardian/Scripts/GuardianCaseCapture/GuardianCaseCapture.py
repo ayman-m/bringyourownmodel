@@ -2782,6 +2782,10 @@ GUARDIAN_CASE_CAPTURE_WINDOW_HOURS = 30
 #: deterministic case-capture row apart from one the model wrote itself.
 GUARDIAN_CASE_CAPTURE_TAG = "case-capture"
 
+#: The summary prefix GuardianReasoningTick writes (to `guardianblastradius`) on the Inconclusive placeholder it records
+#: when the model returned no usable verdict block. The model's raw answer is not a case worth remembering.
+GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER = "[Format violation: no verdict block]"
+
 #: Cap on the free-text summary this script writes per case -- generous
 #: enough for every field below plus the incident name, small enough to
 #: never dominate a `GuardianMemory op=search` result set.
@@ -2891,6 +2895,9 @@ def guardian_case_capture_run():
     captured = []
     errors = []
     for incident in scan_result["data"]:
+        fields = incident.get("CustomFields") if isinstance(incident.get("CustomFields"), dict) else {}
+        if str(fields.get("guardianblastradius") or "").startswith(GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER):
+            continue
         incident_id = str(incident.get("id"))
         closed_date = guardian_case_capture_closed_date(incident)
         key = "case:{}:{}".format(incident_id, closed_date)

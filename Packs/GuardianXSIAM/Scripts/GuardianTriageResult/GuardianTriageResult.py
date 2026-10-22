@@ -13,7 +13,10 @@ trust model prose.
    message, in JSON mode (retried once without `response_format` if the provider rejects it). The answer is
    validated again. Valid: `status = repaired`. The call is charged through `GuardianCostLedger` and audited.
 3. **Fall back.** Still nothing valid (or no conclusion text, or the repair call failed): `status = fallback`, the
-   branch is `other`, and no severity is proposed.
+   branch is `other`, and no severity is proposed. A fallback is the model breaking the required output format, so
+   the record says so (`format_violation`: `no_usable_conclusion`, `repair_call_failed` or `repair_output_invalid`),
+   keeps what the model said (`raw_answer`, the session's conclusion; `repair_answer`, the repair call's reply), both
+   with secrets masked and cut to 2000 characters, and one `triage_format_violation` audit row is written.
 4. **Domain check.** The route decides the issue's domain (a threat detection -> `detection`; a scanner finding ->
    `posture`; anything else -> `unknown`). A type whose `domains` do not include it is sent to `other` with a reason.
    The model is never asked to reconsider: this is the program's call. With an `unknown` domain every typed answer
@@ -32,7 +35,8 @@ Result -- written with `setContext` (a re-run overwrites, it never appends) unde
      analysis: str, recommendations: [str], complexity: low|medium|high or "", domain: str,
      assessment_mode: verdict|posture, sub_playbook: str, skill: str, reason: str,
      inputs: {identity, ip, resource, asset_id, rule_id, host, hash, cve},
-     domain_mismatch: bool, input_sources: {<input>: "issue"|"model"|""}}
+     domain_mismatch: bool, input_sources: {<input>: "issue"|"model"|""},
+     format_violation: str, raw_answer: str, repair_answer: str}
 
 `analysis` (at most 800 characters) and `recommendations` (at most 5, each at most 200 characters) are the block's
 optional keys: empty when the block has none, scrubbed of secrets when it has. `complexity` (low, medium or high) is optional
@@ -2796,6 +2800,10 @@ GUARDIAN_TRIAGE_REPAIR_TRIGGER = "guardian_triage_repair"
 GUARDIAN_TRIAGE_REPAIR_MAX_CHARS = 12000
 #: A conclusion shorter than this is not worth a repair call: there is no analysis in it to take a block from.
 GUARDIAN_TRIAGE_REPAIR_MIN_CHARS = 40
+#: The model's own answer is kept on a fallback record (the session's conclusion and the repair call's reply), each cut to
+#: this many characters, so an analyst can read what the model said instead of the required block.
+GUARDIAN_TRIAGE_RAW_ANSWER_MAX_CHARS = 2000
+GUARDIAN_TRIAGE_FORMAT_VIOLATION_ACTION = "triage_format_violation"
 
 GUARDIAN_TRIAGE_POSTURE_FAMILIES = (
     "misconfiguration", "identity", "vulnerability", "code_risk", "attack_path", "kubernetes_cis",
@@ -3122,11 +3130,17 @@ def guardian_triage_charge(turn, run_id):
 
 
 def guardian_triage_repair(conclusion, table, run_id):
+    """:func:`guardian_triage_repair_call` without the reply: ``(block, note, cost_usd)``."""
+    return guardian_triage_repair_call(conclusion, table, run_id)[:3]
+
+
+def guardian_triage_repair_call(conclusion, table, run_id):
     """Recover a block from the conclusion text with one JSON-mode model call (retried once without
     `response_format` when the provider errors).
 
-    :return: ``(block, note, cost_usd)`` -- `block` is a validated triage block or ``None``; `note` says what
-        happened, for the reason and the audit row.
+    :return: ``(block, note, cost_usd, reply)`` -- `block` is a validated triage block or ``None``; `note` says what
+        happened, for the reason and the audit row; `reply` is the model's answer text when it gave one that was not a
+        valid block (``""`` otherwise).
     """
     messages = [
         {"role": "system", "content": guardian_triage_repair_prompt(table)},
@@ -3143,15 +3157,15 @@ def guardian_triage_repair(conclusion, table, run_id):
         turn = guardian_triage_call_llm(messages)
         cost += guardian_triage_charge(turn, run_id)
     if not turn["ok"]:
-        return None, "repair call failed: {}".format(str(turn["error"])[:200]), cost
+        return None, "repair call failed: {}".format(str(turn["error"])[:200]), cost, ""
     content = turn["content"]
     try:
         block = guardian_triage_validate(json.loads(content), table)
     except (ValueError, TypeError):
         block = guardian_triage_parse_block(content, table)
     if block is None:
-        return None, "repair output was not a valid triage block{}".format(" (retried without JSON mode)" if retried else ""), cost
-    return block, "repair call produced a valid block{}".format(" (after a retry without JSON mode)" if retried else ""), cost
+        return None, "repair output was not a valid triage block{}".format(" (retried without JSON mode)" if retried else ""), cost, content
+    return block, "repair call produced a valid block{}".format(" (after a retry without JSON mode)" if retried else ""), cost, ""
 
 
 # --- the decision -----------------------------------------------------------------------------------------------
@@ -3178,6 +3192,14 @@ def guardian_triage_fallback_summary(reason):
     return "Guardian could not produce a structured triage for this issue ({}). An analyst should review it.".format(reason)[:300]
 
 
+def guardian_triage_keep_answer(text):
+    """The model's answer text for the record: secrets masked (identifiers kept), cut to the limit."""
+    text = guardian_scrub_secrets(str(text or "").strip(), keep_identifiers=True)
+    if len(text) > GUARDIAN_TRIAGE_RAW_ANSWER_MAX_CHARS:
+        text = text[:GUARDIAN_TRIAGE_RAW_ANSWER_MAX_CHARS - 1] + "\u2026"
+    return text
+
+
 def guardian_triage_result_run(incident, route, loop, table, run_id=None, repair=None):
     """Compute the `Guardian.Triage` record. Pure apart from the repair call (`repair` replaces it in tests).
 
@@ -3197,15 +3219,20 @@ def guardian_triage_result_run(incident, route, loop, table, run_id=None, repair
     if block is None and conclusion:
         block = guardian_triage_parse_block(conclusion, table)
     status, reason, repair_note, repair_cost = "structured", "valid triage block from the model session", "", 0.0
+    format_violation, repair_answer = "", ""
     if block is None:
         if len(conclusion.strip()) >= GUARDIAN_TRIAGE_REPAIR_MIN_CHARS:
-            block, repair_note, repair_cost = (repair or guardian_triage_repair)(conclusion, table, run_id)
+            outcome = (repair or guardian_triage_repair_call)(conclusion, table, run_id)
+            block, repair_note, repair_cost = outcome[0], outcome[1], outcome[2]
             if block is not None:
                 status, reason = "repaired", "no valid block in the conclusion; " + repair_note
             else:
                 status, reason = "fallback", "no valid block in the conclusion; " + repair_note
+                repair_answer = outcome[3] if len(outcome) > 3 and isinstance(outcome[3], str) else ""
+                format_violation = "repair_call_failed" if repair_note.startswith("repair call failed") else "repair_output_invalid"
         else:
             status, reason = "fallback", "the triage session left no usable conclusion text"
+            format_violation = "no_usable_conclusion"
 
     domain = guardian_triage_domain(route)
     mismatch = False
@@ -3256,6 +3283,10 @@ def guardian_triage_result_run(incident, route, loop, table, run_id=None, repair
         "inputs": inputs,
         "domain_mismatch": mismatch,
         "input_sources": sources,
+        # A fallback is the model breaking the required output format: say so, and keep what it said.
+        "format_violation": format_violation,
+        "raw_answer": guardian_triage_keep_answer(conclusion) if format_violation else "",
+        "repair_answer": guardian_triage_keep_answer(repair_answer) if format_violation else "",
     }
     return record, repair_note, repair_cost
 
@@ -3280,6 +3311,31 @@ def guardian_triage_audit(record, run_id, repair_note, repair_cost, table_source
         demisto.error("GuardianTriageResult: audit write failed: {}".format(exc))
 
 
+def guardian_triage_audit_violation(record, run_id):
+    """One audit row when the model did not return the required triage block and the result is a fallback. Status
+    ``warning``; an older `GuardianAuditWrite` rejects that status, so the row is written again as ``error``. Never
+    raises."""
+    if not record.get("format_violation"):
+        return
+    try:
+        row = {
+            "action": GUARDIAN_TRIAGE_FORMAT_VIOLATION_ACTION,
+            "target": str(run_id)[:200],
+            "status": "warning",
+            "actor": GUARDIAN_TRIAGE_ACTOR,
+            "run_id": str(run_id),
+            "detail": json.dumps({
+                "stage": "triage", "reason": record["format_violation"], "triage_status": record["status"],
+                "raw_answer": record.get("raw_answer", "")[:500], "repair_answer": record.get("repair_answer", "")[:500],
+            }),
+        }
+        written = guardian_execute("GuardianAuditWrite", row)
+        if isinstance(written, dict) and written.get("ok") is False:
+            guardian_execute("GuardianAuditWrite", dict(row, status="error"))
+    except Exception as exc:  # the audit row must never stop the run
+        demisto.error("GuardianTriageResult: format violation audit write failed: {}".format(exc))
+
+
 def guardian_triage_latest(key):
     """`Guardian.<key>`, or its newest dict when an earlier run appended a second copy and made it a list."""
     value = guardian_ctx_read(key)
@@ -3295,6 +3351,8 @@ def guardian_triage_readable(record):
         "Severity": "{} (was {})".format(record["severity"] or "none", record["original_severity"]),
         "Confidence": record["confidence"], "Sub-playbook": record["sub_playbook"], "Reason": record["reason"][:200],
     }]
+    if record.get("format_violation"):
+        rows[0]["Format violation"] = record["format_violation"]
     return tableToMarkdown("Guardian triage result", rows, headers=list(rows[0]))
 
 
@@ -3311,6 +3369,7 @@ def main():
     # Overwrite, never append: a second run on the same issue would otherwise turn Guardian.Triage into a list.
     demisto.setContext(GUARDIAN_TRIAGE_CONTEXT_PATH, record)
     guardian_triage_audit(record, incident.get("id") or "", repair_note, repair_cost, table_source)
+    guardian_triage_audit_violation(record, incident.get("id") or "")
     return_results(CommandResults(
         readable_output=guardian_triage_readable(record), outputs_prefix=GUARDIAN_TRIAGE_CONTEXT_PATH,
         outputs_key_field="issue_id", outputs=record, raw_response=record))

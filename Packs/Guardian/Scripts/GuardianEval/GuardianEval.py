@@ -2824,6 +2824,11 @@ GUARDIAN_EVAL_CONCLUDED_RUN_STATUSES = ("completed", "failed")
 #: :func:`guardian_eval_compare_runs` possible.
 GUARDIAN_EVAL_RUN_LABEL_FIELD = "guardianevalrunlabel"
 
+#: The summary prefix GuardianReasoningTick writes (to `guardianblastradius`) on the Inconclusive placeholder it records
+#: when the model returned no usable verdict block. A run with that placeholder produced no verdict, so it scores like
+#: a run with none.
+GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER = "[Format violation: no verdict block]"
+
 #: The defined value for a case's OPTIONAL `expected_outcome` field (see
 #: `GUARDIAN_EVAL_CASES`'s own comment). Marks a REGRESSION case whose correct
 #: behavior is that the run does NOT reach a verdict at all -- genuinely different from reaching
@@ -3809,7 +3814,8 @@ def guardian_eval_score_one(incident):
         "run_status": run_status,
         "concluded": concluded,
         "failed": run_status == "failed",
-        "actual_verdict": custom_fields.get("guardianverdict"),
+        "actual_verdict": None if str(custom_fields.get("guardianblastradius") or "").startswith(
+            GUARDIAN_UNSTRUCTURED_SUMMARY_MARKER) else custom_fields.get("guardianverdict"),
         "actual_techniques": guardian_normalize_techniques(custom_fields.get("guardianattacktechniques")),
         "cost_usd": custom_fields.get("guardiancostusd"),
         "tick_count": custom_fields.get("guardiantickcount"),

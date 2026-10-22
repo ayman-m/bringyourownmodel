@@ -268,3 +268,18 @@ def test_main_unexpected_exception_calls_return_error(monkeypatch):
     gcc.main()
 
     assert "kaboom" in called["msg"]
+
+
+def test_run_skips_the_format_violation_placeholder(monkeypatch):
+    placeholder = _incident("600", verdict="Inconclusive", confidence=0, blast_radius="[Format violation: no verdict block] The model answered in chat instead.")
+    incidents = [placeholder, _incident("601")]
+    _rest_post_stub(monkeypatch, {"/incidents/search": lambda body: gcc.guardian_envelope(True, data={"data": incidents})})
+    stored = []
+    _execute_stub(monkeypatch, {
+        "GuardianMemory": lambda args: stored.append(args) or gcc.guardian_envelope(True, data={"created": True}),
+    })
+
+    result = gcc.guardian_case_capture_run()
+
+    assert [c["incident_id"] for c in result["data"]["captured"]] == ["601"]
+    assert [a["scope"] for a in stored] == ["601"]

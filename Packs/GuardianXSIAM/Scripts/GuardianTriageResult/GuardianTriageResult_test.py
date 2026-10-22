@@ -397,7 +397,7 @@ def test_the_record_has_exactly_the_documented_keys():
     assert set(record) == {
         "issue_id", "status", "branch", "investigation_type", "severity", "original_severity", "confidence", "likely_benign",
         "escalate", "summary", "next_step", "analysis", "recommendations", "complexity", "domain", "assessment_mode", "sub_playbook", "skill",
-        "reason", "inputs", "domain_mismatch", "input_sources"}
+        "reason", "inputs", "domain_mismatch", "input_sources", "format_violation", "raw_answer", "repair_answer"}
     json.dumps(record)  # serializable
 
 
@@ -679,3 +679,114 @@ def test_a_data_health_issue_goes_to_other_in_the_routes_mode_whatever_type_the_
     assert record["domain"] == "unknown" and record["branch"] == "other" and record["sub_playbook"] == "GuardianTriageOther"
     assert record["assessment_mode"] == "posture" and record["skill"] == ""
     assert record["domain_mismatch"] is (answer != "other")
+
+
+# --- a fallback is the model breaking the format: it is flagged, the answer is kept, severity is never proposed ---------
+
+def test_a_structured_or_repaired_record_carries_no_format_violation():
+    record, _n, _c = _run({"triage_block": _block()})
+    assert record["format_violation"] == "" and record["raw_answer"] == "" and record["repair_answer"] == ""
+    repaired, _n, _c = _run({"conclusion": LONG_CONCLUSION},
+                           repair=lambda c, t, r: (tri.guardian_triage_validate(_block(), TABLE), "repair call produced a valid block", 0.0))
+    assert repaired["status"] == "repaired" and repaired["format_violation"] == ""
+
+
+def test_a_fallback_after_a_failed_repair_call_keeps_the_conclusion_and_flags_the_violation():
+    record, _n, _c = _run({"conclusion": LONG_CONCLUSION}, repair=lambda c, t, r: (None, "repair call failed: boom", 0.0))
+    assert record["status"] == "fallback" and record["severity"] == ""
+    assert record["format_violation"] == "repair_call_failed"
+    assert record["raw_answer"] == LONG_CONCLUSION.strip() and record["repair_answer"] == ""
+
+
+def test_a_fallback_after_an_invalid_repair_reply_keeps_both_answers():
+    chatty = "Sure! Here is the triage in plain words: it looks like an endpoint threat."
+    record, _n, _c = _run({"conclusion": LONG_CONCLUSION},
+                         repair=lambda c, t, r: (None, "repair output was not a valid triage block", 0.001, chatty))
+    assert record["status"] == "fallback" and record["severity"] == "" and record["branch"] == "other"
+    assert record["format_violation"] == "repair_output_invalid"
+    assert record["raw_answer"] == LONG_CONCLUSION.strip() and record["repair_answer"] == chatty
+
+
+def test_a_session_with_no_usable_conclusion_is_flagged_too():
+    record, _n, _c = _run({"conclusion": "short"})
+    assert record["status"] == "fallback" and record["format_violation"] == "no_usable_conclusion"
+    assert record["raw_answer"] == "short" and record["severity"] == ""
+
+
+def test_the_kept_answers_are_masked_and_bounded():
+    secret = "hunter2" + "hunter2"
+    long = "password=" + secret + " " + "x" * 5000
+    record, _n, _c = _run({"conclusion": long}, repair=lambda c, t, r: (None, "repair output was not a valid triage block", 0.0, long))
+    for key in ("raw_answer", "repair_answer"):
+        assert secret not in record[key] and len(record[key]) <= tri.GUARDIAN_TRIAGE_RAW_ANSWER_MAX_CHARS
+    json.dumps(record)
+
+
+def test_repair_call_returns_the_reply_that_was_not_a_valid_block(monkeypatch):
+    _wire(monkeypatch, [[_llm_reply("I cannot do that, but here is a summary.")]])
+    block, note, _cost, reply = tri.guardian_triage_repair_call(LONG_CONCLUSION, TABLE, "1")
+    assert block is None and "not a valid triage block" in note and reply == "I cannot do that, but here is a summary."
+    _wire(monkeypatch, [[{"Type": 4, "Contents": "boom"}]])
+    assert tri.guardian_triage_repair_call(LONG_CONCLUSION, TABLE, "1")[3] == ""
+    _wire(monkeypatch, [[_llm_reply(json.dumps(_block()))]])
+    assert tri.guardian_triage_repair_call(LONG_CONCLUSION, TABLE, "1")[3] == ""
+
+
+def _run_main(monkeypatch, replies, loop):
+    seen = _wire(monkeypatch, replies)
+    written = {}
+    monkeypatch.setattr(tri.demisto, "context", lambda: {"Guardian": {"Route": POSTURE_ROUTE, "Loop": loop}})
+    monkeypatch.setattr(tri.demisto, "incident", lambda: ISSUE)
+    monkeypatch.setattr(tri.demisto, "setContext", lambda path, value: written.update({path: value}))
+    results = []
+    monkeypatch.setattr(tri, "return_results", lambda r: results.append(r))
+    original = tri.demisto.executeCommand
+    monkeypatch.setattr(tri.demisto, "executeCommand",
+                        lambda c, a: [{"Type": 4, "Contents": "nf"}] if c == "getList" else original(c, a))
+    tri.main()
+    return seen, written, results
+
+
+def test_main_writes_one_format_violation_audit_row_and_keeps_the_answer_in_the_outputs(monkeypatch):
+    seen, written, results = _run_main(
+        monkeypatch, [[_llm_reply("Sure, here is a summary instead of the block.")]], {"conclusion": LONG_CONCLUSION})
+    record = written["Guardian.Triage"]
+    assert record["status"] == "fallback" and record["severity"] == "" and record["format_violation"] == "repair_output_invalid"
+    assert record["repair_answer"] == "Sure, here is a summary instead of the block."
+    assert results[0].outputs == record and "Format violation" in results[0].readable_output
+    rows = [a for a in seen["audit"] if a.get("action") == "triage_format_violation"]
+    assert len(rows) == 1 and rows[0]["status"] == "warning" and rows[0]["target"] == "1001"
+    detail = json.loads(rows[0]["detail"])
+    assert detail["stage"] == "triage" and detail["reason"] == "repair_output_invalid"
+    assert "Sure, here is a summary" in detail["repair_answer"]
+
+
+def test_main_writes_no_format_violation_row_for_a_structured_result(monkeypatch):
+    seen, written, _results = _run_main(monkeypatch, [[_llm_reply("{}")]], {"triage_block": _block(), "conclusion": LONG_CONCLUSION})
+    assert written["Guardian.Triage"]["status"] == "structured" and written["Guardian.Triage"]["format_violation"] == ""
+    assert not [a for a in seen["audit"] if a.get("action") == "triage_format_violation"]
+
+
+def test_the_violation_audit_row_falls_back_to_error_when_the_writer_rejects_warning(monkeypatch):
+    rows = []
+
+    def execute(command, args):
+        rows.append(dict(args))
+        if args.get("status") == "warning":
+            return {"ok": False, "data": None, "error": "status must be one of"}
+        return {"ok": True, "data": [], "error": None}
+
+    monkeypatch.setattr(tri, "guardian_execute", execute)
+    tri.guardian_triage_audit_violation({"format_violation": "no_usable_conclusion", "status": "fallback", "raw_answer": "x"}, "7")
+    assert [r["status"] for r in rows] == ["warning", "error"]
+    rows.clear()
+    tri.guardian_triage_audit_violation({"format_violation": "", "status": "structured"}, "7")
+    assert rows == []
+
+
+def test_the_yml_documents_the_format_violation_outputs():
+    import pathlib
+    import yaml
+    doc = yaml.safe_load((pathlib.Path(__file__).parent / "GuardianTriageResult.yml").read_text())
+    paths = {o["contextPath"] for o in doc["outputs"]}
+    assert {"Guardian.Triage.format_violation", "Guardian.Triage.raw_answer", "Guardian.Triage.repair_answer"} <= paths
