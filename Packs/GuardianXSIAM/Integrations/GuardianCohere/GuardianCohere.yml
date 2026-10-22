@@ -110,7 +110,9 @@ configuration:
   defaultvalue: '200'
   additionalinfo: >-
     Per-HTTP-call timeout (seconds) for the chat POST and each conversation GET. North generation can
-    be slow; the default matches the reference client.
+    be slow; the default matches the reference client. It is also how long Guardian waits for the model's
+    reply to one turn (at most 600 seconds): raise it for a large model whose first turn is slow, and keep it
+    under the reasoning script's own timeout.
 - display: Trust any certificate (not secure)
   name: insecure
   type: 8

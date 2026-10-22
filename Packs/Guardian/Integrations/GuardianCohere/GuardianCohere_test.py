@@ -719,7 +719,7 @@ def test_without_a_per_call_timeout_the_turn_is_unchanged(mocker):
 
 def test_poll_gives_up_at_the_per_call_deadline(mocker):
     """A reply that never arrives fails at the per-call deadline (a timeout the probe recognizes),
-    not after the 90s poll window."""
+    not after the instance's whole poll window."""
     client = _client(conversation_mode=CONVERSATION_MODE_STATELESS, session_id="")
     _wire(mocker, client, {"messages": [{"role": "USER", "content": [{"text": "q"}]}]})
     with pytest.raises(DemistoException, match="(?i)timeout"):
@@ -969,3 +969,20 @@ def test_chat_completion_fails_fast_on_a_stream_error_without_polling(mocker):
     with pytest.raises(DemistoException, match="BOOM: bad"):
         c.chat_completion({"messages": [{"role": "user", "content": "hi"}]})
     poll.assert_not_called()
+
+
+def test_poll_window_follows_the_request_timeout_beyond_90_seconds(mocker):
+    """The poll waits as long as the instance's Request timeout (a slow first turn of a large model), not a
+    hidden 90 s: with a 250 s timeout a reply that arrives after 150 s is still taken."""
+    import GuardianCohere as gc
+    client = _client(conversation_mode=CONVERSATION_MODE_STATELESS, session_id="")
+    client.request_timeout = 250
+    clock = {"t": 1000.0}
+    mocker.patch.object(gc.time, "time", side_effect=lambda: clock["t"])
+    mocker.patch.object(gc.time, "sleep", side_effect=lambda s: clock.__setitem__("t", clock["t"] + 30))
+    pending = {"messages": [{"role": "USER", "content": [{"text": "q"}]}]}
+    replies = [pending] * 5 + [_convo(text="late")]
+    mocker.patch.object(client, "_get_conversation", side_effect=lambda *a, **k: replies.pop(0) if replies else _convo(text="late"))
+    convo = client.poll_conversation("c-1", baseline_count=0)
+    assert clock["t"] - 1000.0 >= 150 and gc.POLL_DEADLINE_SECONDS >= 600
+    assert convo["messages"][-1]["role"].lower() in ("chatbot", "assistant")

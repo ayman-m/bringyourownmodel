@@ -87,7 +87,9 @@ DEFAULT_TOOL_FORMAT = TOOL_FORMAT_OPENAI
 # not-yet-committed write, or a North build that returns 202 (accepted) and generates
 # asynchronously. It requires a genuinely new terminal assistant message (message count grown past a
 # pre-submit baseline) so it can never return the prior turn's reply on a stateful/reused conversation.
-POLL_DEADLINE_SECONDS = 90
+# The poll waits as long as the instance's Request timeout says; this is only the upper cap. (It was a
+# fixed 90 s, which silently overrode a longer Request timeout and stopped slow first turns of large models.)
+POLL_DEADLINE_SECONDS = 600
 POLL_INTERVAL_CAP_SECONDS = 2.0
 # Per-GET timeout cap for the (cheap) conversation reads: bounds a single hung GET well under the
 # overall poll deadline so total poll wall-clock stays near POLL_DEADLINE_SECONDS.
@@ -691,7 +693,7 @@ class CohereNorthClient(BaseClient):
         raise DemistoException(
             f"Cohere North conversation {conversation_id} did not return a new assistant reply within "
             f"the poll window (~{min(self.request_timeout, POLL_DEADLINE_SECONDS)}s). The turn may still "
-            "be generating server-side; retry, or raise the Request timeout."
+            f"be generating server-side; retry, or raise the instance's Request timeout (at most {POLL_DEADLINE_SECONDS}s)."
         )
 
     def normalize_response(self, convo: Dict[str, Any], conversation_id: str) -> Dict[str, Any]:
