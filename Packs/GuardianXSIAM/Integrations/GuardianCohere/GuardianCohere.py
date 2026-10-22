@@ -266,6 +266,21 @@ def _extract_reply_text(message: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+_TOOL_NAME_PREFIXES = ("functions::", "function::", "functions.", "function.")
+
+
+def _clean_tool_name(name: Any) -> Any:
+    """Drop a namespace prefix some North models put on a tool call's name (gpt-oss through North replies
+    `function::getIncidents`), so the name matches the tool that was offered and the allowlist."""
+    if not isinstance(name, str):
+        return name
+    lowered = name.lower()
+    for prefix in _TOOL_NAME_PREFIXES:
+        if lowered.startswith(prefix):
+            return name[len(prefix):]
+    return name
+
+
 def _extract_reply_tool_calls(message: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
     """Normalize a North reply's tool calls into the canonical OpenAI ``tool_calls`` shape. Accepts
     both an already-OpenAI-shaped call (``{id,type,function:{name,arguments}}``) and a Cohere-native
@@ -287,7 +302,7 @@ def _extract_reply_tool_calls(message: Dict[str, Any]) -> Optional[List[Dict[str
                 {
                     "id": call.get("id") or f"call_{i}",
                     "type": "function",
-                    "function": {"name": function.get("name"), "arguments": arguments},
+                    "function": {"name": _clean_tool_name(function.get("name")), "arguments": arguments},
                 }
             )
         elif call.get("name") is not None:
@@ -296,7 +311,7 @@ def _extract_reply_tool_calls(message: Dict[str, Any]) -> Optional[List[Dict[str
                     "id": call.get("id") or f"call_{i}",
                     "type": "function",
                     "function": {
-                        "name": call.get("name"),
+                        "name": _clean_tool_name(call.get("name")),
                         "arguments": json.dumps(call.get("parameters") if call.get("parameters") is not None else {}),
                     },
                 }

@@ -986,3 +986,14 @@ def test_poll_window_follows_the_request_timeout_beyond_90_seconds(mocker):
     convo = client.poll_conversation("c-1", baseline_count=0)
     assert clock["t"] - 1000.0 >= 150 and gc.POLL_DEADLINE_SECONDS >= 600
     assert convo["messages"][-1]["role"].lower() in ("chatbot", "assistant")
+
+
+def test_a_namespaced_tool_call_name_is_cleaned_to_the_offered_tool():
+    """gpt-oss behind North names a call `function::getIncidents`; the bridge must see `getIncidents`."""
+    from GuardianCohere import _extract_reply_tool_calls
+    calls = _extract_reply_tool_calls({"tool_calls": [
+        {"id": "a", "type": "function", "function": {"name": "function::getIncidents", "arguments": {"size": "3"}}},
+        {"name": "functions.ip", "parameters": {"ip": "8.8.8.8"}},
+        {"id": "c", "function": {"name": "getEntries", "arguments": "{}"}},
+    ]})
+    assert [c["function"]["name"] for c in calls] == ["getIncidents", "ip", "getEntries"]
