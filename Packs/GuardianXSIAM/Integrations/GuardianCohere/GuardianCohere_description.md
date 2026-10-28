@@ -29,17 +29,19 @@ North is a **stateful conversation** service reached in two hops per turn:
   - In **`reuse`** mode (default) this is a **pre-created** North conversation, reused on every call —
     **required**. Only the turn's *new* messages are sent; North holds the running history. This
     matches a fixed, pre-created conversation id.
+  - In **`per_run`** mode (recommended) one conversation is opened per Guardian run, labelled with the
+    incident, and every later call of that run continues it after checking that it is that run's conversation (this
+    field is not used).
   - In **`stateless`** mode a fresh conversation id is minted per call (this field is ignored) and the
-    full transcript is sent — for North builds that accept client-supplied conversation UUIDs and want
-    per-investigation isolation.
+    full transcript is sent — for North builds that accept client-supplied conversation UUIDs.
 - **Bearer token** — the API token, stored encrypted.
-- **Conversation mode** — `reuse` (default) or `stateless` (see above).
+- **Conversation mode** — `per_run` (recommended), `stateless` or `reuse` (the default of a new instance); see above.
   > **Concurrency / isolation caveat (reuse mode).** In `reuse` mode *every* Guardian incident on this
   > instance sends its turns to the **one** configured Session ID conversation, and North holds the
   > history server-side. If two incidents investigate concurrently their turns **interleave into one
   > shared North conversation** (cross-incident context bleed). Use `reuse` only for a single
   > investigation at a time (e.g. the brief-generator pattern). For concurrent multi-incident use, use
-  > **`stateless`** (fresh isolated conversation per call — requires a North build that accepts
+  > **`per_run`** or **`stateless`** (isolated conversations — they need a North build that accepts
   > client-supplied conversation UUIDs) or provision a separate North conversation per investigation.
   > Also, because reuse relies on server-side history, a mid-run transcript compaction/retry in the
   > Guardian tick can leave the local transcript and North's stored history slightly out of sync.

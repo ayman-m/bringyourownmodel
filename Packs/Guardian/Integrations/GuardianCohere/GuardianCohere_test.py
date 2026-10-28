@@ -18,15 +18,30 @@ Coverage:
 pytest's ``test_*`` collection doesn't pick up the imported function object itself as a bogus test.
 """
 
+import copy
 import json
+import re
+import time
+import uuid
 
 import pytest
 from CommonServerPython import DemistoException
 
 from GuardianCohere import (
+    CONVERSATION_MODE_PER_RUN,
     CONVERSATION_MODE_REUSE,
     CONVERSATION_MODE_STATELESS,
+    RUN_CONTEXT_KEY,
+    RUN_MAX_AGE_SECONDS,
+    RUN_MAX_ENTRIES,
     CohereNorthClient,
+    RUN_STORE_ATTEMPTS,
+    _compaction_mark,
+    _conversation_continues,
+    _investigation_id,
+    _prune_runs,
+    _run_key,
+    _store_run,
     _content_to_text,
     _extract_reply_text,
     _extract_reply_tool_calls,
@@ -1152,3 +1167,605 @@ def test_the_tool_results_dropdown_is_optional_native_first_and_next_to_tool_for
     assert param["type"] == 15 and not param.get("required") and param["defaultvalue"] == "native"
     assert param["options"] == ["native", "text"] and param["display"] == "Tool results"
     assert names.index("tool_result_format") == names.index("tool_format") + 1
+
+
+""" ------------------------- per_run conversation mode ------------------------- """
+
+LABEL_RE = re.compile(r"^Guardian run - incident 1234 - \d{4}-\d{2}-\d{2} \d{2}:\d{2}\n\n")
+TOOL_CALL = {"id": "c1", "type": "function", "function": {"name": "getIncidents", "arguments": "{}"}}
+
+
+@pytest.fixture
+def run_store(mocker):
+    """An in-memory, versioned integration context, and investigation 1234. The context is copied on every read and
+    write, as the platform does. A write with a stale version raises ValueError, as the platform does. A test can set
+    ``store["before_write"]`` to a function that runs just before the next write (to simulate another call)."""
+    store = {"context": {}, "version": 1, "writes": 0, "before_write": None}
+
+    def _get(*args, **kwargs):
+        return copy.deepcopy(store["context"])
+
+    def _get_versioned(*args, **kwargs):
+        return copy.deepcopy(store["context"]), store["version"]
+
+    def _set(context, sync=True, version=-1):
+        hook, store["before_write"] = store["before_write"], None
+        if hook:
+            hook()
+        if version not in (-1, None) and version != store["version"]:
+            raise ValueError("version conflict")
+        store["context"] = copy.deepcopy(context)
+        store["version"] += 1
+        store["writes"] += 1
+
+    mocker.patch("GuardianCohere.get_integration_context", side_effect=_get)
+    mocker.patch("GuardianCohere.get_integration_context_with_version", side_effect=_get_versioned)
+    mocker.patch("GuardianCohere.set_integration_context", side_effect=_set)
+    mocker.patch("GuardianCohere.demisto.investigation", return_value={"id": "1234"})
+    mocker.patch("GuardianCohere.time.sleep")
+    return store
+
+
+def _per_run_client(session_id=""):
+    return _client(conversation_mode=CONVERSATION_MODE_PER_RUN, session_id=session_id)
+
+
+def _start_messages(first="Investigate this incident"):
+    return [{"role": "system", "content": "be careful"}, {"role": "user", "content": first}]
+
+
+def _later_messages(first="Investigate this incident"):
+    return _start_messages(first) + [
+        {"role": "assistant", "content": None, "tool_calls": [TOOL_CALL]},
+        {"role": "tool", "tool_call_id": "c1", "content": "result"},
+    ]
+
+
+def _reply_convo(total, text="done"):
+    """A conversation of ``total`` messages that ends in an assistant text reply."""
+    messages = [{"role": "USER", "content": [{"text": "q"}]}, {"role": "CHATBOT", "content": [{"text": "a"}]}] * (total // 2)
+    messages[-1] = {"role": "CHATBOT", "content": [{"text": text}]}
+    return {"messages": messages, "meta": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}
+
+
+def _tool_call_convo(total):
+    """A conversation of ``total`` messages whose last reply is the tool call of ``_later_messages`` (no text)."""
+    convo = _reply_convo(total)
+    convo["messages"][-1] = {"role": "CHATBOT", "content": [], "tool_calls": [copy.deepcopy(TOOL_CALL)]}
+    return convo
+
+
+def _wire_conversations(mocker, client, conversations, unreadable=()):
+    """POST -> ""; GET of a known conversation id -> that conversation; GET of an id in ``unreadable`` -> a 404; any
+    other id (a conversation this call has just started) -> a short reply. Returns the mock."""
+    mocker.patch("GuardianCohere.time.sleep")
+
+    def _side_effect(*args, **kwargs):
+        if kwargs.get("method") == "POST":
+            return ""
+        conversation_id = kwargs["full_url"].rsplit("/", 1)[-1]
+        if conversation_id in unreadable:
+            raise DemistoException("404 not found")
+        return conversations.get(conversation_id, _reply_convo(2, "fresh reply"))
+
+    return mocker.patch.object(client, "_http_request", side_effect=_side_effect)
+
+
+def _posts(mock_http):
+    return [c.kwargs for c in mock_http.call_args_list if c.kwargs["method"] == "POST"]
+
+
+def _entry_for(store, messages):
+    return store["context"][RUN_CONTEXT_KEY][_run_key("", "1234", messages)]
+
+
+def test_per_run_start_of_run_gets_a_new_id_and_the_full_body(mocker, run_store):
+    client = _per_run_client()
+    mock_http = _wire(mocker, client, _reply_convo(2))
+    client.chat_completion({"messages": _start_messages()})
+
+    calls = mock_http.call_args_list
+    assert calls[0].kwargs["method"] == "POST"  # no baseline read: the conversation is new
+    body = calls[0].kwargs["json_data"]
+    conversation_id = body["conversation"]["id"]
+    assert str(uuid.UUID(conversation_id)) == conversation_id
+    assert body["system"] == "be careful"
+    assert [m["role"] for m in body["messages"]] == ["user"]
+    entries = run_store["context"][RUN_CONTEXT_KEY]
+    assert len(entries) == 1
+    (entry,) = entries.values()
+    assert entry["conversation_id"] == conversation_id
+    assert abs(entry["created"] - time.time()) < 60
+
+
+def test_per_run_start_of_run_sends_every_non_system_message(mocker, run_store):
+    client = _per_run_client()
+    body = client.build_request_body({"messages": _start_messages() + [{"role": "user", "content": "more"}]}, "c1")
+    assert [m["content"] for m in body["messages"]] == ["Investigate this incident", "more"]
+
+
+def test_per_run_later_turn_reuses_the_stored_id_and_sends_only_new_messages(mocker, run_store):
+    client = _per_run_client()
+    mock_http = _wire(mocker, client, [_reply_convo(2), _tool_call_convo(2), _reply_convo(4, "next")])
+    client.chat_completion({"messages": _start_messages()})
+    first_id = _posts(mock_http)[0]["json_data"]["conversation"]["id"]
+
+    result = client.chat_completion({"messages": _later_messages()})
+
+    assert result["choices"][0]["message"]["content"] == "next"
+    calls = mock_http.call_args_list
+    # start: POST, GET(poll); later turn: GET(validation and baseline), POST, GET(poll)
+    assert [c.kwargs["method"] for c in calls] == ["POST", "GET", "GET", "POST", "GET"]
+    assert calls[2].kwargs["full_url"].endswith("/conversations/" + first_id)
+    second = calls[3].kwargs["json_data"]
+    assert second["conversation"]["id"] == first_id
+    assert second["messages"] == [{"role": "tool", "tool_call_id": "c1", "content": "result"}]
+    assert "Guardian run" not in json.dumps(second["messages"])
+    assert run_store["writes"] == 1  # a later turn reads the store and does not write it
+
+
+def test_per_run_a_matching_text_reply_reuses_the_id_whatever_the_whitespace(mocker, run_store):
+    client = _per_run_client()
+    later = _start_messages() + [{"role": "assistant", "content": "Looking at\n  the   host"}, {"role": "user", "content": "go on"}]
+    _store_run(_run_key("", "1234", later), "stored-id", time.time())
+    mock_http = _wire(mocker, client, [_reply_convo(2, "Looking at the host"), _reply_convo(4, "next")])
+    client.chat_completion({"messages": later})
+    post = _posts(mock_http)[0]["json_data"]
+    assert post["conversation"] == {"id": "stored-id"}
+    assert post["messages"] == [{"role": "user", "content": "go on"}]
+
+
+def test_per_run_baseline_is_the_stored_conversations_message_count(mocker, run_store):
+    client = _per_run_client()
+    # the stored conversation holds 2 messages; a poll that still shows 2 must not count as a new reply
+    _wire(mocker, client, [_reply_convo(2), _tool_call_convo(2), _tool_call_convo(2), _reply_convo(4, "new")])
+    client.chat_completion({"messages": _start_messages()})
+    result = client.chat_completion({"messages": _later_messages()})
+    assert result["choices"][0]["message"]["content"] == "new"
+
+
+def test_per_run_two_runs_with_the_same_prompt_on_the_same_incident_get_different_ids(mocker, run_store):
+    client = _per_run_client()
+    mock_http = _wire(mocker, client, _reply_convo(2))
+    client.chat_completion({"messages": _start_messages()})
+    client.chat_completion({"messages": _start_messages()})
+    first, second = _posts(mock_http)
+    assert first["json_data"]["conversation"]["id"] != second["json_data"]["conversation"]["id"]
+    # the re-run owns the key now: its next turn goes to the new conversation
+    (entry,) = run_store["context"][RUN_CONTEXT_KEY].values()
+    assert entry["conversation_id"] == second["json_data"]["conversation"]["id"]
+
+
+def test_per_run_different_incidents_and_prompts_get_different_keys():
+    messages = _start_messages()
+    assert _run_key("", "1", messages) != _run_key("", "2", messages)
+    assert _run_key("", "1", messages) != _run_key("", "1", _start_messages("another prompt"))
+    assert _run_key("a", "1", messages) != _run_key("b", "1", messages)
+    assert _run_key("", "1", messages) == _run_key("", "1", _later_messages())  # stable across the turns of a run
+
+
+def test_per_run_later_turn_with_the_key_missing_starts_a_new_conversation_with_the_full_history(mocker, run_store):
+    client = _per_run_client()
+    mock_http = _wire(mocker, client, _reply_convo(4))
+    client.chat_completion({"messages": _later_messages()})
+
+    calls = mock_http.call_args_list
+    assert calls[0].kwargs["method"] == "POST"  # no baseline read
+    body = calls[0].kwargs["json_data"]
+    assert [m["role"] for m in body["messages"]] == ["user", "assistant", "tool"]
+    assert LABEL_RE.match(body["messages"][0]["content"])
+    assert len(run_store["context"][RUN_CONTEXT_KEY]) == 1  # the next turn finds it
+
+
+def test_per_run_an_expired_entry_counts_as_missing(mocker, run_store):
+    client = _per_run_client()
+    key = _run_key("", "1234", _later_messages())
+    old = time.time() - RUN_MAX_AGE_SECONDS - 60
+    run_store["context"] = {RUN_CONTEXT_KEY: {key: {"conversation_id": "old-conversation", "created": old}}}
+    mock_http = _wire(mocker, client, _reply_convo(4))
+    client.chat_completion({"messages": _later_messages()})
+    assert _posts(mock_http)[0]["json_data"]["conversation"]["id"] != "old-conversation"
+
+
+def test_per_run_a_stale_entry_and_a_failing_write_do_not_reuse_the_old_conversation(mocker, run_store):
+    """Run 1 stored an id. Run 2 (same incident, same fixed prompt, so the same key) starts, but its write fails, so the
+    old entry stays. Run 2's second turn finds run 1's id; the conversation does not hold run 2's reply, so it is not used."""
+    client = _per_run_client()
+    key = _run_key("", "1234", _later_messages())
+    run_store["context"] = {RUN_CONTEXT_KEY: {key: {"conversation_id": "run-1", "created": time.time()}}}
+    conversations = {"run-1": _reply_convo(6, "run one's own last reply")}
+    mock_http = _wire_conversations(mocker, client, conversations)
+
+    mocker.patch("GuardianCohere.set_integration_context", side_effect=RuntimeError("write failed"))
+    client.chat_completion({"messages": _start_messages()})  # run 2, turn 1
+    run_2_id = _posts(mock_http)[0]["json_data"]["conversation"]["id"]
+    assert run_2_id != "run-1"
+
+    client.chat_completion({"messages": _later_messages()})  # run 2, turn 2
+
+    turn_2 = _posts(mock_http)[1]["json_data"]
+    assert turn_2["conversation"]["id"] not in ("run-1", run_2_id)
+    assert [m["role"] for m in turn_2["messages"]] == ["user", "assistant", "tool"]  # the full history, not the delta
+    assert LABEL_RE.match(turn_2["messages"][0]["content"])
+
+
+def test_per_run_an_overlapping_start_that_restores_the_old_entry_is_caught_by_validation(mocker, run_store):
+    client = _per_run_client()
+    conversations = {}
+    mock_http = _wire_conversations(mocker, client, conversations)
+
+    client.chat_completion({"messages": _start_messages()})  # run 1, turn 1
+    run_1_id = _posts(mock_http)[0]["json_data"]["conversation"]["id"]
+    run_1_call = copy.deepcopy(TOOL_CALL)
+    run_1_call["id"] = "run-1-call"  # North gives every call its own id
+    conversations[run_1_id] = {"messages": [{"role": "USER", "content": [{"text": "q"}]},
+                                            {"role": "CHATBOT", "content": [], "tool_calls": [run_1_call]}]}
+    after_run_1 = copy.deepcopy(run_store["context"])
+
+    client.chat_completion({"messages": _start_messages()})  # run 2, turn 1
+    run_2_id = _posts(mock_http)[1]["json_data"]["conversation"]["id"]
+    conversations[run_2_id] = _reply_convo(2, "run two's reply")
+    run_store["context"] = after_run_1  # another call read before run 2's write and wrote it back afterwards
+
+    client.chat_completion({"messages": _later_messages()})  # run 2, turn 2
+
+    turn_2 = _posts(mock_http)[2]["json_data"]
+    assert turn_2["conversation"]["id"] not in (run_1_id, run_2_id)
+    assert [m["role"] for m in turn_2["messages"]] == ["user", "assistant", "tool"]
+
+
+def test_per_run_a_conversation_that_ends_in_our_own_message_is_not_reused(mocker, run_store):
+    """A turn was posted and its poll timed out: North's last assistant message still matches the transcript, but the
+    conversation ends in a user message, so sending the turn into it again would duplicate it."""
+    client = _per_run_client()
+    later = _start_messages() + [{"role": "assistant", "content": "Looking at the host"}, {"role": "user", "content": "go on"}]
+    _store_run(_run_key("", "1234", later), "stored-id", time.time())
+    pending = {
+        "messages": [
+            {"role": "USER", "content": [{"text": "q"}]},
+            {"role": "CHATBOT", "content": [{"text": "Looking at the host"}]},
+            {"role": "USER", "content": [{"text": "go on"}]},
+        ]
+    }
+    mock_http = _wire_conversations(mocker, client, {"stored-id": pending})
+
+    client.chat_completion({"messages": later})
+
+    assert mock_http.call_args_list[0].kwargs["full_url"].endswith("/conversations/stored-id")  # the validation read
+    post = _posts(mock_http)[0]["json_data"]
+    assert post["conversation"]["id"] != "stored-id"
+    assert [m["role"] for m in post["messages"]] == ["user", "assistant", "user"]  # the full transcript
+    assert LABEL_RE.match(post["messages"][0]["content"])
+    assert _entry_for(run_store, later)["conversation_id"] == post["conversation"]["id"]
+
+
+@pytest.mark.parametrize("failure", ["not found", "missing reply"])
+def test_per_run_an_unreadable_or_foreign_stored_conversation_starts_a_new_one(mocker, run_store, failure):
+    client = _per_run_client()
+    later = _later_messages()
+    _store_run(_run_key("", "1234", later), "stored-id", time.time())
+    if failure == "not found":
+        mock_http = _wire_conversations(mocker, client, {}, unreadable=("stored-id",))
+    else:
+        mock_http = _wire_conversations(mocker, client, {"stored-id": _reply_convo(4, "another run's reply")})
+
+    client.chat_completion({"messages": later})
+
+    calls = mock_http.call_args_list
+    assert calls[0].kwargs["full_url"].endswith("/conversations/stored-id")  # the validation read
+    post = _posts(mock_http)[0]["json_data"]
+    assert post["conversation"]["id"] != "stored-id"
+    assert [m["role"] for m in post["messages"]] == ["user", "assistant", "tool"]
+    assert LABEL_RE.match(post["messages"][0]["content"])
+    assert _entry_for(run_store, later)["conversation_id"] == post["conversation"]["id"]  # re-stored for the next turn
+
+
+def test_per_run_a_baseline_of_zero_is_not_the_same_as_unreadable(mocker, run_store):
+    """An empty stored conversation is readable but proves nothing about the run, so it is not reused either."""
+    client = _per_run_client()
+    later = _later_messages()
+    _store_run(_run_key("", "1234", later), "stored-id", time.time())
+    mock_http = _wire_conversations(mocker, client, {"stored-id": {"messages": []}})
+    client.chat_completion({"messages": later})
+    assert _posts(mock_http)[0]["json_data"]["conversation"]["id"] != "stored-id"
+
+
+def test_conversation_continues_compares_text_and_tool_calls():
+    mine = [{"role": "assistant", "content": "a  b"}]
+    assert _conversation_continues(_reply_convo(2, "a b"), mine)
+    assert not _conversation_continues(_reply_convo(2, "a c"), mine)
+    calls = [{"role": "assistant", "content": None, "tool_calls": [TOOL_CALL]}]
+    assert _conversation_continues(_tool_call_convo(2), calls)
+    other_id = copy.deepcopy(TOOL_CALL)
+    other_id["id"] = "other"
+    assert not _conversation_continues(_tool_call_convo(2), [{"role": "assistant", "content": None, "tool_calls": [other_id]}])
+    prefixed = copy.deepcopy(TOOL_CALL)
+    prefixed["function"]["name"] = "function::getIncidents"
+    convo = _tool_call_convo(2)
+    convo["messages"][-1]["tool_calls"] = [prefixed]
+    assert _conversation_continues(convo, calls)  # the prefix a model puts on a name is ignored
+    assert not _conversation_continues({"messages": []}, mine)
+    assert not _conversation_continues(None, mine)
+    assert not _conversation_continues(_reply_convo(2, "x"), [{"role": "user", "content": "x"}])
+    assert not _conversation_continues(_reply_convo(2, None), [{"role": "assistant", "content": ""}])  # nothing to compare
+
+
+def test_per_run_storage_read_failure_falls_back_without_raising(mocker, run_store):
+    client = _per_run_client()
+    mocker.patch("GuardianCohere.get_integration_context", side_effect=RuntimeError("context down"))
+    mocker.patch("GuardianCohere.get_integration_context_with_version", side_effect=RuntimeError("context down"))
+    mock_http = _wire(mocker, client, _reply_convo(2))
+
+    client.chat_completion({"messages": _start_messages()})  # start of run: new id, full body
+    client.chat_completion({"messages": _later_messages()})  # later turn: no entry can be read
+
+    first, second = _posts(mock_http)
+    assert first["json_data"]["conversation"]["id"] != second["json_data"]["conversation"]["id"]
+    assert [m["role"] for m in second["json_data"]["messages"]] == ["user", "assistant", "tool"]
+    assert run_store["writes"] == 0
+
+
+def test_per_run_storage_write_failure_falls_back_without_raising(mocker, run_store):
+    client = _per_run_client()
+    mocker.patch("GuardianCohere.set_integration_context", side_effect=RuntimeError("context read-only"))
+    mock_http = _wire(mocker, client, _reply_convo(2))
+
+    result = client.chat_completion({"messages": _start_messages()})
+    assert result["choices"][0]["message"]["content"] == "done"
+    client.chat_completion({"messages": _later_messages()})  # nothing was stored: a new conversation, full history
+    first, second = _posts(mock_http)
+    assert first["json_data"]["conversation"]["id"] != second["json_data"]["conversation"]["id"]
+    assert len(second["json_data"]["messages"]) == 3
+
+
+def test_per_run_a_context_that_is_not_a_dict_is_treated_as_empty(mocker, run_store):
+    client = _per_run_client()
+    mocker.patch("GuardianCohere.get_integration_context", return_value=None)
+    mocker.patch("GuardianCohere.get_integration_context_with_version", return_value=(None, 3))
+    _wire(mocker, client, _reply_convo(2))
+    assert client.chat_completion({"messages": _start_messages()})["choices"][0]["message"]["content"] == "done"
+
+
+def test_store_run_repeats_the_write_when_another_call_wrote_first(run_store):
+    now = time.time()
+
+    def other_call_writes():
+        run_store["context"] = {RUN_CONTEXT_KEY: {"other": {"conversation_id": "c-other", "created": now}}}
+        run_store["version"] += 1
+
+    run_store["before_write"] = other_call_writes
+    assert _store_run("mine", "c-mine", now) is True
+    assert set(run_store["context"][RUN_CONTEXT_KEY]) == {"other", "mine"}  # the other call's entry survived
+    assert run_store["writes"] == 1
+
+
+def test_store_run_gives_up_after_a_few_version_conflicts_without_raising(mocker, run_store):
+    calls = []
+
+    def always_stale(context, sync=True, version=-1):
+        calls.append(version)
+        raise ValueError("version conflict")
+
+    mocker.patch("GuardianCohere.set_integration_context", side_effect=always_stale)
+    assert _store_run("k", "c", time.time()) is False
+    assert len(calls) == RUN_STORE_ATTEMPTS
+
+
+def test_store_run_works_where_the_versioned_helpers_are_missing(mocker, run_store):
+    mocker.patch("GuardianCohere.get_integration_context_with_version", side_effect=NameError("not defined"))
+    assert _store_run("k", "c", time.time()) is True
+    assert run_store["context"][RUN_CONTEXT_KEY]["k"]["conversation_id"] == "c"
+
+
+def test_prune_runs_drops_old_and_malformed_entries():
+    now = 1_000_000.0
+    runs = {
+        "fresh": {"conversation_id": "a", "created": now - 10},
+        "edge": {"conversation_id": "b", "created": now - RUN_MAX_AGE_SECONDS},
+        "old": {"conversation_id": "c", "created": now - RUN_MAX_AGE_SECONDS - 1},
+        "no-id": {"created": now},
+        "bad": "text",
+    }
+    assert set(_prune_runs(runs, now)) == {"fresh", "edge"}
+
+
+def test_prune_runs_keeps_the_newest_entries_up_to_the_cap():
+    now = 1_000_000.0
+    runs = {f"k{i}": {"conversation_id": f"c{i}", "created": now - i} for i in range(RUN_MAX_ENTRIES + 25)}
+    kept = _prune_runs(runs, now)
+    assert len(kept) == RUN_MAX_ENTRIES
+    assert "k0" in kept and f"k{RUN_MAX_ENTRIES + 24}" not in kept
+
+
+def test_store_run_prunes_on_write_and_keeps_other_context_keys(run_store):
+    now = time.time()
+    runs = {f"k{i}": {"conversation_id": f"c{i}", "created": now - 10 - i} for i in range(RUN_MAX_ENTRIES)}
+    runs["stale"] = {"conversation_id": "s", "created": now - RUN_MAX_AGE_SECONDS - 100}
+    run_store["context"] = {RUN_CONTEXT_KEY: runs, "something_else": {"keep": True}}
+
+    assert _store_run("new", "conv-new", now) is True
+
+    stored = run_store["context"]
+    assert stored["something_else"] == {"keep": True}
+    assert len(stored[RUN_CONTEXT_KEY]) == RUN_MAX_ENTRIES
+    assert "stale" not in stored[RUN_CONTEXT_KEY]
+    assert stored[RUN_CONTEXT_KEY]["new"]["conversation_id"] == "conv-new"
+    assert f"k{RUN_MAX_ENTRIES - 1}" not in stored[RUN_CONTEXT_KEY]  # the oldest live entry made room
+
+
+def test_per_run_label_is_added_once_and_only_to_the_copy_sent(mocker, run_store):
+    client = _per_run_client()
+    mock_http = _wire(mocker, client, [_reply_convo(2), _tool_call_convo(2), _reply_convo(4)])
+    start = _start_messages()
+    later = _later_messages()
+    start_before, later_before = copy.deepcopy(start), copy.deepcopy(later)
+
+    client.chat_completion({"messages": start})
+    client.chat_completion({"messages": later})
+
+    first, second = _posts(mock_http)
+    sent = first["json_data"]["messages"][0]["content"]
+    assert LABEL_RE.match(sent)
+    assert sent.endswith("\n\nInvestigate this incident")
+    assert sent.count("Guardian run") == 1
+    assert "Guardian run" not in json.dumps(second["json_data"]["messages"])  # a later turn is not labelled
+    assert start == start_before and later == later_before  # the caller's messages are untouched
+
+
+def test_per_run_label_goes_on_the_first_user_message_in_text_mode_too(run_store):
+    client = _per_run_client()
+    client.tool_result_format = "text"
+    body = client.build_request_body({"messages": _later_messages()}, "c1", send_full=True, label="Guardian run - x")
+    assert body["messages"][0]["content"].startswith("Guardian run - x\n\nInvestigate")
+    assert sum("Guardian run - x" in str(m.get("content")) for m in body["messages"]) == 1
+
+
+def test_per_run_without_an_investigation_leaves_out_the_incident_part(mocker, run_store):
+    client = _per_run_client()
+    mocker.patch("GuardianCohere.demisto.investigation", side_effect=RuntimeError("no investigation"))
+    mock_http = _wire(mocker, client, _reply_convo(2))
+    client.chat_completion({"messages": _start_messages()})
+    sent = _posts(mock_http)[0]["json_data"]["messages"][0]["content"]
+    assert re.match(r"^Guardian run - \d{4}-\d{2}-\d{2} \d{2}:\d{2}\n\nInvestigate", sent)
+
+
+@pytest.mark.parametrize("value", [None, {}, {"id": None}, "text", {"id": " "}])
+def test_investigation_id_is_empty_when_unavailable(mocker, value):
+    mocker.patch("GuardianCohere.demisto.investigation", return_value=value)
+    assert _investigation_id() == ""
+
+
+def test_investigation_id_reads_the_id(mocker):
+    mocker.patch("GuardianCohere.demisto.investigation", return_value={"id": 77})
+    assert _investigation_id() == "77"
+
+
+def test_compaction_mark_recognises_a_checkpoint_and_the_free_path_note():
+    plain = _later_messages()
+    assert _compaction_mark(plain) == ""
+    checkpoint = {"role": "system", "content": "CONVERSATION CHECKPOINT -- earlier turns summarized\nsummary one", "guardian_checkpoint": True}
+    other = dict(checkpoint, content="CONVERSATION CHECKPOINT -- earlier turns summarized\nsummary two")
+    first, second = _compaction_mark(plain[:2] + [checkpoint] + plain[2:]), _compaction_mark(plain[:2] + [other] + plain[2:])
+    assert first.startswith("checkpoint:") and first != second
+    note = {"role": "user", "content": "[Guardian-compaction] 3 earlier transcript turn(s) were dropped"}
+    note_2 = {"role": "user", "content": "[Guardian-compaction] 9 earlier transcript turn(s) were dropped"}
+    with_note, with_note_2 = _compaction_mark(plain[:2] + [note] + plain[2:]), _compaction_mark(plain[:2] + [note_2] + plain[2:])
+    assert with_note.startswith("dropped:") and "checkpoint" not in with_note
+    assert with_note != with_note_2  # the note is rewritten with a higher total on every further drop
+    assert with_note == _compaction_mark(plain[:2] + [dict(note)] + plain[2:])  # an unchanged note keeps its mark
+    both = _compaction_mark(plain[:2] + [checkpoint, note] + plain[2:])
+    assert re.fullmatch(r"checkpoint:[0-9a-f]{16}\|dropped:[0-9a-f]{16}", both)
+    assert both != _compaction_mark(plain[:2] + [checkpoint, note_2] + plain[2:])  # only the note changed
+    assert both != _compaction_mark(plain[:2] + [other, note] + plain[2:])  # only the checkpoint changed
+    # a user message that merely mentions it later in the text is not a note
+    assert _compaction_mark(plain + [{"role": "user", "content": "see [Guardian-compaction] x"}]) == ""
+
+
+def test_per_run_a_compacted_transcript_starts_a_new_conversation_once_per_summary(mocker, run_store):
+    client = _per_run_client()
+    mock_http = _wire_conversations(mocker, client, {})
+    client.chat_completion({"messages": _start_messages()})
+    first_id = _posts(mock_http)[0]["json_data"]["conversation"]["id"]
+    # the same run, after Guardian summarized the early turns: a checkpoint right after the system prompt and task
+    checkpoint = {"role": "system", "content": "CONVERSATION CHECKPOINT -- earlier turns summarized\nfound X", "guardian_checkpoint": True}
+    compacted = _start_messages() + [checkpoint, {"role": "assistant", "content": "kept reply"}, {"role": "user", "content": "go on"}]
+
+    client.chat_completion({"messages": compacted})
+
+    post = _posts(mock_http)[1]["json_data"]
+    second_id = post["conversation"]["id"]
+    assert second_id != first_id
+    assert LABEL_RE.match(post["messages"][0]["content"])
+    assert "found X" in post["system"]  # the summary travels with the system text
+    assert [m["role"] for m in post["messages"]] == ["user", "assistant", "user"]
+    assert _entry_for(run_store, compacted)["compaction"].startswith("checkpoint:")
+
+    # the next turn of the same compacted run continues the new conversation (its last reply was "fresh reply")
+    mock_http = _wire(mocker, client, [_reply_convo(2, "fresh reply"), _reply_convo(4, "next")])
+    later = compacted + [{"role": "assistant", "content": "fresh reply"}, {"role": "user", "content": "and then"}]
+    client.chat_completion({"messages": later})
+    post = _posts(mock_http)[0]["json_data"]
+    assert post["conversation"] == {"id": second_id}
+    assert post["messages"] == [{"role": "user", "content": "and then"}]
+
+
+def test_per_run_the_free_path_note_restarts_the_conversation_whenever_its_text_changes(mocker, run_store):
+    client = _per_run_client()
+    mock_http = _wire_conversations(mocker, client, {})
+    client.chat_completion({"messages": _start_messages()})
+    note = {"role": "user", "content": "[Guardian-compaction] 4 earlier transcript turn(s) were dropped"}
+    compacted = _start_messages() + [note, {"role": "assistant", "content": "kept"}, {"role": "user", "content": "next"}]
+    client.chat_completion({"messages": compacted})
+    first_id = _posts(mock_http)[0]["json_data"]["conversation"]["id"]
+    restarted_id = _posts(mock_http)[1]["json_data"]["conversation"]["id"]
+    assert restarted_id != first_id  # the first note starts a new conversation
+
+    # the same note on the next turn: the run goes on in the conversation that was started above
+    same_note = _start_messages() + [dict(note), {"role": "assistant", "content": "fresh reply"}, {"role": "user", "content": "again"}]
+    mock_http = _wire(mocker, client, [_reply_convo(2, "fresh reply"), _reply_convo(4, "next")])
+    client.chat_completion({"messages": same_note})
+    post = _posts(mock_http)[0]["json_data"]
+    assert post["conversation"] == {"id": restarted_id}
+    assert post["messages"] == [{"role": "user", "content": "again"}]
+
+    # more turns were dropped, so the note carries a higher total: the conversation is started again, or North would keep every turn
+    more_dropped = dict(note, content="[Guardian-compaction] 9 earlier transcript turn(s) were dropped")
+    more = _start_messages() + [more_dropped, {"role": "assistant", "content": "fresh reply"}, {"role": "user", "content": "and again"}]
+    mock_http = _wire_conversations(mocker, client, {restarted_id: _reply_convo(2, "fresh reply")})
+    client.chat_completion({"messages": more})
+    post = _posts(mock_http)[0]["json_data"]
+    assert post["conversation"]["id"] not in (first_id, restarted_id)
+    assert LABEL_RE.match(post["messages"][0]["content"])
+    assert _entry_for(run_store, more)["compaction"] == _compaction_mark(more)
+
+
+def test_per_run_with_a_checkpoint_a_changed_note_alone_restarts_the_conversation(mocker, run_store):
+    client = _per_run_client()
+    checkpoint = {"role": "system", "content": "CONVERSATION CHECKPOINT -- earlier turns summarized\nfound X", "guardian_checkpoint": True}
+    note = {"role": "user", "content": "[Guardian-compaction] 4 earlier transcript turn(s) were dropped"}
+    tail = [{"role": "assistant", "content": "kept"}, {"role": "user", "content": "next"}]
+    first = _start_messages() + [checkpoint, note] + tail
+    mock_http = _wire_conversations(mocker, client, {})
+    client.chat_completion({"messages": first})
+    first_id = _posts(mock_http)[0]["json_data"]["conversation"]["id"]
+
+    changed = _start_messages() + [checkpoint, dict(note, content="[Guardian-compaction] 9 earlier transcript turn(s) were dropped")] + tail
+    mock_http = _wire_conversations(mocker, client, {first_id: _reply_convo(2, "kept")})
+    client.chat_completion({"messages": changed})
+
+    post = _posts(mock_http)[0]["json_data"]
+    assert post["conversation"]["id"] != first_id
+    assert LABEL_RE.match(post["messages"][0]["content"])
+    assert _entry_for(run_store, changed)["compaction"] == _compaction_mark(changed)
+
+
+def test_per_run_does_not_require_a_session_id():
+    params = {"endpoint_url": "https://h", "agent_id": "a", "bearer_token": "t", "conversation_mode": "per_run"}
+    assert build_client(params, verify=True, proxy=False).conversation_mode == "per_run"
+
+
+def test_per_run_test_module_is_a_stateless_round_trip_that_stores_nothing(mocker, run_store):
+    client = _per_run_client()
+    mock_http = _wire(mocker, client, _reply_convo(2))
+    assert run_test_module_command(client) == "ok"
+    assert [c.kwargs["method"] for c in mock_http.call_args_list] == ["POST", "GET"]
+    assert "Guardian run" not in json.dumps(_posts(mock_http)[0]["json_data"]["messages"])
+    assert run_store["writes"] == 0 and run_store["context"] == {}
+
+
+def test_stateless_and_reuse_never_touch_the_run_store_or_add_a_label(mocker, run_store):
+    stateless = _client(conversation_mode=CONVERSATION_MODE_STATELESS)
+    mock_http = _wire(mocker, stateless, _reply_convo(2))
+    stateless.chat_completion({"messages": _start_messages()})
+    sent = _posts(mock_http)[0]["json_data"]
+    assert sent["messages"] == [{"role": "user", "content": "Investigate this incident"}]
+
+    reuse = _client(conversation_mode=CONVERSATION_MODE_REUSE, session_id="sess-123")
+    mock_http = _wire(mocker, reuse, [_reply_convo(2), _reply_convo(4)])
+    reuse.chat_completion({"messages": _later_messages()})
+    calls = mock_http.call_args_list
+    assert [c.kwargs["method"] for c in calls] == ["GET", "POST", "GET"]  # reuse trusts its fixed id: no validation
+    sent = _posts(mock_http)[0]["json_data"]
+    assert sent["conversation"] == {"id": "sess-123"}
+    assert sent["messages"] == [{"role": "tool", "tool_call_id": "c1", "content": "result"}]
+    assert run_store["writes"] == 0 and run_store["context"] == {}

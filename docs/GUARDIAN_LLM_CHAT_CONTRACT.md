@@ -18,6 +18,12 @@ identically.** That is the only thing the rest of the pack depends on.
 > the rest. `!guardian-model` shows which provider/model is live (it discovers providers by this command,
 > not by brand).
 
+**Providers that keep history on the server.** The caller always sends the full transcript. A provider whose service
+keeps its own conversation history (Cohere North) may send only the new messages. It tells the first call of a run
+by a transcript with no `assistant` message, and every later call of the run by one that has an assistant message. The
+caller does not need to know which. `Guardian Cohere` offers three conversation modes for this (`per_run`, `stateless`
+and `reuse`, see `docs/MODEL_SETUP.md`).
+
 ---
 
 ## Command: `guardian-llm-chat`

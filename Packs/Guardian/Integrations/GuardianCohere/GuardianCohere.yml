@@ -31,9 +31,9 @@ configuration:
   type: 0
   required: false
   additionalinfo: >-
-    The Cohere North conversation id, sent as `conversation.id`. In "reuse" mode (the default) it is required:
-    it is a conversation you created in North, and it is used for every call. In "stateless" mode a new
-    conversation id is created for each call and this field is ignored.
+    The Cohere North conversation id, sent as `conversation.id`. It is required only in "reuse" mode: a
+    conversation you created in North, used for every call. In "per_run" and "stateless" mode Guardian creates the
+    conversation ids itself and this field is never sent as a conversation id; leave it empty.
 - display: Bearer token
   name: bearer_token
   type: 4
@@ -49,12 +49,20 @@ configuration:
   options:
   - reuse
   - stateless
+  - per_run
   additionalinfo: >-
-    "reuse" (default): use the Session ID as the conversation id on every call and send only the new messages
-    of each turn. The North server keeps the conversation history. All incidents then share one conversation,
-    so run one investigation at a time. "stateless": create a new conversation id per call and send the full
-    transcript. This isolates each investigation, and is recommended for several concurrent incidents, if your
-    North deployment accepts conversation ids from the client.
+    How Guardian maps its work onto North conversations. North keeps the whole history of a conversation and
+    gives all of it to the model on every turn, so this setting decides what the model can see.
+    "per_run" (recommended): one conversation per Guardian run. The first model call of a run opens a new
+    conversation whose first message starts with a line such as "Guardian run - incident 1234 - 2026-10-27 14:05",
+    so you can find an incident's runs in North. Every later call of that run continues the same conversation
+    and sends only the new messages. A new run, including a re-run of the same incident, opens a new conversation.
+    The Session ID is not needed. This needs a North deployment that accepts conversation ids from the client.
+    "stateless": a new conversation for every model call, with the full transcript sent each time. The model only
+    sees that transcript, but North shows one conversation per model call. "reuse": the Session ID is the one
+    conversation for everything, and only the new messages are sent. All incidents and runs share it, so the model
+    can answer from an earlier run and token use keeps growing; it is not recommended for more than one run at a
+    time.
 - display: Tool format
   name: tool_format
   type: 15

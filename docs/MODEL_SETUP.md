@@ -175,9 +175,9 @@ Cohere North is a private deployment, usually on your own network, so the integr
 |---|---|
 | Endpoint URL | the base URL |
 | Agent ID | the agent id |
-| Session ID | the pre-created conversation id (required in `reuse` mode; ignored in `stateless`) |
+| Session ID | the pre-created conversation id (required in `reuse` mode; not used in `per_run` or `stateless`) |
 | Bearer token | the token. Stored encrypted |
-| Conversation mode | `reuse` (default): all runs share the one conversation, so run **one investigation at a time**. `stateless`: a fresh conversation per call and the full transcript is sent; use it for concurrent investigations if your North accepts client-supplied conversation ids |
+| Conversation mode | North keeps the whole history of a conversation and gives all of it to the model on every turn. `per_run` (recommended): one conversation per Guardian run, labelled with the incident (`Guardian run - incident 1234 - 2026-10-27 14:05`); a new run, also a re-run, gets a new conversation, and so does a run after Guardian compacts its transcript. `stateless`: a new conversation for every model call, which clutters North. `reuse` (the default of a new instance): one shared conversation for everything, so the model can answer from an earlier run; use it for one run at a time only. `per_run` and `stateless` need a North that accepts client-supplied conversation ids |
 | Tool format | `openai` (default); `cohere` only for North builds that need Cohere-native tool definitions |
 | Tool results | `native` (default); `text` when the turn after a tool call never gets a reply from North |
 | Model label | cosmetic, shown by `!guardian-model` |
@@ -194,7 +194,7 @@ Cohere North is a private deployment, usually on your own network, so the integr
 - Models in the medium class or above (13B and up, for example Command R at 32B) give much better investigations than 7B ones, which in our tests drifted on complex cases and often failed to converge.
 
 ### 4. Check it
-**Test** does a read-only check in `reuse` mode (endpoint reachable, token accepted, session id resolves) and a one-turn round trip in `stateless` mode. Then `!guardian-llm-chat user_message="Reply with the single word OK"`,
+**Test** does a read-only check in `reuse` mode (endpoint reachable, token accepted, session id resolves) and a one-turn round trip in `per_run` and `stateless` mode. Then `!guardian-llm-chat user_message="Reply with the single word OK"`,
 `!guardian-probe-model`, and run the `GuardianModelAdaptation` job.
 
 | Symptom | Likely cause |
@@ -203,7 +203,7 @@ Cohere North is a private deployment, usually on your own network, so the integr
 | Certificate error | North's certificate is not trusted by the runtime |
 | 401 or 403 | Wrong or expired token |
 | "Session ID is required" | `reuse` mode without a Session ID |
-| Interleaved or odd answers | Concurrent investigations in `reuse` mode: switch to `stateless` or run one at a time |
+| Interleaved or odd answers, or an answer that quotes another run | Several runs share the one conversation in `reuse` mode: switch to `per_run` |
 
 **No North deployment to test with?** The repository's lab rig (`lab/cohere-north/`) runs a real open-weights model behind a small service that reproduces North's wire contract, so the integration can be tested end to end.
 

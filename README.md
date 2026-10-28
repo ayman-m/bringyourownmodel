@@ -145,7 +145,7 @@ at a time and swap models with zero content changes.
 |---|---|---|
 | **Guardian Vertex** | Google Vertex AI (Gemini), + OpenAI-compatible / Azure adapters | Mints a per-call OAuth token from a service account; translates OpenAI↔Gemini. |
 | **Guardian Foundry** | Microsoft **Foundry** (Azure AI Foundry): OpenAI models and the other chat models deployed in a Foundry resource | OpenAI-compatible v1 API (`/openai/v1/chat/completions`); resource key or Entra ID service principal; reasoning-model parameter handling. |
-| **Guardian Cohere** | A private **Cohere North** deployment | Two-hop protocol (`POST /api/v1/chat` → poll `/api/v1/conversations/{id}`); `reuse`/`stateless` conversation modes; `openai`/`cohere` tool formats. |
+| **Guardian Cohere** | A private **Cohere North** deployment | Two-hop protocol (`POST /api/v1/chat` → poll `/api/v1/conversations/{id}`); `per_run`/`stateless`/`reuse` conversation modes; `openai`/`cohere` tool formats. |
 
 Adding a provider (e.g. Guardian Claude) = one new integration implementing `guardian-llm-chat`; the
 tick, tools, skills, cost ledger, and slash commands are untouched. See

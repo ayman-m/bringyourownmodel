@@ -19,13 +19,22 @@ service reached in two hops:
   2. ``GET    {endpoint}/api/v1/conversations/{id}``    — read the assembled conversation; the last
      message (role CHATBOT/assistant) is the model's reply. ``content`` is a list of text blocks.
 
-Conversation identity is the operator-configured **Session ID** (a pre-created North conversation id):
+North keeps the history of every conversation on the server and feeds all of it to the model on each turn, so the
+conversation mode decides what the model can see:
 
-  * ``reuse`` (default): the configured Session ID *is* ``conversation.id`` on every call, and only the
-    turn's *new* messages (everything after the last assistant message) are sent — the server holds the
-    running history (a fixed, pre-created conversation id).
-  * ``stateless``: a fresh conversation id is minted per call and the full transcript is sent, for North
-    deployments that accept client-supplied conversation UUIDs and want per-investigation isolation.
+  * ``reuse`` (default): the configured **Session ID** (a pre-created North conversation id) *is*
+    ``conversation.id`` on every call, and only the turn's *new* messages (everything after the last assistant
+    message) are sent. Every incident and run shares that one conversation.
+  * ``stateless``: a fresh conversation id is minted per call and the full transcript is sent. The model sees only
+    that transcript, but North opens one conversation per model call.
+  * ``per_run``: one conversation per Guardian run. A request without an assistant message starts a run: a new
+    id is minted, kept in the integration context under a key made of the Session ID, the investigation id and the
+    first message, and the full transcript is sent, led by a one-line label with the incident. Later turns of the
+    run send only their new messages to the stored id, after a read of that conversation proves it is the run's: its
+    last assistant message must be the transcript's last assistant message (the run key can be the same for every run
+    of an incident, so the stored id alone is not trusted). If the stored id is missing, the conversation cannot be
+    read or is another run's, or Guardian has compacted the transcript since the conversation was started, the call
+    opens a new conversation with the full (compacted) transcript, as in ``stateless``.
 
 The messages/tools translation uses the OpenAI-compatible shape (``{"role":"user","content":"…"}``),
 with a ``cohere`` tool-format fallback for North builds that expect Cohere-native
@@ -35,10 +44,12 @@ All HTTP goes through ``BaseClient._http_request`` (proxy / TLS-verify / retry /
 uniformly); the client only supplies URL/headers/body translation and the conversation poll.
 """
 
+import hashlib
 import json
+import random
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 from urllib.parse import quote  # imported explicitly rather than via the wildcard import
 
 import demistomock as demisto
@@ -76,7 +87,18 @@ CONVERSATIONS_PATH = "/api/v1/conversations/"
 
 CONVERSATION_MODE_REUSE = "reuse"
 CONVERSATION_MODE_STATELESS = "stateless"
+CONVERSATION_MODE_PER_RUN = "per_run"
 DEFAULT_CONVERSATION_MODE = CONVERSATION_MODE_REUSE
+
+# per_run keeps its run -> conversation map under this key of the integration context. Entries expire after a day,
+# and the newest RUN_MAX_ENTRIES are kept, so the context cannot grow without bound.
+RUN_CONTEXT_KEY = "per_run_conversations"
+RUN_MAX_ENTRIES = 500
+RUN_MAX_AGE_SECONDS = 24 * 60 * 60
+# A write is repeated this many times when another call changed the context first.
+RUN_STORE_ATTEMPTS = 4
+# The start of the note Guardian puts in a transcript when it drops old turns (GuardianReasoningTick).
+COMPACTION_NOTE_PREFIX = "[Guardian-compaction] "
 
 TOOL_FORMAT_OPENAI = "openai"
 TOOL_FORMAT_COHERE = "cohere"
@@ -524,6 +546,206 @@ def _error_from_stream(raw: Any) -> Optional[str]:
     return None
 
 
+""" PER-RUN CONVERSATIONS (per_run mode) """
+
+
+def _has_assistant_message(messages: List[Dict[str, Any]]) -> bool:
+    """True when the transcript already holds a model reply, i.e. it is not the first turn of a run."""
+    return any(isinstance(m, dict) and m.get("role") == "assistant" for m in messages)
+
+
+def _investigation_id() -> str:
+    """The id of the investigation (the incident) this call runs in, or an empty string when it is not available.
+    Defensive on purpose: a missing investigation must only cost the label and a part of the run key, never the call."""
+    try:
+        investigation = demisto.investigation()
+        if isinstance(investigation, dict):
+            return str(investigation.get("id") or "").strip()
+    except Exception as exc:
+        demisto.debug(f"GuardianCohere: investigation id not available: {exc}")
+    return ""
+
+
+def _run_key(session_id: str, investigation_id: str, messages: List[Dict[str, Any]]) -> str:
+    """The key of a run: sha256 of the Session ID, the investigation id and the first non-system message's text.
+    The key is stable across the turns of one run and differs between incidents and between different prompts."""
+    first = next((m for m in messages if isinstance(m, dict) and m.get("role") != "system"), {})
+    text = _content_to_text(first.get("content")) or ""
+    return hashlib.sha256(f"{session_id or ''}|{investigation_id}|{text}".encode("utf-8")).hexdigest()
+
+
+def _run_entry_is_live(entry: Any, now: float) -> bool:
+    return (
+        isinstance(entry, dict)
+        and bool(entry.get("conversation_id"))
+        and isinstance(entry.get("created"), (int, float))
+        and now - entry["created"] <= RUN_MAX_AGE_SECONDS
+    )
+
+
+def _prune_runs(runs: Dict[str, Any], now: float) -> Dict[str, Any]:
+    """Drop entries older than a day or malformed, then keep only the newest RUN_MAX_ENTRIES."""
+    live = {key: entry for key, entry in runs.items() if _run_entry_is_live(entry, now)}
+    if len(live) > RUN_MAX_ENTRIES:
+        newest = sorted(live.items(), key=lambda item: item[1]["created"], reverse=True)[:RUN_MAX_ENTRIES]
+        live = dict(newest)
+    return live
+
+
+def _read_context() -> Optional[Dict[str, Any]]:
+    """The integration context as a dict, or None when it cannot be read."""
+    try:
+        context = get_integration_context()
+    except Exception as exc:
+        demisto.debug(f"GuardianCohere: integration context cannot be read: {exc}")
+        return None
+    return context if isinstance(context, dict) else {}
+
+
+def _lookup_run(run_key: str, now: float) -> Optional[Dict[str, Any]]:
+    """The entry stored for this run (``conversation_id``, ``created``, ``compaction``), or None when there is none or
+    the context cannot be read. The caller must still check that the conversation really is this run's."""
+    context = _read_context()
+    if context is None:
+        return None
+    runs = context.get(RUN_CONTEXT_KEY)
+    entry = runs.get(run_key) if isinstance(runs, dict) else None
+    if _run_entry_is_live(entry, now):
+        return entry
+    demisto.debug("GuardianCohere: no stored conversation for this run")
+    return None
+
+
+def _read_context_versioned() -> Optional[Tuple[Dict[str, Any], Any]]:
+    """``(context, version)`` for a write that must not overwrite a newer one, or None when the context cannot be read.
+    The version is None when this server's CommonServerPython has no versioned context."""
+    try:
+        context, version = get_integration_context_with_version()
+        if isinstance(context, dict):
+            return context, version
+    except Exception as exc:  # an older CommonServerPython has no such helper
+        demisto.debug(f"GuardianCohere: versioned integration context not available: {exc}")
+    context = _read_context()
+    return None if context is None else (context, None)
+
+
+def _store_run(run_key: str, conversation_id: str, now: float, compaction: str = "") -> bool:
+    """Remember the conversation of a run, replacing any older entry for the same key. The context is read together with
+    its version and written back with that version, so a write that another call got in between is not overwritten:
+    the platform refuses the stale version (ValueError) and the whole read-modify-write is repeated, up to
+    RUN_STORE_ATTEMPTS times. Where the server has no versioned context the write is last-writer-wins, and a lost entry
+    is harmless because a later turn checks that the stored conversation really is the run's before using it. Returns
+    False, and never raises, when the context cannot be used."""
+    for attempt in range(RUN_STORE_ATTEMPTS):
+        read = _read_context_versioned()
+        if read is None:
+            return False
+        context, version = read
+        runs = context.get(RUN_CONTEXT_KEY)
+        runs = dict(runs) if isinstance(runs, dict) else {}
+        runs[run_key] = {"conversation_id": conversation_id, "created": now, "compaction": compaction}
+        context[RUN_CONTEXT_KEY] = _prune_runs(runs, now)
+        try:
+            if version is None:
+                set_integration_context(context)
+            else:
+                set_integration_context(context, version=version)
+            return True
+        except ValueError as exc:  # the version is stale: another call wrote first
+            demisto.debug(f"GuardianCohere: integration context changed during the write (attempt {attempt + 1}): {exc}")
+            time.sleep(random.uniform(0.01, 0.1))
+        except Exception as exc:
+            demisto.debug(f"GuardianCohere: integration context cannot be written: {exc}")
+            return False
+    return False
+
+
+def _run_label(investigation_id: str, now: float) -> str:
+    """``Guardian run - incident 1234 - 2026-10-27 14:05`` (UTC): lets an operator find an incident's runs in North."""
+    stamp = time.strftime("%Y-%m-%d %H:%M", time.gmtime(now))
+    where = f" - incident {investigation_id}" if investigation_id else ""
+    return f"Guardian run{where} - {stamp}"
+
+
+def _label_first_user_message(north_messages: List[Dict[str, Any]], label: str) -> None:
+    """Put the label in front of the first user message of an already translated (new) North message list."""
+    for entry in north_messages:
+        if entry.get("role") == "user":
+            entry["content"] = f"{label}\n\n{entry.get('content') or ''}"
+            return
+
+
+def _compaction_mark(messages: List[Dict[str, Any]]) -> str:
+    """Tells which compaction state a transcript is in, or an empty string when it was never compacted. Guardian marks a
+    compacted transcript in two ways: a summary checkpoint (a system message with ``guardian_checkpoint: true``) and a
+    free-path note (a user message starting ``[Guardian-compaction] ``). Both are rewritten as more turns are dropped
+    (the note carries a running total), so the mark hashes the text of each one it finds: it changes whenever either
+    changes, and stays the same while the transcript's compaction is unchanged."""
+    checkpoint_text = note_text = None
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        if checkpoint_text is None and message.get("guardian_checkpoint") is True:
+            checkpoint_text = _content_to_text(message.get("content")) or ""
+        elif (
+            note_text is None
+            and message.get("role") == "user"
+            and str(_content_to_text(message.get("content")) or "").startswith(COMPACTION_NOTE_PREFIX)
+        ):
+            note_text = _content_to_text(message.get("content")) or ""
+    parts = []
+    if checkpoint_text is not None:
+        parts.append("checkpoint:" + hashlib.sha256(checkpoint_text.encode("utf-8")).hexdigest()[:16])
+    if note_text is not None:
+        parts.append("dropped:" + hashlib.sha256(note_text.encode("utf-8")).hexdigest()[:16])
+    return "|".join(parts)
+
+
+def _normalized_text(value: Any) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _tool_call_signature(message: Dict[str, Any]) -> List[Any]:
+    """``[(name, id), ...]`` of a message's tool calls, in the shape North replies are normalized to."""
+    return [
+        (call["function"]["name"], call["id"]) for call in _extract_reply_tool_calls({"tool_calls": message.get("tool_calls")}) or []
+    ]
+
+
+def _conversation_continues(convo: Optional[Dict[str, Any]], messages: List[Dict[str, Any]]) -> bool:
+    """True when the last assistant message of the North conversation is the transcript's last assistant message: the same
+    text (whitespace ignored) and the same tool calls (names and ids). This is what proves that a stored conversation
+    really belongs to this run, whatever the integration context says. A transcript or conversation without any assistant
+    message, or a reply with neither text nor tool calls, cannot prove it."""
+    mine = next((m for m in reversed(messages) if isinstance(m, dict) and m.get("role") == "assistant"), None)
+    theirs = next(
+        (
+            m
+            for m in reversed((convo or {}).get("messages") or [])
+            if isinstance(m, dict) and str(m.get("role") or "").upper() in ASSISTANT_ROLES
+        ),
+        None,
+    )
+    if mine is None or theirs is None:
+        return False
+    my_text = _normalized_text(_content_to_text(mine.get("content")))
+    their_text = _normalized_text(_extract_reply_text(theirs))
+    my_calls, their_calls = _tool_call_signature(mine), _tool_call_signature(theirs)
+    return (bool(my_text) or bool(my_calls)) and my_text == their_text and my_calls == their_calls
+
+
+class ConversationPlan(NamedTuple):
+    """Which North conversation one call uses, and how much of the transcript it sends."""
+
+    conversation_id: str
+    send_full: bool  # the whole transcript (minus system messages), or only the turn's new messages
+    is_new: bool  # a conversation that is started by this call (it gets the label)
+    investigation_id: str = ""
+    run_key: str = ""
+    validate: bool = False  # a stored per_run conversation that must be checked before it is used
+
+
+
 """ HELPER FUNCTIONS (argument parsing — shared shape with the other Guardian providers) """
 
 
@@ -689,22 +911,78 @@ class CohereNorthClient(BaseClient):
         }
 
     def _conversation_id_for_call(self) -> str:
-        if self.conversation_mode == CONVERSATION_MODE_STATELESS:
+        if self.conversation_mode in (CONVERSATION_MODE_STATELESS, CONVERSATION_MODE_PER_RUN):
             return str(uuid.uuid4())
         return self.session_id
 
-    def build_request_body(self, request: Dict[str, Any], conversation_id: str) -> Dict[str, Any]:
+    def _plan_conversation(self, messages: List[Dict[str, Any]], persist_run: bool = True) -> ConversationPlan:
+        """Pick the conversation for one call.
+
+        ``reuse``: the Session ID, new messages only. ``stateless``: a fresh id, the full transcript. ``per_run``: a
+        request without an assistant message starts a run (fresh id, stored under the run key, full transcript, label).
+        A later turn looks the id up; the plan then asks ``chat_completion`` to validate it (``validate``), because the
+        run key can be the same for every run of an incident. A missing entry, an unusable context, or a compaction
+        that was not seen before in this run means a new conversation with the full transcript, the same body
+        ``stateless`` sends, and never a failed call. ``persist_run=False`` (test-module) makes ``per_run`` behave like
+        ``stateless`` and stores nothing."""
+        if self.conversation_mode != CONVERSATION_MODE_PER_RUN or not persist_run:
+            return ConversationPlan(
+                self._conversation_id_for_call(),
+                self.conversation_mode in (CONVERSATION_MODE_STATELESS, CONVERSATION_MODE_PER_RUN),
+                False,
+            )
+
+        investigation_id = _investigation_id()
+        run_key = _run_key(self.session_id, investigation_id, messages)
+        if _has_assistant_message(messages):
+            entry = _lookup_run(run_key, time.time())
+            if entry:
+                mark = _compaction_mark(messages)
+                if mark and mark != str(entry.get("compaction") or ""):
+                    demisto.debug("GuardianCohere: per_run transcript was compacted; starting a new conversation")
+                else:
+                    return ConversationPlan(
+                        str(entry["conversation_id"]), False, False, investigation_id, run_key, validate=True
+                    )
+            else:
+                demisto.debug("GuardianCohere: per_run turn without a stored conversation; starting a new one")
+        return self._start_run(run_key, investigation_id, messages)
+
+    def _start_run(self, run_key: str, investigation_id: str, messages: List[Dict[str, Any]]) -> ConversationPlan:
+        """A new North conversation for this run: a fresh id, stored under the run key (replacing an older entry), the
+        full transcript and the label. A storage failure only costs the reuse of this conversation by later turns."""
+        conversation_id = self._conversation_id_for_call()
+        if not _store_run(run_key, conversation_id, time.time(), _compaction_mark(messages)):
+            demisto.debug("GuardianCohere: per_run conversation id could not be stored; later turns start new ones")
+        return ConversationPlan(conversation_id, True, True, investigation_id, run_key)
+
+    def build_request_body(
+        self,
+        request: Dict[str, Any],
+        conversation_id: str,
+        send_full: Optional[bool] = None,
+        label: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """The North chat body. ``send_full`` None means the mode's own rule: the full transcript for ``stateless``, only
+        the new messages for ``reuse``, and for ``per_run`` the full transcript until the first assistant message.
+        ``label`` is put in front of the first user message of the copy that is sent; the caller's list is not changed."""
         messages = request.get("messages") or []
-        if self.conversation_mode == CONVERSATION_MODE_STATELESS:
+        if send_full is None:
+            send_full = self.conversation_mode == CONVERSATION_MODE_STATELESS or (
+                self.conversation_mode == CONVERSATION_MODE_PER_RUN and not _has_assistant_message(messages)
+            )
+        if send_full:
             turn_messages = [m for m in messages if m.get("role") != "system"]
         else:
             turn_messages = _messages_after_last_assistant(messages)
 
+        north_messages = _to_north_messages(turn_messages, self.tool_result_format, _tool_call_names_by_id(messages))
+        if label:
+            _label_first_user_message(north_messages, label)
+
         body: Dict[str, Any] = {
             "stream": True,
-            "messages": _to_north_messages(
-                turn_messages, self.tool_result_format, _tool_call_names_by_id(messages)
-            ),
+            "messages": north_messages,
             "agent": {"id": self.agent_id},
             "conversation": {"id": conversation_id},
         }
@@ -756,6 +1034,11 @@ class CohereNorthClient(BaseClient):
         if convo is None:
             return 0
         return len(convo.get("messages") or [])
+
+    def read_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """The conversation as North holds it, or None when it cannot be read (a missing conversation included). Unlike
+        ``baseline_message_count`` this does not treat an unreadable conversation as an empty one."""
+        return self._get_conversation(conversation_id, self._budget(min(self.request_timeout, POLL_GET_TIMEOUT_CAP)))
 
     def probe_conversation(self, conversation_id: str) -> None:
         """Read-only connectivity/auth probe: a single GET that proves the endpoint is reachable, the
@@ -868,23 +1151,36 @@ class CohereNorthClient(BaseClient):
             "usage": _usage_from_conversation(convo or {}),
         }
 
-    def chat_completion(self, request: Dict[str, Any], call_timeout: Optional[float] = None) -> Dict[str, Any]:
-        """One full Guardian chat turn against North: (reuse mode) read the baseline message count,
-        submit the turn, poll for a genuinely NEW assistant reply, normalize.
+    def chat_completion(
+        self, request: Dict[str, Any], call_timeout: Optional[float] = None, persist_run: bool = True
+    ) -> Dict[str, Any]:
+        """One full Guardian chat turn against North: (when the conversation already exists) read the baseline
+        message count, submit the turn, poll for a genuinely NEW assistant reply, normalize.
 
-        In ``stateless`` mode the conversation id is a fresh empty UUID, so the baseline is 0 and no
-        pre-read is needed. Only genuine transport/auth/deadline failures propagate (which the caller
-        reads off the executeCommand error entry, per the contract).
+        When the call starts a fresh conversation (``stateless``, or the start of a ``per_run`` run) the id is a new
+        empty UUID, so the baseline is 0 and no pre-read is needed. Only genuine transport/auth/deadline failures
+        propagate (which the caller reads off the executeCommand error entry, per the contract).
 
         ``call_timeout`` (the contract's per-call ``timeout``) bounds the WHOLE turn -- all three
         steps share one deadline -- instead of each step getting the full request timeout."""
         self._call_deadline = time.time() + min(self.request_timeout, call_timeout) if call_timeout else None
         try:
-            conversation_id = self._conversation_id_for_call()
+            messages = request.get("messages") or []
+            plan = self._plan_conversation(messages, persist_run)
             baseline_count = 0
-            if self.conversation_mode == CONVERSATION_MODE_REUSE:
-                baseline_count = self.baseline_message_count(conversation_id)
-            body = self.build_request_body(request, conversation_id)
+            if plan.validate:
+                convo = self.read_conversation(plan.conversation_id)
+                # A conversation that ends in our own message is a turn whose poll timed out: resending it would duplicate it.
+                if convo is not None and _last_role_is_assistant(convo) and _conversation_continues(convo, messages):
+                    baseline_count = len(convo.get("messages") or [])
+                else:
+                    demisto.debug("GuardianCohere: the stored per_run conversation is not this run's; starting a new one")
+                    plan = self._start_run(plan.run_key, plan.investigation_id, messages)
+            elif not plan.send_full:
+                baseline_count = self.baseline_message_count(plan.conversation_id)
+            conversation_id = plan.conversation_id
+            label = _run_label(plan.investigation_id, time.time()) if plan.is_new else None
+            body = self.build_request_body(request, conversation_id, send_full=plan.send_full, label=label)
             streamed = self.submit_turn(body)
             stream_error = _error_from_stream(streamed)
             if stream_error:
@@ -971,15 +1267,15 @@ def test_module(client: CohereNorthClient) -> str:
     endpoint is reachable, the bearer token is accepted, and the session id resolves, WITHOUT writing
     a ping turn into the operator's shared, pre-created production conversation.
 
-    stateless mode: a throwaway one-turn round-trip on a fresh, isolated conversation id — also proves
-    the model actually generates."""
+    stateless and per_run mode: a throwaway one-turn round-trip on a fresh, isolated conversation id — also proves
+    the model actually generates. per_run stores nothing in the integration context for it."""
     if client.conversation_mode == CONVERSATION_MODE_REUSE:
         if not client.session_id:
             raise DemistoException("Session ID is required to test in reuse mode.")
         client.probe_conversation(client.session_id)
         return "ok"
 
-    result = client.chat_completion({"messages": [{"role": "user", "content": "ping"}]})
+    result = client.chat_completion({"messages": [{"role": "user", "content": "ping"}]}, persist_run=False)
     if result.get("content_filter"):
         detail = (result.get("content_filter_detail") or {}).get("message")
         raise DemistoException(

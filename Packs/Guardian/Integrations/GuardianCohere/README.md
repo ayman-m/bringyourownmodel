@@ -23,9 +23,9 @@ North is a **stateful conversation** service reached in two hops per turn:
 |---|---|---|
 | Endpoint URL | yes | North base URL, e.g. `https://core.example.com` (no path suffix). |
 | Agent ID | yes | Sent as `agent.id`. |
-| Session ID (conversation id) | reuse mode | Sent as `conversation.id`. Required in `reuse` mode (a pre-created conversation reused every call); ignored in `stateless` mode. |
+| Session ID (conversation id) | reuse mode | Sent as `conversation.id`. Required in `reuse` mode (a pre-created conversation reused every call); not used as a conversation id in `per_run` or `stateless` mode. |
 | Bearer token | yes | `Authorization: Bearer <token>`. Stored encrypted (type 4). |
-| Conversation mode | yes | `reuse` (default) or `stateless` — see below. |
+| Conversation mode | yes | `per_run` (recommended), `stateless` or `reuse` (the default of a new instance) — see below. |
 | Tool format | yes | `openai` (default, pass-through) or `cohere` (`parameter_definitions`). |
 | Tool results | no | `native` (default, OpenAI `tool_calls` and `role: tool` messages) or `text`. Choose `text` when the turn after a tool call never gets a reply (the poll times out, or North shows an empty conversation): the tool call is then sent as a plain assistant line and its result as a plain user message. |
 | Model label | no | Cosmetic; reported as `Guardian.LLM.Completion.model` and by `!guardian-model`. Default `cohere-north`. |
@@ -35,22 +35,42 @@ North is a **stateful conversation** service reached in two hops per turn:
 
 ### Conversation mode
 
-- **`reuse`** (default) — the configured **Session ID** *is* `conversation.id` on every call, and only
+North keeps the whole history of a conversation and gives all of it to the model on every turn, so the mode decides
+what the model can see.
+
+- **`per_run`** (recommended) — one North conversation per Guardian run. The first call of a run (a transcript with
+  no assistant message) mints a conversation id, keeps it in the integration context, and sends the full transcript
+  with a first line such as `Guardian run - incident 1234 - 2026-10-27 14:05`, so an operator can find an incident's
+  runs in North. Later calls of the run send only their new messages to the same conversation, after a read of that
+  conversation shows that its last assistant message is the one in Guardian's transcript. The stored id alone is not
+  trusted, because every run of an incident can have the same key and a stored entry can be stale. If the entry is
+  missing, the conversation cannot be read or belongs to another run, or the integration context cannot be used, the
+  call opens a new conversation with the full transcript, as `stateless` does, and never fails because of storage. A
+  new run, including a re-run after the `Guardian` context key was deleted, gets a new conversation. When Guardian
+  compacts the transcript (a summary checkpoint, or the first note that old turns were dropped), the run moves to a
+  new conversation seeded with the compacted transcript, so North's history is cut down at that point. The context
+  entry is written with its version and repeated if another call wrote first. The Session ID is not needed. Entries
+  older than 24 hours are dropped, and at most 500 are kept.
+- **`reuse`** (the default of a new instance) — the configured **Session ID** *is* `conversation.id` on every call, and only
   the turn's *new* messages (everything after the last assistant message) are submitted; North holds
   the running conversation history. Matches a fixed, pre-created North conversation id. *Caveat:* this
   assumes the orchestrator's transcript and North's server-side history stay in sync — if the Guardian
   tick compacts/edits the transcript, that change is not reflected in North's stored conversation.
 - **`stateless`** — a fresh `conversation.id` (UUID) is minted per call and the **full transcript** is
-  submitted, for North deployments that accept client-supplied conversation UUIDs and want
-  per-investigation isolation. The Session ID field is ignored.
+  submitted, for North deployments that accept client-supplied conversation UUIDs. The model only sees
+  that transcript, but North shows one conversation per model call. The Session ID field is ignored.
 
 > **⚠ Concurrency & isolation (reuse mode).** In `reuse` mode all incidents on the instance share the
 > **one** configured Session ID conversation, so **concurrent** investigations interleave into a single
 > North history (cross-incident bleed). Use `reuse` for a single investigation at a time (e.g. a
-> brief-generator); for concurrent multi-incident isolation use `stateless` (if North accepts
+> brief-generator); for concurrent multi-incident isolation use `per_run` or `stateless` (if North accepts
 > client-supplied UUIDs) or provision one North conversation per investigation. Reuse also relies on
 > server-side history, so a mid-run transcript compaction/empty-turn retry in the Guardian tick can
-> resubmit a turn (minor duplicate history server-side). `stateless` mode has none of these caveats.
+> resubmit a turn (minor duplicate history server-side). `stateless` mode has none of these caveats. `per_run` keeps
+> the model apart from other runs, but inside one run it relies on North's history just as `reuse` does, so a
+> resubmitted turn can leave a duplicate there. A compaction moves the run to a new conversation (see above).
+> Single-call helpers (compaction, plan, sub-agents, probes) each open a conversation of their own, so expect several
+> conversations per incident.
 
 ### Correctness hardening
 
@@ -64,7 +84,7 @@ The client is built for a stateful, sometimes-async North endpoint:
   never double-submitted. Each poll `GET` is bounded to the remaining poll budget so one call can't hang
   the reasoning tick.
 - **Non-invasive test.** `test-module` in reuse mode is a read-only `GET` (no ping turn is written into
-  the shared production conversation); stateless mode does a throwaway round-trip.
+  the shared production conversation); `stateless` and `per_run` modes do a throwaway round-trip (and `per_run` stores nothing).
 
 ## Commands
 
@@ -102,7 +122,7 @@ reports the live one.
 ## Testing notes
 
 Unit tests (`GuardianCohere_test.py`) mock `_http_request` at the client boundary (no live North
-endpoint is required) and cover request translation (reuse-delta vs stateless-full, system extraction,
+endpoint is required) and cover request translation (reuse-delta vs stateless-full vs per_run start and later turns, system extraction,
 tool formats), the conversation poll/completion signal, response normalization (text-block extraction,
 Cohere→OpenAI tool_calls, usage mapping), argument parsing, and `test-module`. A live `test-module` /
 `guardian-llm-chat` run requires a real North endpoint + agent id + session id + bearer token.
