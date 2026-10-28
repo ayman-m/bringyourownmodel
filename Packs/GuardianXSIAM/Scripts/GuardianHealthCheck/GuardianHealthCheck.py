@@ -2821,7 +2821,7 @@ GUARDIAN_HC_REST_POST_URIS = frozenset((
     "/settings/integration/search", "/automation/search", "/playbook/search",
 ))
 #: The only URIs it gets.
-GUARDIAN_HC_REST_GET_URIS = frozenset(("/lists/names", "/incidentfields", "/incidenttypes/export", "/layouts"))
+GUARDIAN_HC_REST_GET_URIS = frozenset(("/lists/names", "/incidentfields", "/incidenttype", "/incidenttypes/export", "/layouts"))
 
 #: Lists the platform and the scripts create while Guardian runs (not shipped in the pack, so not "unknown").
 GUARDIAN_HC_RUNTIME_LISTS = frozenset((
@@ -2843,7 +2843,7 @@ GUARDIAN_HC_SCRIPTS = (
     "GuardianDiagnostics", "GuardianEval", "GuardianEvalHarvest", "GuardianHealthCheck", "GuardianHousekeeping",
     "GuardianIntakeHygiene", "GuardianIssueDuplicateCheck", "GuardianIssueEvidence", "GuardianIssueRoute",
     "GuardianIssueSummary", "GuardianJobGuard", "GuardianJobGuardCheck", "GuardianKBSearch", "GuardianKillSwitchCheck",
-    "GuardianLayoutRecommendedActions", "GuardianLayoutSocAgentMemory", "GuardianLayoutSocAgentPersona",
+    "GuardianLayoutAssessment", "GuardianLayoutRecommendedActions", "GuardianLayoutSocAgentMemory", "GuardianLayoutSocAgentPersona",
     "GuardianLayoutSocAgentTools", "GuardianLayoutToolLedger", "GuardianLayoutTrace", "GuardianMemory",
     "GuardianModelChoice", "GuardianModelProfileCheck", "GuardianModelProfileUpdate", "GuardianPing",
     "GuardianPlanApprove", "GuardianPlaybookMonitor", "GuardianPromptBuilder", "GuardianReasoningTick",
@@ -3312,6 +3312,30 @@ def guardian_hc_check_get(section, label, uri, expected, name_keys, keys=(), pro
     return guardian_hc_compare(section, label, expected, names, problem_missing, missing_status, report_extra=report_extra)
 
 
+#: Two ways to list the types. Which one includes the types a pack installed differs between server versions, so both are asked
+#: and the names joined.
+GUARDIAN_HC_TYPE_URIS = ("/incidenttype", "/incidenttypes/export")
+
+
+def guardian_hc_check_types(section, label, expected):
+    """Ask both type URIs, one after the other, and compare the union of the names. An answer that fails or has an unknown shape
+    is skipped; only when neither can be used is the result the "unverified" WARN, never a FAIL."""
+    names, errors = None, []
+    for uri in GUARDIAN_HC_TYPE_URIS:
+        reply = guardian_hc_rest_get(uri)
+        if not reply["ok"]:
+            errors.append(reply["error"])
+            continue
+        found = guardian_hc_names_from(reply["data"], ("IncidentTypes", "incidentTypes", "incidenttypes", "data"), ("id", "name"))
+        if found is None:
+            continue
+        names = (names or set()) | found
+    if names is None:
+        detail = "could not ask the tenant: {}".format("; ".join(e for e in errors if e)) if errors else "the tenant answered in a shape this check does not know"
+        return [guardian_hc_result(section, label, "WARN", detail, "unverified")]
+    return guardian_hc_compare(section, label, expected, names, "item_missing")
+
+
 def guardian_hc_section_content(state):
     section = "Package content"
     out = []
@@ -3339,9 +3363,7 @@ def guardian_hc_section_content(state):
     out += guardian_hc_guard(section, "Lists", lists)
     out += guardian_hc_guard(section, "Fields", lambda: guardian_hc_check_get(
         section, "Issue fields", "/incidentfields", GUARDIAN_HC_FIELDS, ("cliName", "name"), ("incidentFields", "IncidentFields", "data")))
-    out += guardian_hc_guard(section, "Types", lambda: guardian_hc_check_get(
-        section, "Issue types", "/incidenttypes/export", GUARDIAN_HC_TYPES, ("id", "name"),
-        ("IncidentTypes", "incidentTypes", "incidenttypes", "data")))
+    out += guardian_hc_guard(section, "Types", lambda: guardian_hc_check_types(section, "Issue types", GUARDIAN_HC_TYPES))
     out += guardian_hc_guard(section, "Layouts", lambda: guardian_hc_check_get(
         section, "Layouts", "/layouts", GUARDIAN_HC_LAYOUTS, ("id", "name"), ("layouts", "layoutsContainers", "Layouts", "data"),
         missing_status="WARN"))

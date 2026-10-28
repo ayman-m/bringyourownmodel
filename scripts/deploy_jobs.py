@@ -24,6 +24,7 @@ import json
 import os
 import ssl
 import sys
+import time
 import urllib.request
 
 # GUARDIAN_PACK selects the pack whose Jobs are deployed ("Guardian" for XSOAR 6, "GuardianXSIAM" for Cortex platform).
@@ -37,6 +38,8 @@ SKIP_JOBS = {n.strip() for n in os.environ.get("GUARDIAN_SKIP_JOBS", "").split("
 # A fixed, deterministic startDate — the recurrence is driven by humanCron, not
 # this value; it only needs to be a valid past timestamp so the scheduler arms.
 DEFAULT_START_DATE = "2024-01-01T00:00:00Z"
+# Tenant rule: at least a second between calls, so every call is followed by a pause (also when it fails).
+PAUSE_SECONDS = 1.5
 
 
 def _client():
@@ -65,8 +68,11 @@ def _client():
 
 def _post(base, headers, ctx, path, body):
     req = urllib.request.Request(base + path, data=json.dumps(body).encode(), headers=headers, method="POST")
-    with urllib.request.urlopen(req, context=ctx, timeout=60) as resp:
-        raw = resp.read().decode()
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=60) as resp:
+            raw = resp.read().decode()
+    finally:
+        time.sleep(PAUSE_SECONDS)
     return json.loads(raw) if raw.strip() else {}
 
 

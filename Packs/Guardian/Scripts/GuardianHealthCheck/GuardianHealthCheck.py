@@ -2809,7 +2809,7 @@ GUARDIAN_HC_REST_POST_URIS = frozenset((
     "/settings/integration/search", "/automation/search", "/playbook/search", "/jobs/search",
 ))
 #: The only URIs it gets.
-GUARDIAN_HC_REST_GET_URIS = frozenset(("/lists/names", "/incidentfields", "/incidenttypes/export", "/layouts"))
+GUARDIAN_HC_REST_GET_URIS = frozenset(("/lists/names", "/incidentfields", "/incidenttype", "/incidenttypes/export", "/layouts"))
 
 #: Lists the platform and the scripts create while Guardian runs (not shipped in the pack, so not "unknown").
 GUARDIAN_HC_RUNTIME_LISTS = frozenset((
@@ -2831,7 +2831,7 @@ GUARDIAN_HC_SCRIPTS = (
     "GuardianDiagnostics", "GuardianEval", "GuardianEvalHarvest", "GuardianHealthCheck", "GuardianHousekeeping",
     "GuardianIncidentDuplicateCheck", "GuardianIncidentEvidence", "GuardianIncidentRoute", "GuardianIncidentSummary",
     "GuardianIntakeHygiene", "GuardianJobGuard", "GuardianJobGuardCheck", "GuardianKBSearch", "GuardianKillSwitchCheck",
-    "GuardianLayoutRecommendedActions", "GuardianLayoutSocAgentMemory", "GuardianLayoutSocAgentPersona",
+    "GuardianLayoutAssessment", "GuardianLayoutRecommendedActions", "GuardianLayoutSocAgentMemory", "GuardianLayoutSocAgentPersona",
     "GuardianLayoutSocAgentTools", "GuardianLayoutToolLedger", "GuardianLayoutTrace", "GuardianMemory",
     "GuardianModelChoice", "GuardianModelProfileCheck", "GuardianModelProfileUpdate", "GuardianPing",
     "GuardianPlanApprove", "GuardianPlaybookMonitor", "GuardianPromptBuilder", "GuardianReasoningTick",
@@ -3298,6 +3298,30 @@ def guardian_hc_check_get(section, label, uri, expected, name_keys, keys=(), pro
     return guardian_hc_compare(section, label, expected, names, problem_missing, missing_status, report_extra=report_extra)
 
 
+#: Two ways to list the types. Which one includes the types a pack installed differs between server versions, so both are asked
+#: and the names joined.
+GUARDIAN_HC_TYPE_URIS = ("/incidenttype", "/incidenttypes/export")
+
+
+def guardian_hc_check_types(section, label, expected):
+    """Ask both type URIs, one after the other, and compare the union of the names. An answer that fails or has an unknown shape
+    is skipped; only when neither can be used is the result the "unverified" WARN, never a FAIL."""
+    names, errors = None, []
+    for uri in GUARDIAN_HC_TYPE_URIS:
+        reply = guardian_hc_rest_get(uri)
+        if not reply["ok"]:
+            errors.append(reply["error"])
+            continue
+        found = guardian_hc_names_from(reply["data"], ("IncidentTypes", "incidentTypes", "incidenttypes", "data"), ("id", "name"))
+        if found is None:
+            continue
+        names = (names or set()) | found
+    if names is None:
+        detail = "could not ask the tenant: {}".format("; ".join(e for e in errors if e)) if errors else "the tenant answered in a shape this check does not know"
+        return [guardian_hc_result(section, label, "WARN", detail, "unverified")]
+    return guardian_hc_compare(section, label, expected, names, "item_missing")
+
+
 def guardian_hc_job_enabled(row):
     """Whether a Job object is enabled: its derived `schedulingStatus`, else `forceDisable`; ``None`` when neither is there."""
     status = str(row.get("schedulingStatus") or "").strip().lower()
@@ -3309,7 +3333,8 @@ def guardian_hc_job_enabled(row):
 
 
 def guardian_hc_jobs(section, state):
-    reply = guardian_hc_rest_post("/jobs/search", {"query": "name:Guardian*", "page": 0, "size": 200})
+    # No query on purpose: a wildcard name query matches nothing on XSOAR 6.14, so every Job is asked for and the Guardian ones kept.
+    reply = guardian_hc_rest_post("/jobs/search", {"page": 0, "size": 200})
     if not reply["ok"]:
         return [guardian_hc_result(section, "Jobs", "WARN", "could not ask the tenant: {}".format(reply["error"]), "unverified")]
     rows = reply["data"].get("data") if isinstance(reply["data"], dict) else None
@@ -3317,8 +3342,13 @@ def guardian_hc_jobs(section, state):
         rows = []
     if not isinstance(rows, list):
         return [guardian_hc_result(section, "Jobs", "WARN", "the tenant answered in a shape this check does not know", "unverified")]
-    found = {row["name"]: row for row in rows if isinstance(row, dict) and isinstance(row.get("name"), str)}
-    results = guardian_hc_compare(section, "Jobs", GUARDIAN_HC_JOBS, found, "job_missing")
+    found = {row["name"]: row for row in rows if isinstance(row, dict) and isinstance(row.get("name"), str)
+             and row["name"].lower().startswith("guardian")}
+    total = reply["data"].get("total")
+    if isinstance(total, int) and total > len(rows) and not set(GUARDIAN_HC_JOBS) <= set(found):
+        return [guardian_hc_result(section, "Jobs", "WARN", "the tenant has {} Jobs and the search returned {}, so a missing Job "
+                                   "cannot be told from one on a later page".format(total, len(rows)), "unverified")]
+    results =guardian_hc_compare(section, "Jobs", GUARDIAN_HC_JOBS, found, "job_missing")
     enabled = sorted(name for name, row in found.items() if name in GUARDIAN_HC_JOBS and guardian_hc_job_enabled(row))
     if enabled:
         results.append(guardian_hc_result(section, "Jobs enabled", "WARN", "{} Guardian Job(s) are enabled: {}".format(len(enabled), ", ".join(enabled)),
@@ -3355,9 +3385,7 @@ def guardian_hc_section_content(state):
     out += guardian_hc_guard(section, "Lists", lists)
     out += guardian_hc_guard(section, "Fields", lambda: guardian_hc_check_get(
         section, "Incident fields", "/incidentfields", GUARDIAN_HC_FIELDS, ("cliName", "name"), ("incidentFields", "IncidentFields", "data")))
-    out += guardian_hc_guard(section, "Types", lambda: guardian_hc_check_get(
-        section, "Incident types", "/incidenttypes/export", GUARDIAN_HC_TYPES, ("id", "name"),
-        ("IncidentTypes", "incidentTypes", "incidenttypes", "data")))
+    out += guardian_hc_guard(section, "Types", lambda: guardian_hc_check_types(section, "Incident types", GUARDIAN_HC_TYPES))
     out += guardian_hc_guard(section, "Layouts", lambda: guardian_hc_check_get(
         section, "Layouts", "/layouts", GUARDIAN_HC_LAYOUTS, ("id", "name"), ("layouts", "layoutsContainers", "Layouts", "data"),
         missing_status="WARN"))

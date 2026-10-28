@@ -52,6 +52,7 @@ class Tenant:
         self.layouts = list(hc.GUARDIAN_HC_LAYOUTS)
         self.list_names = None
         self.post_errors = {}
+        self.post_bodies = {}
         self.get_errors = {}
         self.post_override = {}
         self.get_override = {}
@@ -73,6 +74,8 @@ class Tenant:
         self.bridge_status = {}
         self.jobs = {name: "disabled" for name in getattr(hc, "GUARDIAN_HC_JOBS", ())}
         self.job_rows = None
+        self.other_jobs = [{"name": "Daily backup", "schedulingStatus": "enabled", "forceDisable": False},
+                           {"name": "Nightly enrichment", "schedulingStatus": "enabled", "forceDisable": False}]
         self.xql_error = None
         self.supported = {"lab-model": [{"name": "guardian-llm-chat"}], "xql": [{"name": "xdr-xql-generic-query"}]}
 
@@ -89,6 +92,7 @@ class Tenant:
         return {"instances": self.instances, "configurations": configurations, "health": self.health}
 
     def post(self, uri, body):
+        self.post_bodies.setdefault(uri, []).append(body)
         if uri in self.post_errors:
             return [{"Type": 4, "Contents": self.post_errors[uri]}]
         if uri in self.post_override:
@@ -100,7 +104,10 @@ class Tenant:
         elif uri == "/playbook/search":
             response = {"playbooks": [{"id": n, "name": n} for n in self.playbooks], "total": len(self.playbooks)}
         elif uri == "/jobs/search":
-            rows = self.job_rows if self.job_rows is not None else [{"name": n, "schedulingStatus": s} for n, s in self.jobs.items()]
+            rows = self.job_rows if self.job_rows is not None else (
+                [{"name": n, "schedulingStatus": s, "forceDisable": s != "enabled"} for n, s in self.jobs.items()] + self.other_jobs)
+            if "*" in str((body or {}).get("query", "")):  # XSOAR 6.14 matches nothing for a wildcard name query
+                rows = []
             response = {"data": rows, "total": len(rows)}
         else:
             raise AssertionError("unexpected post " + uri)
@@ -116,6 +123,8 @@ class Tenant:
             response = names
         elif uri == "/incidentfields":
             response = [{"cliName": n, "id": "incident_" + n} for n in self.fields] + [{"cliName": "severity", "id": "incident_severity"}]
+        elif uri == "/incidenttype":
+            response = [{"id": n, "name": n, "packID": "Guardian"} for n in self.types] + [{"id": "Phishing", "name": "Phishing", "packID": "Phishing"}]
         elif uri == "/incidenttypes/export":
             response = [{"id": n, "name": n} for n in self.types] + [{"id": "Phishing", "name": "Phishing"}]
         elif uri == "/layouts":
@@ -310,7 +319,7 @@ def test_the_command_set_is_exactly_the_read_only_one():
     assert hc.GUARDIAN_HC_COMMANDS - rest == expected
     assert rest == {"demisto-api-post", "demisto-api-get", "core-api-post", "core-api-get"}
     assert not hc.GUARDIAN_HC_COMMANDS & WRITE_COMMANDS
-    assert hc.GUARDIAN_HC_REST_GET_URIS == {"/lists/names", "/incidentfields", "/incidenttypes/export", "/layouts"}
+    assert hc.GUARDIAN_HC_REST_GET_URIS == {"/lists/names", "/incidentfields", "/incidenttype", "/incidenttypes/export", "/layouts"}
     assert hc.GUARDIAN_HC_REST_POST_URIS == {"/settings/integration/search", "/automation/search", "/playbook/search", "/jobs/search"}
     assert all(uri.endswith("/search") for uri in hc.GUARDIAN_HC_REST_POST_URIS)
 
@@ -565,7 +574,7 @@ def test_the_content_section_makes_one_call_per_kind(tenant):
     run({})
     uris = [a["uri"] for c, a in tenant.calls if c.endswith("-post") or c.endswith("-get")]
     assert sorted(uris) == sorted(["/settings/integration/search", "/automation/search", "/playbook/search", "/lists/names", "/incidentfields",
-                                   "/incidenttypes/export", "/layouts", "/jobs/search"])
+                                   "/incidenttype", "/incidenttypes/export", "/layouts", "/jobs/search"])
 
 
 def test_jobs_are_compared_and_an_enabled_one_is_a_warn_with_a_note(tenant):
@@ -588,6 +597,25 @@ def test_a_missing_job_is_a_fail_and_an_unreadable_state_is_not_called_enabled(t
     assert by_name(run({})[0])["Jobs enabled"]["status"] == "WARN"
     tenant.job_rows = [{"name": n, "forceDisable": True} for n in hc.GUARDIAN_HC_JOBS]
     assert by_name(run({})[0])["Jobs enabled"]["status"] == "PASS"
+
+
+def test_the_jobs_are_asked_for_without_a_query_and_other_jobs_are_ignored(tenant):
+    # XSOAR 6.14 answers a wildcard name query with {"total": 0, "data": []}, which made all six Jobs look missing
+    for job in hc.GUARDIAN_HC_JOBS:
+        tenant.jobs[job] = "enabled"
+    rows = by_name(run({})[0])
+    assert tenant.post_bodies["/jobs/search"] == [{"page": 0, "size": 200}]
+    assert rows["Jobs"]["status"] == "PASS" and rows["Jobs"]["detail"] == "all {} present".format(len(hc.GUARDIAN_HC_JOBS))
+    assert "Jobs (extra)" not in rows
+    assert rows["Jobs enabled"]["status"] == "WARN"
+    assert rows["Jobs enabled"]["detail"].startswith("{} Guardian Job(s) are enabled".format(len(hc.GUARDIAN_HC_JOBS)))
+    assert "Daily backup" not in rows["Jobs enabled"]["detail"]
+
+
+def test_a_job_search_that_returns_only_some_of_the_jobs_is_not_a_false_fail(tenant):
+    tenant.post_override["/jobs/search"] = {"data": [{"name": n, "schedulingStatus": "disabled"} for n in hc.GUARDIAN_HC_JOBS[:3]], "total": 40}
+    row = by_name(run({})[0])["Jobs"]
+    assert row["status"] == "WARN" and row["problem"] == "unverified"
 
 
 def test_jobs_are_never_created_enabled_or_run(tenant):
@@ -1003,13 +1031,62 @@ def test_every_run_time_list_the_scripts_create_is_known_to_the_health_check():
 
 
 @pytest.mark.parametrize("shape", [{"IncidentTypes": "TYPES"}, {"incidentTypes": "TYPES"}, "TYPES", {"data": "TYPES"}])
-def test_the_incident_types_are_read_in_every_shape_the_export_has(tenant, shape):
-    rows = [{"id": n, "version": 1} for n in tenant.types] + [{"id": "Phishing", "version": 2}]
-    tenant.get_override["/incidenttypes/export"] = json.loads(json.dumps(shape).replace('"TYPES"', json.dumps(rows)))
+def test_the_incident_types_are_read_in_every_shape_the_list_has(tenant, shape):
+    rows = [{"id": n, "name": n, "packID": "Guardian"} for n in tenant.types] + [{"id": "Phishing", "name": "Phishing", "packID": "Phishing"}]
+    tenant.get_override["/incidenttype"] = json.loads(json.dumps(shape).replace('"TYPES"', json.dumps(rows)))
+    tenant.get_override["/incidenttypes/export"] = []
     row = by_name(run({})[0])["Incident types"]
     assert row["status"] == "PASS", row
-    tenant.get_override["/incidenttypes/export"] = json.loads(json.dumps(shape).replace('"TYPES"', json.dumps(rows[1:])))
+    tenant.get_override["/incidenttype"] = json.loads(json.dumps(shape).replace('"TYPES"', json.dumps(rows[1:])))
     assert by_name(run({})[0])["Incident types"]["status"] == "FAIL"
+
+
+def test_the_incident_types_are_asked_from_both_uris_one_after_the_other(tenant):
+    results = by_name(run({})[0])
+    assert results["Incident types"]["status"] == "PASS" and results["Incident types"]["detail"] == "all 2 present"
+    assert [a["uri"] for c, a in tenant.calls if c.endswith("-get") and "type" in a["uri"]] == ["/incidenttype", "/incidenttypes/export"]
+    assert set(hc.GUARDIAN_HC_TYPE_URIS) <= hc.GUARDIAN_HC_REST_GET_URIS
+
+
+def test_an_empty_export_does_not_hide_the_types_the_list_has(tenant):
+    # XSOAR 6.14: the export lists custom types only, the plain list has the pack's
+    tenant.get_override["/incidenttypes/export"] = []
+    assert by_name(run({})[0])["Incident types"]["status"] == "PASS"
+
+
+def test_a_failing_type_list_is_covered_by_the_export(tenant):
+    tenant.get_errors["/incidenttype"] = "HTTP 404"
+    assert by_name(run({})[0])["Incident types"]["status"] == "PASS"
+    tenant.get_errors.clear()
+    tenant.get_override["/incidenttype"] = {"nothing": 1}
+    assert by_name(run({})[0])["Incident types"]["status"] == "PASS"
+
+
+def test_a_failing_export_is_covered_by_the_type_list(tenant):
+    tenant.get_errors["/incidenttypes/export"] = "HTTP 500"
+    assert by_name(run({})[0])["Incident types"]["status"] == "PASS"
+
+
+def test_when_neither_type_uri_can_be_used_the_result_is_an_unverified_warn(tenant):
+    tenant.get_errors["/incidenttype"] = "HTTP 404"
+    tenant.get_errors["/incidenttypes/export"] = "HTTP 500"
+    row = by_name(run({})[0])["Incident types"]
+    assert row["status"] == "WARN" and row["problem"] == "unverified" and "HTTP 404" in row["detail"]
+    tenant.get_errors.clear()
+    tenant.get_override["/incidenttype"] = {"nothing": 1}
+    tenant.get_override["/incidenttypes/export"] = "text"
+    row = by_name(run({})[0])["Incident types"]
+    assert row["status"] == "WARN" and row["problem"] == "unverified"
+
+
+def test_the_names_found_are_the_union_of_both_uris(tenant):
+    first, second = tenant.types
+    tenant.get_override["/incidenttype"] = [{"id": first, "name": first, "packID": "Guardian"}]
+    tenant.get_override["/incidenttypes/export"] = [{"id": second, "name": second}]
+    assert by_name(run({})[0])["Incident types"]["status"] == "PASS"
+    tenant.get_override["/incidenttypes/export"] = [{"id": first, "name": first}]
+    row = by_name(run({})[0])["Incident types"]
+    assert row["status"] == "FAIL" and second in row["detail"] and first not in row["detail"]
 
 
 def test_a_dated_model_name_is_priced_as_its_row(tenant):
