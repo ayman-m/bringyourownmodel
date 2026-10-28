@@ -53,7 +53,7 @@ A list that shows a wrapper like that was loaded from a pack file: delete it and
 | 2 | Indicator fields | `IndicatorFields/` | nothing | Settings > Objects Setup > Indicators > Fields. No import documented | `POST /incidentfields/import` |
 | 3 | Lists (what each one does: [`../CONTENT_REFERENCE.md`](../CONTENT_REFERENCE.md#1-lists)) | `Lists/` | nothing | Settings > Advanced > Lists > **Add a List** (the guide also lists uploading and downloading a list) | `POST /lists/save` |
 | 4 | Integrations | `Integrations/` | nothing | Settings > Integrations > Instances. The guide does not describe importing an integration file; the toolbar has an upload icon | `POST /settings/integration-conf/upload` |
-| 5 | Automations | `Scripts/` | nothing (no order among the 80) | **Automation** page > the upload automation icon | `POST /automation/import` |
+| 5 | Automations | `Scripts/` | nothing (no order among the 81) | **Automation** page > the upload automation icon | `POST /automation/import` |
 | 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 23 of the pack's automations). **Upload the seven `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIncident`**, which calls them | **Playbooks** page > the upload button, top right | `POST /playbook/save/yaml` |
 | 7 | Layouts | `Layouts/` | the incident and indicator fields | Settings > Objects Setup > Incidents > **Layouts**. No import documented | `POST /layouts/import` |
 | 8 | Incident types | `IncidentTypes/` | the layout and the playbooks | Settings > Objects Setup > Incidents > **Types**: the guide lists "create, duplicate, import, export" | `POST /incidenttypes/import` |

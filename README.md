@@ -163,7 +163,7 @@ model catalogue on every run (`guardian_settings.model_tier` is only for a model
 
 ## What's in the pack
 
-`Packs/Guardian` — **3 integrations · 80 automations · 17 playbooks · 19 lists · 15 fields · 2 incident
+`Packs/Guardian` — **3 integrations · 81 automations · 17 playbooks · 19 lists · 15 fields · 2 incident
 types · 6 jobs · 2 layouts · 1 dashboard · 1 pre-process rule.** The Cortex platform edition, `Packs/GuardianXSIAM`, is a separately
 maintained copy (21 playbooks, no pre-process rule; see its `DIVERGENCE.md`).
 

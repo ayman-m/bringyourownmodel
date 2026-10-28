@@ -13,7 +13,7 @@ Paths below are relative to the unzipped download (`Guardian-Cortex-Platform-v<v
 | Indicator fields | 10 | `IndicatorFields/` | installed, used by the SOC Agent indicator layout |
 | Lists | 27 | `Lists/` | installed |
 | Integrations (Foundry, Vertex, Cohere), unified YAML | 3 | `Integrations/` | installed |
-| Automations, unified YAML | 81 | `Scripts/` | installed |
+| Automations, unified YAML | 82 | `Scripts/` | installed |
 | Playbooks | **21** | `Playbooks/` | installed, **then adopted** (below) |
 | Layouts (1 issue layout, 1 indicator layout) | 2 | `Layouts/` | installed |
 | Issue (incident) types | 2 | `IncidentTypes/` | installed |

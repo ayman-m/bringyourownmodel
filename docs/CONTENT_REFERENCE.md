@@ -164,7 +164,7 @@ Lists the SOC Agent layout manages (such as a runtime copy of the allowlist writ
 
 ## 3. Automations (scripts)
 
-**What an automation is.** A Python script stored on the server and run in a container. It is called by a command (`!GuardianPing`), by a playbook task, by a layout button, by a dashboard widget, by a Job, or by another script. Guardian ships **71** of them.
+**What an automation is.** A Python script stored on the server and run in a container. It is called by a command (`!GuardianPing`), by a playbook task, by a layout button, by a dashboard widget, by a Job, or by another script. Guardian ships **81** of them.
 They are grouped below by **who runs them**, because that decides which gate a script sits behind. Each script appears once, in its main class; other places it is used are in the *Called by* column.
 *Workflow* refers to the numbered Workflow sections of the animated deck (`docs/Guardian-Overview.html`): 1 Approval policy (the 7 checks), 2 Tool catalogue, 3 The system prompt, 4 One reasoning turn, 5 Skills and knowledge, 6 A run starts and ends, 7 Keeping the system healthy, 8 Install and upgrade.
 
@@ -259,6 +259,7 @@ Every display script returns an HTML entry built with the shared `guardian_html_
 
 | Script | Command (as typed) | Purpose | Called by | Workflow |
 |---|---|---|---|---|
+| `GuardianLayoutAssessment` | none (layout section) | Shows the triage and investigation outcome as one card: verdict, confidence, severity before and after with the reason, summary, analysis, recommended actions, next step, key entities, ATT&CK techniques, the agent's conclusion rendered from Markdown, pending approvals and the cost. Self-contained, so it can be pasted into the automation editor by hand; `format=markdown` returns plain Markdown. | GuardianAgentRunLayout | 6 A run starts and ends |
 | `GuardianLayoutRecommendedActions` | none (layout section) | Shows the actions waiting for approval on this incident (from `guardian_approvals_ledger`) as a table with risk tier, time left before the approval expires, a redacted argument summary and how to resolve each, then the agent's final conclusion as a card. | GuardianAgentRunLayout; the task in GuardianApprovalGate | 1 Approval policy |
 | `GuardianLayoutToolLedger` | none (layout section) | Shows this incident's rows from `guardian_audit` as an HTML table (tick, time, tool, status badge, target, duration, note) under a count per status. | GuardianAgentRunLayout | 1 Approval policy |
 | `GuardianLayoutTrace` | none (layout section) | Turn-by-turn trace from `Guardian.Loop.messages`: status, tick, cost, verdict, then one card per turn with its reasoning and a table of its tool calls and their outcome. | GuardianAgentRunLayout | 4 One reasoning turn |
@@ -356,7 +357,7 @@ The agent can ask a person for a decision, through `GuardianAskAnalyst` and `Gua
 
 ### Differences on the Cortex platform
 
-All 71 scripts exist in both editions, and no script is present in only one of them. The two editions carry the same logic apart from the rows below. Other differences are wording (for example "issue" for "incident") and the marketplace flag in each `.yml`.
+Every script exists in both editions under the same name, except the four incident scripts (`GuardianIncidentDuplicateCheck`, `GuardianIncidentEvidence`, `GuardianIncidentRoute`, `GuardianIncidentSummary`), which are `GuardianIssue...` on the Cortex platform, and `GuardianXQL`, which exists only on the Cortex platform. The two editions carry the same logic apart from the rows below. Other differences are wording (for example "issue" for "incident") and the marketplace flag in each `.yml`.
 
 | Script | XSOAR 6 | Cortex platform |
 |---|---|---|

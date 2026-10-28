@@ -104,8 +104,17 @@ def test_the_two_editions_have_identical_layouts_apart_from_marketplace_and_word
         assert xsoar.replace('"xsoar"', '"M"') == platform.replace('"marketplacev2"', '"M"'), name
 
 
+#: the scripts that are named after an incident on XSOAR 6 and after an issue on the Cortex platform
+ISSUE_NAMES = {
+    "GuardianIncidentDuplicateCheck": "GuardianIssueDuplicateCheck",
+    "GuardianIncidentEvidence": "GuardianIssueEvidence",
+    "GuardianIncidentRoute": "GuardianIssueRoute",
+    "GuardianIncidentSummary": "GuardianIssueSummary",
+}
+
+
 def test_the_two_editions_have_the_same_layout_scripts_and_tags():
     for script_id, info in _scripts("Guardian").items():
-        other = _scripts("GuardianXSIAM").get(script_id)
+        other = _scripts("GuardianXSIAM").get(ISSUE_NAMES.get(script_id, script_id))
         assert other is not None, script_id
         assert sorted(other["tags"]) == sorted(info["tags"]), script_id

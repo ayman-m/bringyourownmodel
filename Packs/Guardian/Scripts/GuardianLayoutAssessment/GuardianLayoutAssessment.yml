@@ -1,0 +1,41 @@
+args:
+- name: format
+  description: >-
+    "html" (the default) returns the card as HTML. "markdown" returns the same content as Markdown, for a server whose
+    layouts do not render HTML sections. A layout section cannot pass arguments, so the section always uses the default.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - html
+  - markdown
+  defaultValue: html
+comment: >-
+  Layout section for the Guardian tab of the Guardian Agent Run layout. Shows Guardian's triage and investigation
+  outcome as one card: verdict, confidence, investigation type and complexity, the severity before and after
+  with the reason, the summary, the analysis, the recommended actions, the next step, the key entities, the ATT&CK
+  techniques, the agent's conclusion rendered from Markdown, the number of actions waiting for approval, and the
+  ticks, tokens and cost. Reads `Guardian.Triage`, `Guardian.TriageApply` and `Guardian.Loop` from the incident's
+  context and the pending rows of `guardian_approvals_ledger`. Returns HTML and falls back to Markdown if the HTML
+  cannot be built. It only displays information: it never writes context, Lists or incident fields. It reads the
+  incident and its context, so it shows nothing in the Playground; run it on a real incident. The script is
+  self-contained (no shared Guardian block), so it can also be pasted into the automation editor by hand.
+commonfields:
+  id: GuardianLayoutAssessment
+  version: -1
+enabled: true
+name: GuardianLayoutAssessment
+outputs: []
+script: '-'
+system: false
+tags:
+- dynamic-section
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar
