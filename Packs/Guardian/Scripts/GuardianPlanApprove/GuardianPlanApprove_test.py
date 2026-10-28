@@ -302,3 +302,63 @@ def test_main_rejected_plan_calls_return_error(monkeypatch):
     with pytest.raises(SystemExit):
         plan.main()
     assert len(csp.RESULTS) == 0
+
+
+# --- list arguments are flattened exactly as the bridge flattens them ---------------
+
+
+def _load_bridge():
+    import importlib.util
+    import pathlib
+
+    bridge_path = pathlib.Path(__file__).resolve().parents[1] / "GuardianToolBridge" / "GuardianToolBridge.py"
+    spec = importlib.util.spec_from_file_location("guardian_bridge_for_flatten_check", bridge_path)
+    bridge = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bridge)
+    return bridge
+
+
+def test_flatten_matches_the_bridge():
+    bridge = _load_bridge()
+    samples = [
+        {"id": ["1", " 2 "], "status": ["Active"], "page": [0, 1.5], "query": "x"},
+        {"filters": [{"a": 1}], "mixed": ["a", {"b": 1}], "empty": []},
+    ]
+    for tool_name in ("SearchIncidentsV2", "getIncidents", "setIncident", "GuardianSkillRead", "setList"):
+        for args in samples:
+            assert plan.guardian_plan_flatten_list_args(tool_name, args) == bridge.guardian_bridge_flatten_list_args(tool_name, args)
+    assert plan.guardian_plan_flatten_list_args("ip", "text") == "text"
+
+
+def test_a_plan_step_with_list_arguments_holds_what_the_bridge_will_compare(monkeypatch):
+    ledger, _notes = _install(monkeypatch, incident={"id": "42"})
+    steps = json.dumps([{"tool_name": "SearchIncidentsV2", "tool_args": {"id": ["1", "2"], "status": ["Active"]}}])
+
+    ok, _result = plan.guardian_plan_approve_run(steps)
+
+    assert ok is True
+    step = ledger[0]["steps"][0]
+    assert step["tool_args"] == {"id": "1,2", "status": "Active"}
+    bridge = _load_bridge()
+    dispatched = bridge.guardian_bridge_flatten_list_args("SearchIncidentsV2", {"id": ["1", "2"], "status": ["Active"]})
+    assert step["canonical_args"] == bridge.guardian_bridge_canonical_json(dispatched)
+
+
+def test_a_plan_step_for_setincident_or_a_guardian_script_keeps_its_list(monkeypatch):
+    ledger, _notes = _install(monkeypatch, incident={"id": "42"})
+    steps = json.dumps(
+        [
+            {"tool_name": "setIncident", "tool_args": {"customFields": ["a", "b"]}},
+            {"tool_name": "GuardianSkillRead", "tool_args": {"names": ["a", "b"]}},
+        ]
+    )
+    ok, _result = plan.guardian_plan_approve_run(steps)
+    assert ok is True
+    assert [s["tool_args"] for s in ledger[0]["steps"]] == [{"customFields": ["a", "b"]}, {"names": ["a", "b"]}]
+
+
+def test_the_denylist_check_of_a_plan_step_sees_a_flattened_listname(monkeypatch):
+    _install(monkeypatch)
+    steps = json.dumps([{"tool_name": "setList", "tool_args": {"listName": ["guardian_policy"], "listData": "{}"}}])
+    ok, result = plan.guardian_plan_approve_run(steps)
+    assert ok is False and "guardian_policy" in result["error"]

@@ -3860,3 +3860,105 @@ def test_run_core_get_case_extra_data_refuses_a_longer_list_without_running_it(m
     result = gtb.guardian_tool_bridge_run("core-get-case-extra-data", {"case_id": ["42", "43"]})
     assert executed == []
     assert result["data"]["tool_result"]["status"] == "error" and "ONE case_id" in result["data"]["tool_result"]["error"]
+
+
+# --- list arguments are joined into one string before any gate ----------------
+
+
+def test_flatten_list_args_joins_a_list_of_plain_values():
+    original = {"id": ["1", " 2 "], "status": ["Active"], "page": [0, 1.5], "query": "x"}
+    flattened = gtb.guardian_bridge_flatten_list_args("SearchIncidentsV2", original)
+    assert flattened == {"id": "1,2", "status": "Active", "page": "0,1.5", "query": "x"}
+    assert original["id"] == ["1", " 2 "]  # the caller's arguments are not changed
+
+
+def test_flatten_list_args_leaves_setincident_and_guardian_scripts_unchanged():
+    args = {"customFields": ["a", "b"], "names": ["x", "y"]}
+    assert gtb.guardian_bridge_flatten_list_args("setIncident", args) is args
+    assert gtb.guardian_bridge_flatten_list_args("GuardianSkillRead", args) is args
+
+
+def test_flatten_list_args_leaves_a_list_of_dicts_or_mixed_items_unchanged():
+    args = {"filters": [{"field": "status", "value": "Active"}], "mixed": ["a", {"b": 1}], "nested": [["a"]]}
+    flattened = gtb.guardian_bridge_flatten_list_args("SearchIncidentsV2", args)
+    assert flattened == args
+
+
+def test_flatten_list_args_tolerates_arguments_that_are_not_a_dict():
+    assert gtb.guardian_bridge_flatten_list_args("SearchIncidentsV2", None) is None
+    assert gtb.guardian_bridge_flatten_list_args("SearchIncidentsV2", "text") == "text"
+
+
+def test_run_dispatches_a_list_argument_as_one_comma_separated_string(monkeypatch):
+    seen = []
+
+    def handler(args):
+        seen.append(args)
+        return [{"Type": 1, "Contents": []}]
+
+    audit = _install_gates(
+        monkeypatch,
+        allowlist={"commands": ["SearchIncidentsV2"]},
+        command_handlers={"SearchIncidentsV2": handler},
+    )
+
+    result = gtb.guardian_tool_bridge_run("SearchIncidentsV2", {"id": ["1", "2"], "status": ["Active"]})
+
+    assert result["data"]["tool_result"]["status"] == "ok"
+    assert seen == [{"id": "1,2", "status": "Active"}]
+    assert len(audit["calls"]) == 1
+
+
+def test_run_dispatches_a_list_argument_of_a_guardian_script_unchanged(monkeypatch):
+    seen = []
+
+    def handler(args):
+        seen.append(args)
+        return [{"Type": 1, "Contents": "ok"}]
+
+    _install_gates(
+        monkeypatch,
+        allowlist={"commands": ["GuardianSkillRead"]},
+        command_handlers={"GuardianSkillRead": handler},
+    )
+
+    gtb.guardian_tool_bridge_run("GuardianSkillRead", {"names": ["a", "b"]})
+
+    assert seen == [{"names": ["a", "b"]}]
+
+
+def test_run_denylist_sees_a_flattened_listname(monkeypatch):
+    """`listName` as a one-item list must not slip past the arg-level rule `setList:guardian_policy`: the gate
+    compares the flattened text, which is also what would be dispatched."""
+    audit = _install_gates(monkeypatch, policy={"setList": "allow"})
+
+    result = gtb.guardian_tool_bridge_run("setList", {"listName": ["guardian_policy"], "listData": "{}"})
+
+    tool_result = result["data"]["tool_result"]
+    assert tool_result["status"] == "denied"
+    assert len(audit["calls"]) == 1
+
+
+def test_run_spl_write_in_a_list_query_is_joined_and_still_parks(monkeypatch):
+    """A `query` sent as a one-item list is joined into text before the gates run, so the SPL write scan sees the same
+    text that would be dispatched and the call is held exactly as the string form is."""
+    executed = []
+    audit = _install_shipped_gates(monkeypatch, executed)
+
+    result = gtb.guardian_tool_bridge_run("splunk-search", {"query": ["index=main | outputlookup x.csv"]})
+
+    assert result["data"]["tool_result"]["status"] == "pending_approval"
+    assert executed == []
+    detail = audit["calls"][0]["detail"]
+    assert detail["risk_tier"] == "destructive"
+    assert detail["spl_write_commands"] == ["outputlookup"]
+
+
+def test_run_read_only_spl_in_a_list_query_is_dispatched_as_text(monkeypatch):
+    executed = []
+    _install_shipped_gates(monkeypatch, executed)
+
+    result = gtb.guardian_tool_bridge_run("splunk-search", {"query": ["index=notable | head 5"]})
+
+    assert result["data"]["tool_result"]["status"] == "ok"
+    assert executed == [{"query": "index=notable | head 5"}]

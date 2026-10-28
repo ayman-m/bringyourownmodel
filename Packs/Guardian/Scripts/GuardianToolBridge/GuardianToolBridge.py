@@ -5321,6 +5321,31 @@ def guardian_bridge_normalize_splunk_search_args(parsed_args):
     return normalized, True
 
 
+def guardian_bridge_flatten_list_args(tool_name, parsed_args):
+    """Join a list of plain values into one comma-separated string before any gate runs.
+
+    XSOAR command arguments are strings, and a command splits a list argument itself (``argToList``). A model that
+    follows an array schema sends a JSON list instead, which ``SearchIncidentsV2`` rejects ("encoding without a string
+    argument") and ``getIncidents`` misreads. Running this before the gates means the denylist, the allowlist and the
+    policy check exactly what is dispatched, not a list that is turned into text later. Guardian's own scripts and
+    ``setIncident``, where a list can be a multi-select field value, are left unchanged, and so is a list that holds
+    anything but strings and numbers.
+
+    :param tool_name: The resolved name of the tool being called.
+    :param parsed_args: The model's parsed arguments.
+    :return: ``parsed_args`` unchanged, or a copy in which each list of plain values is a comma-separated string.
+    :rtype: ``dict``
+    """
+    if not isinstance(parsed_args, dict) or tool_name == "setIncident" or str(tool_name).startswith("Guardian"):
+        return parsed_args
+    flattened = {}
+    for key, value in parsed_args.items():
+        if isinstance(value, list) and all(isinstance(item, (str, int, float)) for item in value):
+            value = ",".join(str(item).strip() for item in value)
+        flattened[key] = value
+    return flattened
+
+
 def guardian_tool_bridge_run(
     tool_name,
     tool_args,
@@ -5415,6 +5440,8 @@ def guardian_tool_bridge_run(
     parsed_args, args_warning = guardian_bridge_parse_tool_args(tool_args)
     if args_warning:
         demisto.error("GuardianToolBridge: {}".format(args_warning))
+    # Before every gate, so each of them checks the value that is dispatched (see the function's docstring).
+    parsed_args = guardian_bridge_flatten_list_args(tool_name, parsed_args)
     target_summary = guardian_bridge_summarize_target(parsed_args)
     risk_tier = guardian_bridge_risk_tier(tool_name, parsed_args)
     spl_write_commands = guardian_bridge_spl_write_commands(tool_name, parsed_args)

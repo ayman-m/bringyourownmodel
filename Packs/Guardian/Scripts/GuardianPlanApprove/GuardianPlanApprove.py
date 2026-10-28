@@ -3021,6 +3021,30 @@ def guardian_plan_check_step_denylist(tool_name, tool_args, denylist_data):
     return None
 
 
+def guardian_plan_flatten_list_args(tool_name, tool_args):
+    """A script-local copy of ``GuardianToolBridge.guardian_bridge_flatten_list_args`` (XSOAR scripts cannot import each
+    other; a test keeps the two in step). Joins a list of plain values into one comma-separated string.
+
+    The bridge flattens a step's arguments before it compares them with the approved plan, so the plan must hold the
+    flattened arguments too: a step approved with a list would otherwise never match what the bridge dispatches and
+    would be refused as "approved for different arguments". ``setIncident`` and Guardian's own scripts, where a list can
+    be a multi-select field value, are left unchanged, and so is a list that holds anything but strings and numbers.
+
+    :param tool_name: The name of the step's tool.
+    :param tool_args: The step's arguments.
+    :return: ``tool_args`` unchanged, or a copy in which each list of plain values is a comma-separated string.
+    :rtype: ``dict``
+    """
+    if not isinstance(tool_args, dict) or tool_name == "setIncident" or str(tool_name).startswith("Guardian"):
+        return tool_args
+    flattened = {}
+    for key, value in tool_args.items():
+        if isinstance(value, list) and all(isinstance(item, (str, int, float)) for item in value):
+            value = ",".join(str(item).strip() for item in value)
+        flattened[key] = value
+    return flattened
+
+
 def guardian_plan_parse_steps(steps_raw):
     """Parse+validate the raw `steps` argument into a clean list of
     ``{"tool_name": str, "tool_args": dict}`` dicts. Never raises.
@@ -3064,7 +3088,7 @@ def guardian_plan_parse_steps(steps_raw):
                 return False, "step {} 'tool_args' is not valid JSON: {}".format(index, exc)
         if not isinstance(tool_args, dict):
             return False, "step {} 'tool_args' must be an object.".format(index)
-        cleaned.append({"tool_name": tool_name.strip(), "tool_args": tool_args})
+        cleaned.append({"tool_name": tool_name.strip(), "tool_args": guardian_plan_flatten_list_args(tool_name.strip(), tool_args)})
 
     return True, cleaned
 
