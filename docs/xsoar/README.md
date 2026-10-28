@@ -11,9 +11,9 @@ Paths below are relative to the unzipped download (`Guardian-XSOAR-v<version>/`)
 |---|---|---|
 | Incident fields | 15 | `IncidentFields/` |
 | Indicator fields | 10 | `IndicatorFields/` |
-| Lists | 20 | `Lists/` |
+| Lists | 21 | `Lists/` |
 | Integrations (Foundry, Vertex, Cohere), unified YAML | 3 | `Integrations/` |
-| Automations, unified YAML | 81 | `Scripts/` |
+| Automations, unified YAML | 83 | `Scripts/` |
 | Playbooks | 17 | `Playbooks/` |
 | Layouts (1 incident layout, 1 indicator layout) | 2 | `Layouts/` |
 | Incident types | 2 | `IncidentTypes/` |

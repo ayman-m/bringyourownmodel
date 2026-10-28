@@ -18,13 +18,16 @@ SCRIPTS = PACK / "Scripts"
 PLAYBOOKS = PACK / "Playbooks"
 PARENT = "GuardianTriageAndInvestigateIncident"
 
-#: Generic reputation and lookup commands every XSOAR 6 server knows by name (each enabled integration that implements
-#: one answers it); `|||` runs it across brands. Argument names verified against demisto/content integration ymls.
-GENERIC_COMMANDS = {"ip": "ip", "domain": "domain", "url": "url", "file": "file", "endpoint": None, "cve": "cve_id"}
-#: Scripts from Cortex XSOAR content (Common Scripts, Aggregated Scripts) and built-ins the playbooks may run.
-CONTENT_SCRIPTS = {"DeleteContext", "SearchIncidentsV2", "GetUserData", "GetEndpointData"}
-#: Content scripts that may be missing on a server (a pack that is not installed): their tasks skip when unavailable.
-OPTIONAL_SCRIPTS = {"GetUserData", "GetEndpointData"}
+#: The optional lookups of the type playbooks. Every one runs through `GuardianLookup` (never as a `|||` command task and never
+#: as a content script task directly): a task for a command no enabled integration implements, or for a script that is not
+#: installed, stops the playbook or marks everything after it as not executed, the investigation session included. The
+#: command is the task's `command` argument; the argument names are verified against demisto/content integration ymls.
+LOOKUP_COMMANDS = {"ip": [{"ip"}], "domain": [{"domain"}], "url": [{"url"}], "file": [{"file"}],
+                   "endpoint": [{"hostname"}, {"ip"}], "cve": [{"cve_id"}], "GetUserData": [{"user_name"}],
+                   "GetEndpointData": [{"endpoint_hostname"}]}
+LOOKUP_SCRIPT = "GuardianLookup"
+#: Built-in and content scripts the playbooks may run directly (they exist on every server and do not stop a playbook).
+CONTENT_SCRIPTS = {"DeleteContext", "SearchIncidentsV2"}
 #: Where each lookup leaves its result in context.
 COMMAND_CONTEXT = {
     "ip": ["IP", "DBotScore"], "domain": ["Domain", "DBotScore"], "url": ["URL", "DBotScore"], "file": ["File", "DBotScore"],
@@ -172,7 +175,7 @@ def test_every_route_family_that_runs_a_model_has_a_type_with_its_domain():
 # --- guards on the scripts -------------------------------------------------------------------------------------------
 
 def test_apply_and_result_are_denylisted_and_not_allowlisted():
-    for name in ("GuardianTriageApply", "GuardianTriageResult", "GuardianIncidentSummary", "GuardianModelChoice"):
+    for name in ("GuardianTriageApply", "GuardianTriageResult", "GuardianIncidentSummary", "GuardianModelChoice", "GuardianLookup"):
         assert name in _denied() and name not in _allowed()
     for name in ("GuardianIncidentRoute", "GuardianIncidentEvidence", "GuardianRunCapture"):
         assert name not in _allowed()  # harness steps, never model tools
@@ -181,7 +184,7 @@ def test_apply_and_result_are_denylisted_and_not_allowlisted():
 
 @pytest.mark.parametrize("name", ["GuardianIncidentRoute", "GuardianIncidentEvidence", "GuardianRunCapture", "GuardianTriageResult",
                                   "GuardianTriageApply", "GuardianIncidentSummary", "GuardianModelChoice",
-                                  "GuardianIncidentDuplicateCheck",
+                                  "GuardianIncidentDuplicateCheck", "GuardianLookup",
                                   "GuardianHealthCheck"])
 def test_the_new_scripts_are_well_formed(name):
     folder = SCRIPTS / name
@@ -251,7 +254,9 @@ def _script(task):
 
 
 def _command_of(task):
-    return _script(task).replace("|||", "")
+    """The script of a task; for a `GuardianLookup` task the lookup it runs (its `command` argument)."""
+    script = _script(task).replace("|||", "")
+    return (_arg(task, "command") or "") if script == LOOKUP_SCRIPT else script
 
 
 def _pack_scripts():
@@ -350,24 +355,47 @@ def test_every_command_a_triage_playbook_uses_exists_and_is_written_the_right_wa
     for name in _all_triage_names():
         for task in _tasks(_playbook(name), "regular"):
             command, script = _command_of(task), _script(task)
-            if script.startswith("|||"):
-                assert command in GENERIC_COMMANDS and task["task"]["iscommand"] is True, (name, command)
+            assert not script.startswith("|||") and "skipunavailable" not in task, (name, script)
+            assert command not in LOOKUP_COMMANDS or script == LOOKUP_SCRIPT, (name, command)
+            assert task["task"]["iscommand"] is False, (name, command)
+            if script == LOOKUP_SCRIPT:
+                assert command in LOOKUP_COMMANDS and task.get("continueonerror") is True, (name, command)
             else:
-                assert command in scripts or command in CONTENT_SCRIPTS, (name, command)
-                assert task["task"]["iscommand"] is False, (name, command)
-            if command in OPTIONAL_SCRIPTS:
-                assert task.get("skipunavailable") is True and task.get("continueonerror") is True, (name, command)
+                assert script in scripts or script in CONTENT_SCRIPTS, (name, script)
 
 
-def test_the_lookups_use_the_verified_argument_names():
+def test_no_type_playbook_runs_a_generic_command_or_a_content_lookup_directly():
     for name in _sub_names():
-        for _key, task in _lookups(_playbook(name)):
-            command, args = _command_of(task), set((task.get("scriptarguments") or {}))
-            expected = {"ip": [{"ip"}], "domain": [{"domain"}], "url": [{"url"}], "file": [{"file"}],
-                        "endpoint": [{"hostname"}, {"ip"}], "cve": [{"cve_id"}], "GetUserData": [{"user_name"}],
-                        "GetEndpointData": [{"endpoint_hostname"}], "SearchIncidentsV2": [{"query", "limit"}]}[command]
-            assert args in expected, (name, command, args)
+        text = (PLAYBOOKS / "playbook-{}.yml".format(name)).read_text()
+        assert "|||" not in text and "skipunavailable" not in text, name
+        for task in _tasks(_playbook(name), "regular"):
+            assert _script(task) not in LOOKUP_COMMANDS and _script(task).replace("|||", "") not in LOOKUP_COMMANDS, (name, _script(task))
+
+
+def test_every_lookup_task_runs_guardian_lookup_with_an_allowed_command_and_the_verified_argument_names():
+    for name in _sub_names():
+        for key, task in _tasks_with_keys(_playbook(name)):
+            if _script(task) != LOOKUP_SCRIPT:
+                continue
+            command, args = _arg(task, "command"), set((task.get("scriptarguments") or {})) - {"command"}
+            assert command in LOOKUP_COMMANDS, (name, key, command)
+            assert args in LOOKUP_COMMANDS[command], (name, key, command, args)
+            assert task["task"]["iscommand"] is False and task["continueonerror"] is True and "skipunavailable" not in task
             assert "trimevents" not in args  # fails on XSOAR
+        for _key, task in _lookups(_playbook(name)):
+            if _command_of(task) == "SearchIncidentsV2":
+                assert set(task["scriptarguments"]) == {"query", "limit"}
+
+
+def _tasks_with_keys(doc):
+    return [(k, t) for k, t in doc["tasks"].items() if t["type"] == "regular"]
+
+
+def test_guardian_lookup_is_denylisted_never_allowlisted_and_only_the_type_playbooks_run_it():
+    assert LOOKUP_SCRIPT in _denied() and LOOKUP_SCRIPT not in _allowed()
+    for name in _all_triage_names():
+        runs = [t for t in _tasks(_playbook(name), "regular") if _script(t) == LOOKUP_SCRIPT]
+        assert bool(runs) == (name in _sub_names() and name != "GuardianTriageOther"), name
 
 
 def test_no_triage_playbook_uses_a_write_command():
@@ -375,11 +403,14 @@ def test_no_triage_playbook_uses_a_write_command():
     denied = _denied()
     for name in _all_triage_names():
         for task in _tasks(_playbook(name), "regular"):
-            command = _command_of(task)
-            assert command not in policy, (name, command)
-            if command in denied:
-                assert name == PARENT and command in ("GuardianTriageResult", "GuardianTriageApply", "GuardianIncidentSummary",
-                                                      "GuardianModelChoice", "GuardianIncidentDuplicateCheck"), (name, command)
+            command, script = _command_of(task), _script(task)
+            assert command not in policy and script not in policy, (name, command)
+            if script == LOOKUP_SCRIPT:
+                assert name in _sub_names() and script in denied, (name, script)
+            elif script in denied:
+                assert name == PARENT and script in ("GuardianTriageResult", "GuardianTriageApply", "GuardianIncidentSummary",
+                                                      "GuardianModelChoice", "GuardianIncidentDuplicateCheck",
+                                                      "GuardianReportBuild"), (name, command)
             for blocked in ("setincident", "setlist", "addtolist", "closeinvestigation", "isolate", "quarantine", "block", "delete"):
                 assert blocked not in command.lower() or command == "DeleteContext", (name, command)
 
@@ -614,8 +645,9 @@ def test_the_parent_writes_the_triage_summary_after_apply_and_the_conclusion_bef
     assert tasks[summaries["triage"]]["nexttasks"]["#none#"] == [by_name[chain[0]]]
     for here, there in zip(chain, chain[1:]):
         assert tasks[by_name[here]]["nexttasks"]["#none#"] == [by_name[there]], here
-    done = by_name["Done"]
-    assert tasks[summaries["investigation"]]["nexttasks"]["#none#"] == [done]
+    done, report = by_name["Done"], by_name["Build the Guardian report"]
+    assert tasks[summaries["investigation"]]["nexttasks"]["#none#"] == [report]
+    assert tasks[report]["nexttasks"]["#none#"] == [done]
     for branch in _tasks(doc, "playbook"):
         assert branch["nexttasks"]["#none#"] == [summaries["investigation"]], branch["task"]["name"]
     for key in summaries.values():
@@ -625,7 +657,8 @@ def test_the_parent_writes_the_triage_summary_after_apply_and_the_conclusion_bef
     pred = _predecessors(doc)
     assert {p for p, _l in pred[summaries["triage"]]} == {apply_key}
     assert {p for p, _l in pred[summaries["investigation"]]} == {k for k, t in tasks.items() if t["type"] == "playbook"}
-    assert {p for p, _l in pred[done]} == {summaries["investigation"], by_name["Note - no model session needed"],
+    assert {p for p, _l in pred[report]} == {summaries["investigation"]}
+    assert {p for p, _l in pred[done]} == {report, by_name["Note - no model session needed"],
                                            by_name["Note - duplicate of an open incident"]}
     for title in [t for t in tasks.values() if t["type"] == "title" and t["task"]["name"].startswith("Halted")]:
         assert not title.get("nexttasks")

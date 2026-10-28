@@ -29,6 +29,7 @@ Settings > Advanced > Lists > **Add a List** (the console can also upload a file
 | `guardian_persona` | JSON | `Lists/guardian_persona.json` | Who the agent is and how it behaves |
 | `guardian_prompt_head` | JSON | `Lists/guardian_prompt_head.json` | The start of the system prompt |
 | `guardian_prompt_tail` | JSON | `Lists/guardian_prompt_tail.json` | The end of the system prompt |
+| `guardian_prompt_report` | JSON | `Lists/guardian_prompt_report.json` | The prompt of the report step (`GuardianReportBuild`): its rules and the schema of each of its three calls |
 | `guardian_pricing` | JSON | `Lists/guardian_pricing.json` | Per-model prices, so cost can be calculated |
 | `guardian_model_catalog` | JSON | `Lists/guardian_model_catalog.json` | Documented context limits of commonly used models, so a known model needs no probe |
 | `guardian_skills_index` | JSON | `Lists/guardian_skills_index.json` | The menu of skills the agent can load |
@@ -53,8 +54,8 @@ A list that shows a wrapper like that was loaded from a pack file: delete it and
 | 2 | Indicator fields | `IndicatorFields/` | nothing | Settings > Objects Setup > Indicators > Fields. No import documented | `POST /incidentfields/import` |
 | 3 | Lists (what each one does: [`../CONTENT_REFERENCE.md`](../CONTENT_REFERENCE.md#1-lists)) | `Lists/` | nothing | Settings > Advanced > Lists > **Add a List** (the guide also lists uploading and downloading a list) | `POST /lists/save` |
 | 4 | Integrations | `Integrations/` | nothing | Settings > Integrations > Instances. The guide does not describe importing an integration file; the toolbar has an upload icon | `POST /settings/integration-conf/upload` |
-| 5 | Automations | `Scripts/` | nothing (no order among the 81) | **Automation** page > the upload automation icon | `POST /automation/import` |
-| 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 23 of the pack's automations). **Upload the seven `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIncident`**, which calls them | **Playbooks** page > the upload button, top right | `POST /playbook/save/yaml` |
+| 5 | Automations | `Scripts/` | nothing (no order among the 83) | **Automation** page > the upload automation icon | `POST /automation/import` |
+| 6 | Playbooks | `Playbooks/` | the automations (the playbooks run 26 of the pack's automations). **Upload the seven `GuardianTriage<Type>` sub-playbooks before `GuardianTriageAndInvestigateIncident`**, which calls them | **Playbooks** page > the upload button, top right | `POST /playbook/save/yaml` |
 | 7 | Layouts | `Layouts/` | the incident and indicator fields | Settings > Objects Setup > Incidents > **Layouts**. No import documented | `POST /layouts/import` |
 | 8 | Incident types | `IncidentTypes/` | the layout and the playbooks | Settings > Objects Setup > Incidents > **Types**: the guide lists "create, duplicate, import, export" | `POST /incidenttypes/import` |
 | 9 | Indicator type | `IndicatorTypes/` | the indicator layout (step 7) | Settings > Objects Setup > Indicators > **Types**. No import documented | `POST /reputation/import` |

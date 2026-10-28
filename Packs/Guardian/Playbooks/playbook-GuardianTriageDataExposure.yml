@@ -77,7 +77,7 @@ tasks:
       description: >-
         Reads the account from every enabled identity integration with GetUserData (Aggregated Scripts pack):
         status, groups, manager, risk. Skipped when that script is not installed. Read-only.
-      script: 'GetUserData'
+      script: 'GuardianLookup'
       type: regular
       iscommand: false
       brand: ""
@@ -85,12 +85,13 @@ tasks:
       '#none#':
       - "3"
     scriptarguments:
+      command:
+        simple: "GetUserData"
       user_name:
         simple: "${Guardian.Triage.inputs.identity}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
-    skipunavailable: true
     view: |-
       {
         "position": {
@@ -144,14 +145,16 @@ tasks:
       description: >-
         Reads the host from every enabled endpoint integration (`endpoint`): status, operating system, IP
         addresses, isolation. Read-only.
-      script: '|||endpoint'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "5"
     scriptarguments:
+      command:
+        simple: "endpoint"
       hostname:
         simple: "${Guardian.Triage.inputs.host}"
     separatecontext: false
@@ -209,14 +212,16 @@ tasks:
       name: "Domain reputation"
       description: >-
         Reputation of the destination domain (`domain`). Read-only.
-      script: '|||domain'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "7"
     scriptarguments:
+      command:
+        simple: "domain"
       domain:
         simple: "${Guardian.Triage.inputs.domain}"
     separatecontext: false
@@ -274,14 +279,16 @@ tasks:
       name: "URL reputation"
       description: >-
         Reputation of the destination URL (`url`). Read-only.
-      script: '|||url'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "9"
     scriptarguments:
+      command:
+        simple: "url"
       url:
         simple: "${Guardian.Triage.inputs.url}"
     separatecontext: false

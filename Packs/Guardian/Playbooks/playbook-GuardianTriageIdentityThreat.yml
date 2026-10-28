@@ -113,7 +113,7 @@ tasks:
       description: >-
         Reads the account from every enabled identity integration with GetUserData (Aggregated Scripts pack):
         status, groups, manager, risk. Skipped when that script is not installed. Read-only.
-      script: 'GetUserData'
+      script: 'GuardianLookup'
       type: regular
       iscommand: false
       brand: ""
@@ -121,12 +121,13 @@ tasks:
       '#none#':
       - "4"
     scriptarguments:
+      command:
+        simple: "GetUserData"
       user_name:
         simple: "${Guardian.Triage.inputs.identity}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
-    skipunavailable: true
     view: |-
       {
         "position": {
@@ -179,14 +180,16 @@ tasks:
       name: "IP reputation"
       description: >-
         Reputation of the source address from every enabled threat-intelligence integration (`ip`). Read-only.
-      script: '|||ip'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "6"
     scriptarguments:
+      command:
+        simple: "ip"
       ip:
         simple: "${Guardian.Triage.inputs.ip}"
     separatecontext: false

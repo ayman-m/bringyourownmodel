@@ -113,14 +113,16 @@ tasks:
       description: >-
         Reputation of the URL in the email from every enabled threat-intelligence integration (`url`). Read-
         only.
-      script: '|||url'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "4"
     scriptarguments:
+      command:
+        simple: "url"
       url:
         simple: "${Guardian.Triage.inputs.url}"
     separatecontext: false
@@ -178,14 +180,16 @@ tasks:
       name: "Domain reputation"
       description: >-
         Reputation of the sender or link domain (`domain`). Read-only.
-      script: '|||domain'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "6"
     scriptarguments:
+      command:
+        simple: "domain"
       domain:
         simple: "${Guardian.Triage.inputs.domain}"
     separatecontext: false
@@ -243,14 +247,16 @@ tasks:
       name: "File reputation"
       description: >-
         Reputation of the attachment hash (`file`). Read-only.
-      script: '|||file'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "8"
     scriptarguments:
+      command:
+        simple: "file"
       file:
         simple: "${Guardian.Triage.inputs.hash}"
     separatecontext: false

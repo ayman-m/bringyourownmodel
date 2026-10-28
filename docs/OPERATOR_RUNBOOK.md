@@ -153,7 +153,8 @@ an SLA-first triage sweep read-only.
   could be told apart from run-to-run variation, and it costs a few thousand tokens a run.
 - **Watch it work:** open the incident → the **Guardian Agent Run layout** shows the reasoning trace,
   tool-call ledger, recommended actions, cost, tick count, and verdict. The **War Room** carries the
-  agent's narration per tick.
+  agent's narration per tick. When the run ends, a last task builds the report page the Guardian tab shows (see
+  *The report step* below).
 - **Talk to it mid-run:** in the incident War Room, `!guardian-chat message="focus on the 10.x lateral
   movement first"` — the agent picks it up on its next tick and can change course. If the agent asks you
   a question it pauses until you reply via `!guardian-chat`.
@@ -200,13 +201,35 @@ investigate it:
    for the investigation model` (the packet again, sized for that model) and the system prompt and tool list rebuilt for it.
 8. **Branch** to one typed sub-playbook (`GuardianTriagePhishing`, `IdentityThreat`, `EndpointThreat`, `NetworkThreat`,
    `DataExposure`, `Vulnerability`) or `GuardianTriageOther`. Each typed one runs read-only lookups
-   (`ip`/`domain`/`url`/`file` reputation, `endpoint`, `cve`, `GetUserData`, `GetEndpointData`, a narrow
-   `SearchIncidentsV2`), each skipped when its input is empty and continuing on error, adds them to the evidence packet,
-   runs a full investigation (`Run the investigation session`: the same judging, memory and calibration rules in every
+   (`ip`/`domain`/`url`/`file` reputation, `endpoint`, `cve`, `GetUserData`, `GetEndpointData`, all run through
+   `GuardianLookup` so that an integration or content script that is not installed ends in a note and never stops the
+   playbook, plus a narrow `SearchIncidentsV2`), each skipped when its input is empty and continuing on error, adds them to the evidence packet,
+   and runs a full investigation (`Run the investigation session`: the same judging, memory and calibration rules in every
    branch) that writes a case note and a verdict, and stores a memory row (`GuardianRunCapture`). `Other` has no lookups
    and runs the same investigation on the skill the incident route chose.
 9. **Investigation conclusion** (`GuardianIncidentSummary stage=investigation`): a short "Guardian investigation" note
    (the model it ran on, verdict, confidence, techniques, summary) and the `Investigation:` line of the Guardian section.
+10. **Report** (`GuardianReportBuild`): the structured report the Guardian tab draws (next paragraph).
+
+**The report step.** The last task of both `GuardianAgentLoop` and this playbook, `Build the Guardian report`, runs
+`GuardianReportBuild` after the investigation and leaves the investigation as it is. It asks the run's model for a JSON
+report in three short calls (headline, entities and relationships; attack chain, timeline and process tree; findings,
+recommended actions and gaps) over a numbered list of the run's tool calls and the conclusion, checks every item against
+them and saves the result as `Guardian.Report`. Verdict, confidence and severity are not the model's: they are the run's
+own, so the tab always agrees with the incident fields. The Guardian tab then shows the report page: every item says
+whether it rests on tool results (`✓ 2 refs`) or is **unverified**, an entity found in neither the results nor the
+conclusion is dropped, and a suggested command must be one of the run's tools. The step costs up to three model calls,
+and at worst six (one repair request for each part whose reply has no usable JSON), charged to the cost ledger under the trigger `report_build`,
+with one `report_build` audit row and a short War Room note (calls, seconds, entities, techniques, unverified items,
+errors). It never fails the run: when it cannot build a report the tab shows the assessment card as before, and a report
+of an earlier run on the same incident is never shown. **To turn it off**, set `report_enabled` to `false` in
+`Lists/list-guardian_settings.json` and install the pack again (no model call is then made); `report_max_calls` (default 3)
+limits how many of the three parts are asked for. The prompt is the List `guardian_prompt_report`. With the kill switch
+on, the step does nothing, and the kill switch is read again before every later call. It is also skipped, with a note, for a
+run started by a scheduled Job (the intake sweep covers the whole queue and has no single incident to report on): a
+skipped step deletes `Guardian.Report`, so an old report is never shown. A triage dry run (`apply_changes` false) still
+builds the report: about three short calls, and only to context (nothing on the incident is changed). When a very small
+input budget leaves no room for the prompts, no call is made and `errors` says so.
 
 **The Guardian section of the details.** `GuardianIncidentSummary` keeps one section at the end of the incident's
 details, behind the line `--- Guardian (automated) ---`. The original text is never changed; a re-run replaces only the

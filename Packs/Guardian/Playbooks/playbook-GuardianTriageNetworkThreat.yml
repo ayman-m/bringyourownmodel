@@ -112,14 +112,16 @@ tasks:
       name: "IP reputation"
       description: >-
         Reputation of the address from every enabled threat-intelligence integration (`ip`). Read-only.
-      script: '|||ip'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "4"
     scriptarguments:
+      command:
+        simple: "ip"
       ip:
         simple: "${Guardian.Triage.inputs.ip}"
     separatecontext: false
@@ -142,14 +144,16 @@ tasks:
       name: "Internal host for the address"
       description: >-
         Reads which endpoint holds the address, when it is internal (`endpoint` by IP). Read-only.
-      script: '|||endpoint'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "5"
     scriptarguments:
+      command:
+        simple: "endpoint"
       ip:
         simple: "${Guardian.Triage.inputs.ip}"
     separatecontext: false
@@ -240,14 +244,16 @@ tasks:
       name: "Domain reputation"
       description: >-
         Reputation of the domain (`domain`). Read-only.
-      script: '|||domain'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "8"
     scriptarguments:
+      command:
+        simple: "domain"
       domain:
         simple: "${Guardian.Triage.inputs.domain}"
     separatecontext: false
@@ -305,14 +311,16 @@ tasks:
       name: "URL reputation"
       description: >-
         Reputation of the URL (`url`). Read-only.
-      script: '|||url'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "10"
     scriptarguments:
+      command:
+        simple: "url"
       url:
         simple: "${Guardian.Triage.inputs.url}"
     separatecontext: false

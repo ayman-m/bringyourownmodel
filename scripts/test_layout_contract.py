@@ -113,8 +113,15 @@ ISSUE_NAMES = {
 }
 
 
+#: automations the XSOAR 6 edition ships before the Cortex platform edition has them
+XSOAR_ONLY = {"GuardianReportBuild", "GuardianLookup"}
+
+
 def test_the_two_editions_have_the_same_layout_scripts_and_tags():
     for script_id, info in _scripts("Guardian").items():
+        if script_id in XSOAR_ONLY:
+            assert script_id not in _scripts("GuardianXSIAM")
+            continue
         other = _scripts("GuardianXSIAM").get(ISSUE_NAMES.get(script_id, script_id))
         assert other is not None, script_id
         assert sorted(other["tags"]) == sorted(info["tags"]), script_id

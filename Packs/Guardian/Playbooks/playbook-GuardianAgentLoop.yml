@@ -9,7 +9,8 @@ description: >-
   model, and approvals and the verdict are handled in the same session. It re-schedules itself once per turn until the
   model concludes, the kill switch is thrown or the turn limit is reached (25 for a small model, 40 for a medium one, 60 for a large one; MAX_TICKS in guardian_settings overrides), so do not wrap
   it in GenericPolling. The kill switch and job guard are also re-checked inside the session on every turn: the early
-  checks give visibility and an early exit, they are not the only gates.
+  checks give visibility and an early exit, they are not the only gates. A last task builds the structured Guardian
+  report that the incident page draws (GuardianReportBuild); it never fails the run.
 starttaskid: "0"
 tasks:
   "0":
@@ -356,13 +357,46 @@ tasks:
         simple: "true"
     nexttasks:
       '#none#':
-      - "9"
+      - "12"
     separatecontext: false
     view: |-
       {
         "position": {
           "x": 450,
           "y": 1355
+        }
+      }
+
+  "12":
+    id: "12"
+    taskid: 57c7b15c-af2c-48d7-9272-f85f498a807a
+    type: regular
+    task:
+      id: 57c7b15c-af2c-48d7-9272-f85f498a807a
+      version: -1
+      name: Build the Guardian report
+      description: >-
+        Asks the run's model for the structured report the Guardian tab draws (headline, entities and relationships,
+        attack chain, timeline, process tree, findings, recommended actions and gaps) in three calls over the
+        run's tool results and conclusion, checks every item against them and saves the result as Guardian.Report. The
+        verdict, confidence and severity stay the run's own. It leaves the investigation as it is, never fails the
+        playbook (without a report the tab shows the assessment card), and does nothing when report_enabled is false in
+        guardian_settings or the kill switch is on. Operator-owned and denylisted for the model.
+      script: 'GuardianReportBuild'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "9"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 450,
+          "y": 1525
         }
       }
   "9":
@@ -381,7 +415,7 @@ tasks:
       {
         "position": {
           "x": 450,
-          "y": 1525
+          "y": 1695
         }
       }
   "90":

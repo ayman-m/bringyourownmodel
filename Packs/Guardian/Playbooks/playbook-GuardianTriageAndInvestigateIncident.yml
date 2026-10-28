@@ -14,7 +14,8 @@ description: >-
   Guardian section (the original text is never changed). Containment and other state changes still wait for a
   human. Before the triage session, a deterministic check (no model) finds an incident that repeats a
   lower-numbered open incident of the same type, name and source on the same entities, writes a note and skips the
-  model for it. The investigation playbook GuardianAgentLoop is unchanged.
+  model for it. A last task builds the structured Guardian report that the incident page draws
+  (GuardianReportBuild); it never fails the playbook. The playbook GuardianAgentLoop ends with the same task.
 starttaskid: "0"
 tasks:
   "0":
@@ -1138,7 +1139,7 @@ tasks:
       {
         "position": {
           "x": 450,
-          "y": 3300
+          "y": 3540
         }
       }
   "32":
@@ -1256,7 +1257,7 @@ tasks:
       brand: ""
     nexttasks:
       '#none#':
-      - "31"
+      - "47"
     scriptarguments:
       stage:
         simple: "investigation"
@@ -1270,6 +1271,39 @@ tasks:
         "position": {
           "x": 1290,
           "y": 3200
+        }
+      }
+  "47":
+    id: "47"
+    taskid: 99d410b1-c3b9-494e-b941-3cc1dde2ca0b
+    type: regular
+    task:
+      id: 99d410b1-c3b9-494e-b941-3cc1dde2ca0b
+      version: -1
+      name: "Build the Guardian report"
+      description: >-
+        Asks the model of the investigation for the structured report the Guardian tab draws (headline, entities and
+        relationships, attack chain, timeline, process tree, findings, recommended actions and gaps) in three
+        calls over the investigation's tool results and conclusion, checks every item against them and saves the result
+        as Guardian.Report. The verdict, confidence and severity stay the run's own. It leaves the investigation as it
+        is, never fails the playbook (without a report the tab shows the assessment card), and does nothing when
+        report_enabled is false in guardian_settings or the kill switch is on. Operator-owned and denylisted for the
+        model.
+      script: 'GuardianReportBuild'
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "31"
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: continue
+    view: |-
+      {
+        "position": {
+          "x": 1290,
+          "y": 3370
         }
       }
   "37":

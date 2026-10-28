@@ -320,6 +320,7 @@ skipped, never blocking the persist.
 import hashlib
 import json
 import re
+import uuid
 
 import demistomock as demisto  # noqa: F401
 from CommonServerPython import *  # noqa: F401
@@ -4195,7 +4196,8 @@ def guardian_tick_trim_archive_rows(rows, max_bytes):
     return rows
 
 
-def guardian_tick_persist_dropped_transcript(dropped_messages, run_id, tick, per_message_cap=None, max_bytes=None):
+def guardian_tick_persist_dropped_transcript(dropped_messages, run_id, tick, per_message_cap=None, max_bytes=None,
+                                             session_id=None):
     """Best-effort, append-only archive of one compaction event's VERBATIM
     dropped messages.
 
@@ -4216,6 +4218,8 @@ def guardian_tick_persist_dropped_transcript(dropped_messages, run_id, tick, per
     :type tick: ``int``
     :param per_message_cap: Characters kept of each archived message's content (the run's per-result ceiling).
     :param max_bytes: Total size of the archive List; default :data:`GUARDIAN_DROPPED_TRANSCRIPT_MAX_BYTES`.
+    :param session_id: The run state's `session_id`, stored in the row so a later reader can tell this session's rows from
+        those of an earlier run on the same incident (the run id is the incident id).
     :rtype: ``None``
     """
     if not dropped_messages:
@@ -4240,6 +4244,7 @@ def guardian_tick_persist_dropped_transcript(dropped_messages, run_id, tick, per
             "incident_id": incident_id,
             "tick": tick,
             "ts": ts,
+            "session_id": session_id,
             "dropped_messages": guardian_tick_cap_archive_messages(dropped_messages, per_message_cap),
         }
 
@@ -5675,6 +5680,9 @@ def guardian_tick_default_loop_state(messages, run_id, skill):
         "messages": messages,
         "tick": 0,
         "run_id": run_id,
+        # Tells this session from an earlier run on the same incident (the run id is the incident id); written into the
+        # dropped-transcript archive rows and read by GuardianReportBuild.
+        "session_id": uuid.uuid4().hex,
         "status": "running",
         "last_assistant_fingerprint": None,
         "last_assistant_content": None,
@@ -6461,7 +6469,7 @@ def guardian_tick_attempt_compaction(messages, settings, loop_state, run_id, tri
         # never blocks or fails compaction.
         guardian_tick_persist_dropped_transcript(
             plan["dropped"], run_id, loop_state.get("tick"), settings.get("evidence_truncate_bytes"),
-            (settings.get("raw") or {}).get("dropped_transcript_max_bytes"))
+            (settings.get("raw") or {}).get("dropped_transcript_max_bytes"), loop_state.get("session_id"))
 
         loop_state["dropped_count"] = loop_state.get("dropped_count", 0) + messages_summarized
         loop_state["compact_cooldown"] = 0

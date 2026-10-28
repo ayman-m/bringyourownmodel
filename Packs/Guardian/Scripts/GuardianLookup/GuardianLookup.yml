@@ -1,0 +1,121 @@
+args:
+- name: command
+  description: "The lookup to run: ip, domain, url, file, endpoint, cve, GetUserData or GetEndpointData. Anything else is refused with a note."
+  required: true
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - ip
+  - domain
+  - url
+  - file
+  - endpoint
+  - cve
+  - GetUserData
+  - GetEndpointData
+- name: ip
+  description: "The IP address (commands ip and endpoint). Empty values are dropped, and an argument that does not belong to the command is ignored."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: domain
+  description: "The domain (command domain). Empty values are dropped, and an argument that does not belong to the command is ignored."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: url
+  description: "The URL (command url). Empty values are dropped, and an argument that does not belong to the command is ignored."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: file
+  description: "The file hash (command file). Empty values are dropped, and an argument that does not belong to the command is ignored."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: hostname
+  description: "The host name (command endpoint). Empty values are dropped, and an argument that does not belong to the command is ignored."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: cve_id
+  description: "The CVE id (command cve). Empty values are dropped, and an argument that does not belong to the command is ignored."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: user_name
+  description: "The user name (command GetUserData). Empty values are dropped, and an argument that does not belong to the command is ignored."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+- name: endpoint_hostname
+  description: "The host name (command GetEndpointData). Empty values are dropped, and an argument that does not belong to the command is ignored."
+  required: false
+  isArray: false
+  default: false
+  secret: false
+comment: >-
+  Runs one optional lookup of a triage playbook (the reputation commands ip, domain, url and file, endpoint, cve, and the
+  content scripts GetUserData and GetEndpointData) without ever stopping the playbook. A playbook task that runs a
+  generic command no enabled integration implements stops the whole playbook, even with continue on error, and a task
+  skipped as unavailable takes every task after it with it, so the investigation session never runs. This script calls
+  the command itself, which runs it on every enabled integration that implements it, records error entries (no modules,
+  unsupported, a failing integration) instead of raising them, and re-emits the successful entries' context
+  (IP, Domain, URL, File, Endpoint, CVE, DBotScore, UserData, EndpointData) so that the evidence step finds it where it
+  always did. It writes Guardian.Lookup.<command> with ok, error and seconds and one line of text. The command must be in
+  the fixed set above. Read-only. Operator-owned and denylisted for the model.
+commonfields:
+  id: GuardianLookup
+  version: -1
+enabled: true
+name: GuardianLookup
+outputs:
+- contextPath: Guardian.Lookup.ip
+  description: "Result of the ip lookup: ok (an entry that is not an error came back), error (the error entries' text) and seconds. The same for domain, url, file, endpoint, cve, GetUserData and GetEndpointData."
+  type: Unknown
+- contextPath: IP
+  description: "The IP indicators the integrations returned (command ip, endpoint)."
+  type: Unknown
+- contextPath: Domain
+  description: "The domain indicators the integrations returned (command domain)."
+  type: Unknown
+- contextPath: URL
+  description: "The URL indicators the integrations returned (command url)."
+  type: Unknown
+- contextPath: File
+  description: "The file indicators the integrations returned (command file)."
+  type: Unknown
+- contextPath: Endpoint
+  description: "The endpoints the integrations returned (command endpoint)."
+  type: Unknown
+- contextPath: CVE
+  description: "The CVE records the integrations returned (command cve)."
+  type: Unknown
+- contextPath: DBotScore
+  description: "The reputation scores the integrations returned."
+  type: Unknown
+- contextPath: UserData
+  description: "The user data GetUserData returned."
+  type: Unknown
+- contextPath: EndpointData
+  description: "The endpoint data GetEndpointData returned."
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

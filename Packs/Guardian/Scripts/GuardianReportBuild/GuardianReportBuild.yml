@@ -1,0 +1,71 @@
+args: []
+comment: >-
+  Builds the structured report the Guardian tab of an Agent Run incident draws. It runs after the investigation and
+  leaves it as it is: it asks the run's model for a JSON report in three focused calls (the headline, entities and
+  relationships; the attack chain, timeline and process tree; the findings, recommended actions and gaps), over a
+  numbered list of the run's tool calls and the conclusion, and saves the validated result as `Guardian.Report`. The
+  verdict, confidence and severity are not asked of the model: they come from the run's recorded verdict, so the page
+  matches the incident fields. Every item names the tool calls it rests on; a reference that is not one of the run's
+  calls is dropped, an entity found neither in the results nor in the conclusion is dropped, and an item with no
+  valid reference is shown as unverified. A reply with no usable JSON gets one repair request per group.
+  `report_enabled` and `report_max_calls` in `guardian_settings` switch it off and cap the calls; the prompt text is
+  the deploy-time List `guardian_prompt_report`. With the kill switch on (read again before every later call), the step
+  turned off, or a run started by a scheduled Job (guardiantriggersource starts with job:), it makes no model call and
+  deletes any earlier Guardian.Report. It never fails the playbook: on an error `Guardian.Report` holds the errors and no report, and
+  the page shows the assessment card. Each call is charged through `GuardianCostLedger` and one `report_build` audit
+  row is written. Operator-owned and denylisted for the model.
+commonfields:
+  id: GuardianReportBuild
+  version: -1
+enabled: true
+name: GuardianReportBuild
+outputs:
+- contextPath: Guardian.Report.v
+  description: "The record version (1)."
+  type: Number
+- contextPath: Guardian.Report.run_id
+  description: "The run the report is about (the Guardian.Loop run id). The page shows the report only while it matches the run state."
+  type: String
+- contextPath: Guardian.Report.tick
+  description: "The run's tick when the report was built. The page shows the report only while it matches the run state."
+  type: Number
+- contextPath: Guardian.Report.fingerprint
+  description: "The run's last assistant fingerprint (Guardian.Loop.last_assistant_fingerprint) when the report was built. The page shows the report only while it matches the run state."
+  type: String
+- contextPath: Guardian.Report.generated_at
+  description: "When the report was built (UTC)."
+  type: String
+- contextPath: Guardian.Report.model
+  description: "The model that answered."
+  type: String
+- contextPath: Guardian.Report.calls
+  description: "Model calls made, repair requests included."
+  type: Number
+- contextPath: Guardian.Report.tokens
+  description: "Tokens used by those calls."
+  type: Number
+- contextPath: Guardian.Report.cost_usd
+  description: "Cost of those calls in USD, as charged to the cost ledger."
+  type: Number
+- contextPath: Guardian.Report.seconds
+  description: "Time the step took."
+  type: Number
+- contextPath: Guardian.Report.report
+  description: "The validated report (headline, verdict, confidence, severity, entities, edges, attack, timeline, tree, findings, actions, gaps), or null when no group gave one."
+  type: Unknown
+- contextPath: Guardian.Report.refs
+  description: "The tool calls the report cites: evidence id (t1, t2, ...) to {tool, summary}. Built from the run's transcript, never by the model."
+  type: Unknown
+- contextPath: Guardian.Report.errors
+  description: "What went wrong: a failed call, a reply with no usable JSON, entities dropped for lack of evidence. Empty when nothing did."
+  type: Unknown
+script: '-'
+system: false
+tags: []
+timeout: '0'
+type: python
+subtype: python3
+dockerimage: demisto/python3:3.11.10.116949
+fromversion: 6.10.0
+marketplaces:
+- xsoar

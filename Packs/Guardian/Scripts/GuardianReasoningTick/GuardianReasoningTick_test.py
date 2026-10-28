@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -3444,6 +3445,21 @@ def test_persist_dropped_transcript_creates_list_on_first_write(monkeypatch):
     assert rows[0]["dropped_messages"] == dropped  # verbatim, not summarized
 
 
+def test_persist_dropped_transcript_stores_the_session_id_of_the_run(monkeypatch):
+    calls = _dropped_transcript_execute_stub(monkeypatch, existing_rows=None)
+    monkeypatch.setattr(tick.demisto, "incident", lambda: {"id": "555"})
+    tick.guardian_tick_persist_dropped_transcript([{"role": "user", "content": "x"}], "run-1", 3, session_id="abc123")
+    tick.guardian_tick_persist_dropped_transcript([{"role": "user", "content": "y"}], "run-1", 4)
+    rows = [json.loads(c[1]["listData"]) for c in calls if c[0] == "createList"]
+    assert rows[0][0]["session_id"] == "abc123" and rows[-1][-1]["session_id"] is None
+
+
+def test_every_new_run_state_has_its_own_session_id():
+    first = tick.guardian_tick_default_loop_state([], "55", None)
+    second = tick.guardian_tick_default_loop_state([], "55", None)
+    assert re.fullmatch(r"[0-9a-f]{32}", first["session_id"]) and first["session_id"] != second["session_id"]
+
+
 def test_persist_dropped_transcript_appends_to_existing_rows(monkeypatch):
     existing = [{"run_id": "run-0", "incident_id": "1", "tick": 1, "ts": "x", "dropped_messages": []}]
     calls = _dropped_transcript_execute_stub(monkeypatch, existing_rows=existing)
@@ -5908,7 +5924,8 @@ def test_playbooks_prepare_in_separate_tasks_and_keep_one_model_session_task():
             order.append(tasks[cur]["task"].get("script") or tasks[cur]["task"]["name"])
         assert order == ["GuardianKillSwitchCheck", "Kill switch on?", "GuardianJobGuardCheck", "Job disabled?",
                          "GuardianModelProfileCheck", "GuardianPromptBuilder", "GuardianToolCatalogBuilder",
-                         "Preload skill?", "GuardianReasoningTick", "Done"], (name, order)
+                         "Preload skill?", "GuardianReasoningTick"] + (
+                             ["GuardianReportBuild"] if name == "GuardianAgentLoop" else []) + ["Done"], (name, order)
         # the optional skill load: taken only when the skill input is set, never blocks the run, rejoins the session
         skill_cond = tasks["10"]
         assert skill_cond["nexttasks"] == {"#default#": ["8"], "skill": ["11"]}
@@ -5937,8 +5954,15 @@ def test_playbooks_prepare_in_separate_tasks_and_keep_one_model_session_task():
         for tid, script in scripts.items():
             if script in ("GuardianKillSwitchCheck", "GuardianJobGuardCheck", "GuardianModelProfileCheck"):
                 assert tasks[tid].get("continueonerror") is True, script
-        graphs.append(tasks)
-    assert graphs[0] == graphs[1]  # the two playbooks differ only in their prompt inputs
+        if name == "GuardianAgentLoop":  # the report task is the one thing the eval playbook does not have
+            import copy
+
+            tasks = copy.deepcopy(tasks)
+            report = tasks.pop("12")
+            assert report["task"]["script"] == "GuardianReportBuild" and tasks["8"]["nexttasks"] == {"#none#": ["12"]}
+            tasks["8"]["nexttasks"] = report["nexttasks"]
+        graphs.append({tid: {k: v for k, v in t.items() if k != "view"} for tid, t in tasks.items()})  # positions are the operator's
+    assert graphs[0] == graphs[1]  # the two playbooks differ only in their prompt inputs (and the report task)
 
 
 def test_stray_reentry_message_says_how_to_run_again_and_starts_nothing(monkeypatch):

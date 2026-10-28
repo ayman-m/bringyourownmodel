@@ -14,7 +14,7 @@ It applies to both editions (Cortex XSOAR 6 and the Cortex platform); where they
 ## 1. Lists
 
 **What a List is.** A named piece of data stored on the server, readable and writable by automations (`!getList`, `!setList`). Guardian uses Lists for three different jobs:
-its **rules** (what the agent may do), its **text** (what the model is told), and its **state** (what happened). The 16 Lists you import are rules, text and reference data. State is kept in
+its **rules** (what the agent may do), its **text** (what the model is told), and its **state** (what happened). The 17 Lists listed below are rules, text and reference data. State is kept in
 **runtime Lists** that Guardian creates itself (last section).
 
 **Why this matters for import.** A List installed from a pack becomes protected content: it cannot be changed with `!setList` afterwards. That is deliberate. The rules that limit the agent
@@ -36,6 +36,7 @@ dependencies, so they can be imported in any order, but they must exist before t
 | 11-14 | `guardian_skill_*` (four lists) | text | The skills themselves |
 | 15 | `guardian_kb_soc_investigation` | content | A searchable knowledge base of investigation guides |
 | 16 | `guardian_model_catalog` | reference | Documented context limits of commonly used models, so a known model needs no probe |
+| 17 | `guardian_prompt_report` | text | The prompt of the report step: its rules and the schema of each of its three calls |
 
 ### 1. `guardian_policy`: the approval policy
 
@@ -142,6 +143,12 @@ A playbook input can preload a skill; by default skills are loaded on demand.
 **How it is used.** `GuardianModelProfileCheck` (the "Resolve model profile" task) looks the enabled model up by name or alias and, for a model that needs no probe, saves a `documented` profile; `!guardian-probe-model` uses it as the search ceiling and as the figure the measured window is compared with (within 20% confirms it); `!guardian-model` shows it. It is pack-seeded data like `guardian_pricing`: it is only read, never written at runtime, and it does not widen what the agent may do.
 **To change it.** Edit `docs/reference/model-catalog/model_catalog.json`, run `python3 scripts/build_model_catalog.py` (it regenerates the List in both packs; do not hand-edit the List file) and install the pack again.
 
+### 17. `guardian_prompt_report`: the prompt of the report step
+
+**Role.** The text `GuardianReportBuild` sends to the model when it builds the report of a finished run: `rules` (use only the evidence, an entity is a concrete identifier, a command only from the run's tool list, nothing about Guardian's own bookkeeping, verdict, confidence and severity are not returned), one schema per call (`core`: headline, entities, edges; `story`: attack, timeline, tree; `close`: findings, actions, gaps) and the one-line `repair` request. The script has a built-in copy and uses it when the List is missing, so an older install still works.
+**Settings.** `report_enabled` (default true; false skips the step) and `report_max_calls` (default 3: how many of the three parts are asked for) in `guardian_settings`.
+**Changing it.** Edit the JSON and install again. The List is protected: the agent can never write it.
+
 ### Runtime Lists: created by Guardian, not imported
 
 These hold state, so they must stay writable. A pack-installed List is locked, so `!GuardianBootstrap` creates them at run time instead (run it once, from any War Room, on a new tenant; the Jobs and first run also create them on first use).
@@ -164,16 +171,16 @@ Lists the SOC Agent layout manages (such as a runtime copy of the allowlist writ
 
 ## 3. Automations (scripts)
 
-**What an automation is.** A Python script stored on the server and run in a container. It is called by a command (`!GuardianPing`), by a playbook task, by a layout button, by a dashboard widget, by a Job, or by another script. Guardian ships **81** of them.
+**What an automation is.** A Python script stored on the server and run in a container. It is called by a command (`!GuardianPing`), by a playbook task, by a layout button, by a dashboard widget, by a Job, or by another script. Guardian ships **83** of them.
 They are grouped below by **who runs them**, because that decides which gate a script sits behind. Each script appears once, in its main class; other places it is used are in the *Called by* column.
 *Workflow* refers to the numbered Workflow sections of the animated deck (`docs/Guardian-Overview.html`): 1 Approval policy (the 7 checks), 2 Tool catalogue, 3 The system prompt, 4 One reasoning turn, 5 Skills and knowledge, 6 A run starts and ends, 7 Keeping the system healthy, 8 Install and upgrade.
 
 | Class | Who runs it | Scripts |
 |---|---|---|
 | A | The agent: a tool the model calls | 10 |
-| B | The loop engine | 8 |
+| B | The loop engine | 9 |
 | C | An operator, as a War Room command | 11 |
-| D | A playbook preflight task, or the intake gate | 4 |
+| D | A playbook preflight task, an optional lookup, or the intake gate | 5 |
 | E | A layout section or button | 21 |
 | F | A dashboard widget | 5 |
 | G | Install, upgrade and maintenance | 7 |
@@ -217,6 +224,7 @@ These scripts are the machinery of a run. The model never names them; `GuardianR
 | `GuardianAuditWrite` | `!GuardianAuditWrite action= status= [target= tick_id= run_id= detail=]` | Writes one redacted row to `guardian_audit` and one tagged War Room note for a tool call or control action. Append-only. | GuardianToolBridge (every dispatch); GuardianReasoningTick; GuardianApprovalResolve; GuardianKillSwitchToggle; GuardianJobGuard; GuardianHousekeeping; GuardianSubagentDispatch; the Apply Policy and New Investigation buttons | 1 Approval policy |
 | `GuardianCompact` | `!GuardianCompact messages= [keep_recent=]` | Summarises the older part of a transcript into one checkpoint message, copying identifiers exactly. Returns ok=false on failure instead of raising. | GuardianReasoningTick (automatic compaction); GuardianCompactCommand | 4 One reasoning turn |
 | `GuardianJobGuard` | `!GuardianJobGuard action=check\|report [job_name= outcome=]` | The per-job safety valve. `check` says whether a job may run; `report` counts consecutive failures and disables the job at the limit (default 10). | GuardianReasoningTick (checks each tick, reports when the run ends); GuardianJobGuardCheck | 6 A run starts and ends; 7 Keeping the system healthy |
+| `GuardianReportBuild` | `!GuardianReportBuild` | After the investigation, asks the run's model for the structured report the Guardian tab draws (three short calls over the numbered tool calls of the run and the conclusion), validates and grounds it (references must be the run's calls, an entity must be in the results or the conclusion, a command must be one of the run's tools) and saves it as `Guardian.Report`, with one `report_build` audit row and the cost in the ledger. Verdict, confidence and severity are the run's own. Never raises; does nothing when `report_enabled` is false or the kill switch is on. Operator-owned: denylisted. | The "Build the Guardian report" task of GuardianAgentLoop and GuardianTriageAndInvestigateIncident | 6 A run starts and ends |
 
 ### C. Operator commands
 
@@ -250,16 +258,22 @@ The three checks are the visible set-up tasks at the front of a run. They show t
 `GuardianModelProfileCheck` also warns when the resolved model size differs from the provider instance's "Model size" setting, when the probed profile is old, and when the probe (or the model catalogue) says the model does not honour tools.
 The intake gate only stops new runs; a run already in flight is stopped by the tick and the bridge.
 
+| Script | Command (as typed) | Purpose | Called by | Workflow |
+|---|---|---|---|---|
+| `GuardianLookup` | `!GuardianLookup command=ip ip=...` | Runs one optional lookup of a triage playbook (`ip`, `domain`, `url`, `file`, `endpoint`, `cve`, `GetUserData`, `GetEndpointData`; any other command is refused) by calling the command itself, records error entries ("no modules", unsupported, a failing integration) instead of raising them, and re-emits the successful entries' context (`IP`, `Domain`, `URL`, `File`, `Endpoint`, `CVE`, `DBotScore`, `UserData`, `EndpointData`) where the evidence step reads it. Writes `Guardian.Lookup.<command>`. Read-only. Operator-owned: denylisted. | Every lookup task of the six typed triage sub-playbooks | 6 A run starts and ends |
+
+**Why the lookups go through a script.** A playbook task that runs a generic command (`|||endpoint`) that no enabled integration implements stops the whole playbook ("Couldnt find any modules to run for command"), even with *continue on error*; a task marked *skip if unavailable* is marked "will not be executed", and so is every task after it, the investigation session included. Both ended in an investigation that silently never ran, on a tenant without that integration or without the Aggregated Scripts pack. A script that calls `demisto.executeCommand` gets an error entry back, so the lookup becomes a line in a note and the playbook goes on.
+
 ### E. Layout sections and buttons
 
 Display scripts run when an analyst opens a layout; button scripts run on a click and act as the operator. None is on the allowlist. The display scripts only read.
 Every display script returns an HTML entry built with the shared `guardian_html_*` helpers (every value is escaped; no script, style block, image or external resource) and falls back to the earlier text or markdown if the HTML cannot be built, so a section never shows an error.
 
-**Guardian Agent Run layout (Guardian tab sections).**
+**Guardian Agent Run layout (Guardian tab sections).** `GuardianLayoutAssessment` appears only where a layout has the Guardian Assessment section: `GuardianAgentRunLayout` has it. For another incident type (for example an incident the triage playbook works on) an operator adds a General Purpose Dynamic Section to that layout that runs `GuardianLayoutAssessment`; the report of the run then shows there.
 
 | Script | Command (as typed) | Purpose | Called by | Workflow |
 |---|---|---|---|---|
-| `GuardianLayoutAssessment` | none (layout section) | Shows the triage and investigation outcome as one card: verdict, confidence, severity before and after with the reason, summary, analysis, recommended actions, next step, key entities, ATT&CK techniques, the agent's conclusion rendered from Markdown, pending approvals and the cost. Self-contained, so it can be pasted into the automation editor by hand; `format=markdown` returns plain Markdown. | GuardianAgentRunLayout | 6 A run starts and ends |
+| `GuardianLayoutAssessment` | none (layout section) | Shows the report of the current run (`Guardian.Report`) as a page: header, kill chain, attack chain, relationship map, process tree, timeline, findings, actions and gaps, each item verified or unverified; the header is the run's own verdict, confidence and severity. With no report of this run it shows the triage and investigation outcome as one card: verdict, confidence, severity before and after with the reason, summary, analysis, recommended actions, next step, key entities, ATT&CK techniques, the agent's conclusion rendered from Markdown, pending approvals and the cost. Self-contained, so it can be pasted into the automation editor by hand; `format=markdown` returns plain Markdown. | GuardianAgentRunLayout | 6 A run starts and ends |
 | `GuardianLayoutRecommendedActions` | none (layout section) | Shows the actions waiting for approval on this incident (from `guardian_approvals_ledger`) as a table with risk tier, time left before the approval expires, a redacted argument summary and how to resolve each, then the agent's final conclusion as a card. | GuardianAgentRunLayout; the task in GuardianApprovalGate | 1 Approval policy |
 | `GuardianLayoutToolLedger` | none (layout section) | Shows this incident's rows from `guardian_audit` as an HTML table (tick, time, tool, status badge, target, duration, note) under a count per status. | GuardianAgentRunLayout | 1 Approval policy |
 | `GuardianLayoutTrace` | none (layout section) | Turn-by-turn trace from `Guardian.Loop.messages`: status, tick, cost, verdict, then one card per turn with its reasoning and a table of its tool calls and their outcome. | GuardianAgentRunLayout | 4 One reasoning turn |

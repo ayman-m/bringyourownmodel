@@ -77,14 +77,16 @@ tasks:
       description: >-
         Reads the host from every enabled endpoint integration (`endpoint`): status, operating system, IP
         addresses, isolation. Read-only.
-      script: '|||endpoint'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "3"
     scriptarguments:
+      command:
+        simple: "endpoint"
       hostname:
         simple: "${Guardian.Triage.inputs.host}"
     separatecontext: false
@@ -108,7 +110,7 @@ tasks:
       description: >-
         Reads the host from every endpoint tool with GetEndpointData (Aggregated Scripts pack). Skipped when
         that script is not installed. Read-only.
-      script: 'GetEndpointData'
+      script: 'GuardianLookup'
       type: regular
       iscommand: false
       brand: ""
@@ -116,12 +118,13 @@ tasks:
       '#none#':
       - "4"
     scriptarguments:
+      command:
+        simple: "GetEndpointData"
       endpoint_hostname:
         simple: "${Guardian.Triage.inputs.host}"
     separatecontext: false
     continueonerror: true
     continueonerrortype: continue
-    skipunavailable: true
     view: |-
       {
         "position": {
@@ -174,14 +177,16 @@ tasks:
       name: "File reputation"
       description: >-
         Reputation of the file hash from every enabled threat-intelligence integration (`file`). Read-only.
-      script: '|||file'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "6"
     scriptarguments:
+      command:
+        simple: "file"
       file:
         simple: "${Guardian.Triage.inputs.hash}"
     separatecontext: false
@@ -239,14 +244,16 @@ tasks:
       name: "IP reputation"
       description: >-
         Reputation of the address in the alert (`ip`). Read-only.
-      script: '|||ip'
+      script: 'GuardianLookup'
       type: regular
-      iscommand: true
+      iscommand: false
       brand: ""
     nexttasks:
       '#none#':
       - "8"
     scriptarguments:
+      command:
+        simple: "ip"
       ip:
         simple: "${Guardian.Triage.inputs.ip}"
     separatecontext: false

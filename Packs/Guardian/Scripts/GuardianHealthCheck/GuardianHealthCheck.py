@@ -2832,10 +2832,11 @@ GUARDIAN_HC_SCRIPTS = (
     "GuardianIncidentDuplicateCheck", "GuardianIncidentEvidence", "GuardianIncidentRoute", "GuardianIncidentSummary",
     "GuardianIntakeHygiene", "GuardianJobGuard", "GuardianJobGuardCheck", "GuardianKBSearch", "GuardianKillSwitchCheck",
     "GuardianLayoutAssessment", "GuardianLayoutRecommendedActions", "GuardianLayoutSocAgentMemory", "GuardianLayoutSocAgentPersona",
-    "GuardianLayoutSocAgentTools", "GuardianLayoutToolLedger", "GuardianLayoutTrace", "GuardianMemory",
+    "GuardianLayoutSocAgentTools", "GuardianLayoutToolLedger", "GuardianLayoutTrace", "GuardianLookup", "GuardianMemory",
     "GuardianModelChoice", "GuardianModelProfileCheck", "GuardianModelProfileUpdate", "GuardianPing",
     "GuardianPlanApprove", "GuardianPlaybookMonitor", "GuardianPromptBuilder", "GuardianReasoningTick",
-    "GuardianRunCapture", "GuardianSeedContent", "GuardianSimulateIncidents", "GuardianSkillRead", "GuardianSkillsCRUD",
+    "GuardianReportBuild", "GuardianRunCapture", "GuardianSeedContent", "GuardianSimulateIncidents", "GuardianSkillRead",
+    "GuardianSkillsCRUD",
     "GuardianSocAgentApplyToolPolicy", "GuardianSocAgentCreateInvestigation", "GuardianSocAgentExportConfiguration",
     "GuardianSocAgentReadiness", "GuardianSocAgentReadinessCheck", "GuardianSocAgentSetState",
     "GuardianSocAgentValidateToolPolicy", "GuardianSubagentDispatch", "GuardianToolBridge", "GuardianToolCatalogBuilder",
@@ -2856,8 +2857,8 @@ GUARDIAN_HC_PLAYBOOKS = (
 GUARDIAN_HC_JSON_LISTS = (
     "guardian_incident_routes", "guardian_kb_soc_investigation", "guardian_model_catalog", "guardian_model_routing",
     "guardian_persona", "guardian_policy", "guardian_preapproved", "guardian_pricing", "guardian_prompt_head",
-    "guardian_prompt_tail", "guardian_settings", "guardian_skills_index", "guardian_tool_allowlist",
-    "guardian_tool_denylist", "guardian_triage_types"
+    "guardian_prompt_report", "guardian_prompt_tail", "guardian_settings", "guardian_skills_index",
+    "guardian_tool_allowlist", "guardian_tool_denylist", "guardian_triage_types"
 )
 
 GUARDIAN_HC_MARKDOWN_LISTS = (
