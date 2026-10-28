@@ -96,10 +96,29 @@ def test_the_run_layout_has_the_operator_buttons_with_mandatory_arguments_only(p
             assert arg.get("required") is True, "{}.{} must be mandatory so the pop-up asks for it".format(script_id, arg["name"])
 
 
+#: Sections only the XSOAR 6 layout has until the Cortex platform edition has their scripts.
+XSOAR_ONLY_SECTIONS = {"guardian-story-section", "guardian-findings-section"}
+
+
+def _comparable(layout):
+    """The layout without the XSOAR-only sections, and without the grid positions and sizes and the assessment section's
+    description (they change with those sections: the rest of the layout moves down)."""
+    layout = json.loads(json.dumps(layout))
+    for tab in (layout.get("detailsV2") or {}).get("tabs") or []:
+        tab["sections"] = [sec for sec in tab.get("sections") or [] if sec.get("i") not in XSOAR_ONLY_SECTIONS]
+        for sec in tab["sections"]:
+            sec.pop("y", None)
+            if sec.get("i") == "guardian-assessment-section":
+                sec.pop("h", None)
+                sec.pop("description", None)
+    return layout
+
+
 def test_the_two_editions_have_identical_layouts_apart_from_marketplace_and_wording():
     for name in ("GuardianAgentRunLayout", "GuardianSocAgentLayout"):
-        xsoar = json.dumps(_layout("Guardian", name), sort_keys=True).replace("XSOAR commands", "Cortex platform commands")
-        platform = json.dumps(_layout("GuardianXSIAM", name), sort_keys=True)
+        xsoar = json.dumps(_comparable(_layout("Guardian", name)), sort_keys=True).replace(
+            "XSOAR commands", "Cortex platform commands")
+        platform = json.dumps(_comparable(_layout("GuardianXSIAM", name)), sort_keys=True)
         assert json.loads(xsoar)["marketplaces"] == ["xsoar"] and json.loads(platform)["marketplaces"] == ["marketplacev2"]
         assert xsoar.replace('"xsoar"', '"M"') == platform.replace('"marketplacev2"', '"M"'), name
 
@@ -114,7 +133,7 @@ ISSUE_NAMES = {
 
 
 #: automations the XSOAR 6 edition ships before the Cortex platform edition has them
-XSOAR_ONLY = {"GuardianReportBuild", "GuardianLookup"}
+XSOAR_ONLY = {"GuardianReportBuild", "GuardianLookup", "GuardianLayoutAssessmentStory", "GuardianLayoutAssessmentFindings"}
 
 
 def test_the_two_editions_have_the_same_layout_scripts_and_tags():

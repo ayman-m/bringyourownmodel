@@ -216,7 +216,7 @@ investigate it:
 report in three short calls (headline, entities and relationships; attack chain, timeline and process tree; findings,
 recommended actions and gaps) over a numbered list of the run's tool calls and the conclusion, checks every item against
 them and saves the result as `Guardian.Report`. Verdict, confidence and severity are not the model's: they are the run's
-own, so the tab always agrees with the incident fields. The Guardian tab then shows the report page: every item says
+own, so the tab always agrees with the incident fields. The Guardian tab then shows the report page, as three sections (Guardian Assessment, Guardian Attack Story and Guardian Findings), because the incident page limits how much one section may show; a very large report is shortened from the end of its biggest section, with a note, and `!GuardianLayoutAssessment part=all` in the War Room shows all of it. Every item says
 whether it rests on tool results (`✓ 2 refs`) or is **unverified**, an entity found in neither the results nor the
 conclusion is dropped, and a suggested command must be one of the run's tools. The step costs up to three model calls,
 and at worst six (one repair request for each part whose reply has no usable JSON), charged to the cost ledger under the trigger `report_build`,

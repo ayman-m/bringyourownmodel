@@ -171,7 +171,7 @@ Lists the SOC Agent layout manages (such as a runtime copy of the allowlist writ
 
 ## 3. Automations (scripts)
 
-**What an automation is.** A Python script stored on the server and run in a container. It is called by a command (`!GuardianPing`), by a playbook task, by a layout button, by a dashboard widget, by a Job, or by another script. Guardian ships **83** of them.
+**What an automation is.** A Python script stored on the server and run in a container. It is called by a command (`!GuardianPing`), by a playbook task, by a layout button, by a dashboard widget, by a Job, or by another script. Guardian ships **85** of them.
 They are grouped below by **who runs them**, because that decides which gate a script sits behind. Each script appears once, in its main class; other places it is used are in the *Called by* column.
 *Workflow* refers to the numbered Workflow sections of the animated deck (`docs/Guardian-Overview.html`): 1 Approval policy (the 7 checks), 2 Tool catalogue, 3 The system prompt, 4 One reasoning turn, 5 Skills and knowledge, 6 A run starts and ends, 7 Keeping the system healthy, 8 Install and upgrade.
 
@@ -181,7 +181,7 @@ They are grouped below by **who runs them**, because that decides which gate a s
 | B | The loop engine | 9 |
 | C | An operator, as a War Room command | 11 |
 | D | A playbook preflight task, an optional lookup, or the intake gate | 5 |
-| E | A layout section or button | 21 |
+| E | A layout section or button | 23 |
 | F | A dashboard widget | 5 |
 | G | Install, upgrade and maintenance | 7 |
 | H | Evaluation and testing | 4 |
@@ -273,7 +273,9 @@ Every display script returns an HTML entry built with the shared `guardian_html_
 
 | Script | Command (as typed) | Purpose | Called by | Workflow |
 |---|---|---|---|---|
-| `GuardianLayoutAssessment` | none (layout section) | Shows the report of the current run (`Guardian.Report`) as a page: header, kill chain, attack chain, relationship map, process tree, timeline, findings, actions and gaps, each item verified or unverified; the header is the run's own verdict, confidence and severity. With no report of this run it shows the triage and investigation outcome as one card: verdict, confidence, severity before and after with the reason, summary, analysis, recommended actions, next step, key entities, ATT&CK techniques, the agent's conclusion rendered from Markdown, pending approvals and the cost. Self-contained, so it can be pasted into the automation editor by hand; `format=markdown` returns plain Markdown. | GuardianAgentRunLayout | 6 A run starts and ends |
+| `GuardianLayoutAssessment` | none (layout section) | Shows the first part (`part=overview`, the default) of the report of the current run (`Guardian.Report`) as a page: header, kill chain and attack chain; `part=story` is the relationship map, process tree and timeline, `part=findings` the findings, actions, gaps and footer, `part=all` everything (a War Room command). Each item is verified or unverified, and a part over 30,000 bytes is shortened from the end of its biggest section with a note; the header is the run's own verdict, confidence and severity. With no report of this run it shows the triage and investigation outcome as one card: verdict, confidence, severity before and after with the reason, summary, analysis, recommended actions, next step, key entities, ATT&CK techniques, the agent's conclusion rendered from Markdown, pending approvals and the cost. Self-contained, so it can be pasted into the automation editor by hand; `format=markdown` returns plain Markdown. | GuardianAgentRunLayout | 6 A run starts and ends |
+| `GuardianLayoutAssessmentStory` | none (layout section) | Runs `GuardianLayoutAssessment part=story` and shows its HTML unchanged: the relationship map, causality chain and timeline. The incident page limits what one dynamic section may return and a section cannot pass an argument, so the assessment page is three sections. An error or an empty answer is one muted line. | GuardianAgentRunLayout | 6 A run starts and ends |
+| `GuardianLayoutAssessmentFindings` | none (layout section) | The same with `part=findings`: the findings, recommended actions, gaps and footer. | GuardianAgentRunLayout | 6 A run starts and ends |
 | `GuardianLayoutRecommendedActions` | none (layout section) | Shows the actions waiting for approval on this incident (from `guardian_approvals_ledger`) as a table with risk tier, time left before the approval expires, a redacted argument summary and how to resolve each, then the agent's final conclusion as a card. | GuardianAgentRunLayout; the task in GuardianApprovalGate | 1 Approval policy |
 | `GuardianLayoutToolLedger` | none (layout section) | Shows this incident's rows from `guardian_audit` as an HTML table (tick, time, tool, status badge, target, duration, note) under a count per status. | GuardianAgentRunLayout | 1 Approval policy |
 | `GuardianLayoutTrace` | none (layout section) | Turn-by-turn trace from `Guardian.Loop.messages`: status, tick, cost, verdict, then one card per turn with its reasoning and a table of its tool calls and their outcome. | GuardianAgentRunLayout | 4 One reasoning turn |

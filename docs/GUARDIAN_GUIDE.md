@@ -179,7 +179,7 @@ model did not obey it, and it also did not flag it as an injection attempt. Trea
 | | XSOAR 6 (`Packs/Guardian`) | Cortex platform (`Packs/GuardianXSIAM`) |
 |---|---|---|
 | Integrations | 3 (Foundry, Vertex, Cohere) | 3 |
-| Automations | 83 (adds `GuardianReportBuild`, `GuardianLookup`) | 82 (adds `GuardianXQL`) |
+| Automations | 85 (adds `GuardianReportBuild`, `GuardianLookup` and two layout wrappers) | 82 (adds `GuardianXQL`) |
 | Playbooks | 9 | 10 (adds `GuardianInvestigateIssue`) |
 | Lists | 17 (the pack has 21: the 17 this guide lists, plus incident routes, triage types, model routing and the fifth skill) | 16 |
 | Fields | 9 | 9 |

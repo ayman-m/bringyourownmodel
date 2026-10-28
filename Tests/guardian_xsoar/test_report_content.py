@@ -168,3 +168,49 @@ def test_what_the_script_validated_the_page_does_not_change():
             for key, value in mine.items():
                 assert drawn[key] == value, (section, key)
     assert ctx.get("gaps") == report["gaps"] and len(report["headline"]) == 140
+
+
+# --- the layout: the assessment page is three sections --------------------------------------------------------------------
+
+def _guardian_tab():
+    layout = json.loads((PACK / "Layouts" / "layoutscontainer-GuardianAgentRunLayout.json").read_text())
+    return [t for t in layout["detailsV2"]["tabs"] if t["id"] == "guardian"][0]["sections"]
+
+
+def test_the_assessment_is_three_dynamic_sections_one_under_the_other_at_the_top_of_the_guardian_tab():
+    sections = _guardian_tab()
+    assert [(s["i"], s["name"], s["query"]) for s in sections[:3]] == [
+        ("guardian-assessment-section", "Guardian Assessment", "GuardianLayoutAssessment"),
+        ("guardian-story-section", "Guardian Attack Story", "GuardianLayoutAssessmentStory"),
+        ("guardian-findings-section", "Guardian Findings", "GuardianLayoutAssessmentFindings")]
+    for section in sections[:3]:
+        assert section["type"] == "dynamic" and section["queryType"] == "script" and section["isVisible"] is True
+        assert section["readOnly"] is True and section["x"] == 0 and section["w"] == 3 and section["description"]
+        assert section["h"] >= 10
+
+
+def test_no_two_sections_of_the_guardian_tab_overlap_and_the_rest_is_unchanged_in_order():
+    sections = _guardian_tab()
+    edge = 0
+    for section in sections:
+        assert section["y"] >= edge, section["i"]
+        edge = section["y"] + section["h"]
+    assert [s["i"] for s in sections[3:]] == [
+        "guardian-fields-section", "guardian-recommended-actions-section", "guardian-approval-actions-section",
+        "guardian-agent-actions-section", "guardian-trace-section", "guardian-tool-ledger-section"]
+    by_id = {s["i"]: s for s in sections}
+    assert (by_id["guardian-recommended-actions-section"]["h"], by_id["guardian-fields-section"]["h"]) == (6, 3)
+    ids = [s["i"] for s in sections]
+    assert len(ids) == len(set(ids))
+
+
+def test_the_two_wrapper_scripts_are_listed_in_the_health_check_and_xsoar_only():
+    import re
+
+    source = (SCRIPTS / "GuardianHealthCheck" / "GuardianHealthCheck.py").read_text()
+    for name in ("GuardianLayoutAssessmentStory", "GuardianLayoutAssessmentFindings"):
+        assert '"{}"'.format(name) in source
+        assert yaml.safe_load((SCRIPTS / name / (name + ".yml")).read_text())["tags"] == ["dynamic-section"]
+        assert not (ROOT / "Packs" / "GuardianXSIAM" / "Scripts" / name).exists()
+    contract = (ROOT / "scripts" / "test_layout_contract.py").read_text()
+    assert re.search(r"XSOAR_ONLY = \{[^}]*GuardianLayoutAssessmentStory[^}]*GuardianLayoutAssessmentFindings", contract)

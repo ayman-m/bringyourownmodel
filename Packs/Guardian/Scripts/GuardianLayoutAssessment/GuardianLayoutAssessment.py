@@ -22,7 +22,8 @@ the `guardian_approvals_ledger` List (left out when the List cannot be read). A 
 (and its `tick` and `fingerprint`, when it has them) equals the run state's, so the report of an earlier run on the same incident never shows.
 
 Output: one HTML note entry with inline styles only (no script, style block, external resource or event handler; every
-value escaped; the report page is built from tables, and colour comes from `color` and `border`; the card uses solid
+value escaped; the report page is laid out with tables in percentage widths, and every fill (an rgba tint, or a solid colour
+with white text) is on an inline-block span, with a border or text colour of its own so it reads without the fill; the card uses solid
 white-on-colour badges, inherited text colour and rgba borders so it reads on light and dark themes). `format=markdown`
 returns the card as a Markdown note, and so does a failure while building the HTML.
 """
@@ -120,10 +121,11 @@ def _pending_count(incident_id):
         return None
 
 
-def _severity_change(incident, apply_record):
-    """``(before, after, text)``: the severity badges to show and one line saying what Guardian did and why."""
+def _severity_parts(incident, apply_record):
+    """``(before, after, head, reason)``: the severity badges to show (`after` is ``None`` when Guardian did not change the
+    severity), a short phrase saying what Guardian did, and the reason it gave when that adds something."""
     if not apply_record:
-        return _severity(incident.get("severity")), None, "Severity was not changed by Guardian in this run."
+        return _severity(incident.get("severity")), None, "Not changed by Guardian", ""
     status = _s(apply_record.get("status")).lower()
     before = _severity(apply_record.get("severity_before"))
     after = _severity(apply_record.get("severity_after")) if _s(apply_record.get("severity_after")) else before
@@ -135,9 +137,23 @@ def _severity_change(incident, apply_record):
     if status in ("applied", "dry_run") and word:
         head = "{} by Guardian triage".format(word.capitalize()) if status == "applied" \
             else "Dry run, nothing written: would be {} by Guardian triage".format(word)
-        return before, after, head + (" " + DASH + " " + reason if reason else "")
-    head = {"dry_run": "Dry run, unchanged", "error": "Not changed (error)"}.get(status, "Unchanged")
-    return before, None, head + (": " + reason if reason else "")
+        return before, after, head, reason
+    if status == "dry_run":
+        return before, None, "Dry run, unchanged", reason
+    if status == "error":
+        return before, None, "Not changed (error)", reason
+    if status == "applied":
+        # triage ran and left the severity alone: its reason only repeats that, and talks about the phase it wrote
+        return before, None, "Unchanged by Guardian triage", ""
+    return before, None, "Unchanged", reason
+
+
+def _severity_change(incident, apply_record):
+    """``(before, after, text)``: the severity badges to show and one line saying what Guardian did and why."""
+    if not apply_record:
+        return _severity(incident.get("severity")), None, "Severity was not changed by Guardian in this run."
+    before, after, head, reason = _severity_parts(incident, apply_record)
+    return before, after, head + ((" " + DASH + " " if after else ": ") + reason if reason else "")
 
 
 def _collect(incident, context):
@@ -158,12 +174,13 @@ def _collect(incident, context):
     inputs = _dict(triage.get("inputs"))
     recommendations = triage.get("recommendations")
     before, after, severity_text = _severity_change(incident, apply_record)
+    severity_head = _severity_parts(incident, apply_record)[2]
     model = {
         "incident": incident, "triage": triage, "verdict": name,
         "confidence": None if confidence is None else int(confidence),
         "kind": _s(triage.get("investigation_type")) or _s(triage.get("branch")), "complexity": _s(triage.get("complexity")),
         "escalate": triage.get("escalate") is True, "run_status": _s(loop.get("status")),
-        "severity_before": before, "severity_after": after, "severity_text": severity_text,
+        "severity_before": before, "severity_after": after, "severity_text": severity_text, "severity_head": severity_head,
         "summary": _s(triage.get("summary")) or _s(verdict.get("summary")), "analysis": _s(triage.get("analysis")),
         "recommendations": [_s(r) for r in recommendations if _s(r)] if isinstance(recommendations, list) else [],
         "next_step": _s(triage.get("next_step")),
@@ -396,15 +413,23 @@ def render_markdown(m):
 
 # The report page (Guardian.Report)
 #
-# Built from tables, because the incident page's HTML filter keeps layout only from tables, `color` and `border`. Every string
-# comes from the model and is escaped; colours and styles come only from the lookups below, never from the report.
+# Built from tables, because the incident page's HTML filter keeps layout only from tables, `color` and `border`. A fill is
+# put on an inline-block SPAN only (an rgba tint, or a solid colour with white text): that is what the filter was measured to
+# keep. A fill on a td or a div is never relied on, so every filled element also has a border or a text colour of its own and
+# stays readable without it. Column widths are percentages, so the page fills a wide section and a narrow one alike. Every
+# string comes from the model and is escaped; colours and styles come only from the lookups below, never from the report.
 
 GREY = "#7f8791"
-PAL = {
-    "red": ("#e5484d", "rgba(229,72,77,.14)"), "orange": ("#f76b15", "rgba(247,107,21,.14)"),
-    "amber": ("#d18b00", "rgba(209,139,0,.14)"), "green": ("#2f9e63", "rgba(47,158,99,.14)"),
-    "blue": ("#2f80ed", "rgba(47,128,237,.14)"), "grey": (GREY, "rgba(127,135,145,.14)"),
-}
+_HEX = {"red": "#e5484d", "orange": "#f76b15", "amber": "#d18b00", "green": "#2f9e63", "blue": "#2f80ed",
+        "violet": "#8e5bd9", "teal": "#14a39a", "grey": GREY}
+
+
+def _rgba(color, alpha):
+    return "rgba({},{},{},{})".format(int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16), alpha)
+
+
+#: name -> (solid colour, tint for a fill, line for a border)
+PAL = dict((name, (hex_, _rgba(hex_, ".14"), _rgba(hex_, ".5"))) for name, hex_ in _HEX.items())
 LINE = "rgba(127,127,127,.35)"
 LINE2 = GREY
 MONO = "font-family:monospace"
@@ -418,6 +443,9 @@ PRIO_COLOR = {1: "red", 2: "orange", 3: "blue"}
 ETYPES = ("user", "host", "process", "file", "ip", "domain", "url", "email", "hash", "cloud", "other")
 ETAG = {"user": "USER", "host": "HOST", "process": "PROC", "file": "FILE", "ip": "IP", "domain": "DOMAIN", "url": "URL",
         "email": "EMAIL", "hash": "HASH", "cloud": "CLOUD", "other": "OTHER"}
+#: The colour of an entity type, for the tag and the left edge of its node (a malicious or suspicious one is red or orange).
+TYPE_COLOR = {"user": "blue", "email": "blue", "host": "teal", "cloud": "teal", "process": "violet", "file": "violet",
+              "ip": "amber", "domain": "grey", "url": "grey", "hash": "grey", "other": "grey"}
 ROLES = ("victim", "attacker", "infra", "asset", "tool", "other")
 RELS = ("logged_on", "ran", "spawned", "wrote", "connected", "resolved", "downloaded", "sent", "received",
         "authenticated", "accessed", "other")
@@ -446,14 +474,20 @@ _TACTIC_ALIAS = {
 
 CAPS = {"entities": 20, "edges": 30, "attack": 15, "timeline": 25, "tree": 30, "findings": 10, "actions": 8, "gaps": 5}
 GRAPH_COLS = ("Identity", "Host", "Process / File", "Indicator", "External")
+UNLINKED_COL = "Not linked"
 TYPE_COL = {"user": 0, "email": 0, "host": 1, "cloud": 1, "process": 2, "file": 2, "domain": 3, "url": 3, "hash": 3,
             "other": 3, "ip": 4}
 MAX_GRAPH_ROWS = 40
 MAX_REFS = 200
+MAX_KEY_INDICATORS = 6
+MAX_ATTACK_PER_ROW = 4
+MAX_FINDING_REFS = 3
+MAX_CARD_ENTITIES = 4
 
 _ID = re.compile(r"^[A-Za-z0-9_.\-]{1,12}$")
 _TIME = re.compile(r"^\s*(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?")
-_GAP = '<div style="height:10px;font-size:1px">&nbsp;</div>'
+#: A vertical gap between two cards. The height is a line height, which the filter keeps, not a height on a div.
+_GAP = '<div style="font-size:1px;line-height:12px">&nbsp;</div>'
 
 
 # -- small helpers --------------------------------------------------------------------------------------------------
@@ -526,15 +560,32 @@ def _tint(name):
     return PAL.get(name, PAL["grey"])[1]
 
 
-def _pill(text, color):
-    return ('<span style="color:{c};border:1px solid {c};background:{t};padding:1px 8px;font-size:12px;'
-            'font-weight:700">{x}</span>').format(c=_col(color), t=_tint(color), x=_hx(text))
+def _line(name):
+    return PAL.get(name, PAL["grey"])[2]
 
 
-def _rchip(text, color=None, wrap=False):
-    c = _col(color) if color else LINE2
-    return '<span style="{}border:1px solid {};padding:0 5px;font-size:11px;{}{}">{}</span>'.format(
-        "color:{};".format(c) if color else "", c, MONO, ";word-break:break-all" if wrap else "", _hx(text))
+def _pill(text, color, solid=False, size=12):
+    """A rounded label. Solid: the accent with white text (the same look as the DONE badge). Otherwise a tint with a text
+    colour and a border of its own."""
+    if solid:
+        return ('<span style="display:inline-block;background:{c};color:#fff;border:1px solid {c};border-radius:10px;'
+                'padding:1px 11px;font-size:{s}px;font-weight:700">{x}</span>').format(
+                    c=_col(color), s=size, x=_hx(text))
+    return ('<span style="display:inline-block;background:{t};color:{c};border:1px solid {l};border-radius:10px;'
+            'padding:0 9px;font-size:{s}px;font-weight:700">{x}</span>').format(
+                t=_tint(color), c=_col(color), l=_line(color), s=size, x=_hx(text))
+
+
+def _rchip(text, color=None, wrap=False, size=11):
+    """A small rounded tag in monospace (an id, a technique, a command, an IOC). A coloured one is a tint with a border and
+    a text colour; the neutral one is only a hairline border, so a page full of them stays light."""
+    if not color or color == "grey":
+        return '<span style="border:1px solid {};border-radius:4px;padding:0 6px;font-size:{}px;{}{}">{}</span>'.format(
+            LINE, size, MONO, ";word-break:break-all" if wrap else "", _hx(text))
+    return ('<span style="display:inline-block;background:{t};color:{c};border:1px solid {l};border-radius:4px;padding:0 6px;'
+            'font-size:{s}px;{m}{w}">{x}</span>').format(
+                t=_tint(color), c=_col(color), l=_line(color), s=size, m=MONO, w=";word-break:break-all" if wrap else "",
+                x=_hx(text))
 
 
 def _mono(text, size=12, color=None, bold=False):
@@ -542,25 +593,43 @@ def _mono(text, size=12, color=None, bold=False):
         m=MONO, s=size, c=";color:" + color if color else "", b=";font-weight:700" if bold else "", x=_hx(text))
 
 
+def _circle(text, color, size=22):
+    """A solid round number or mark."""
+    return ('<span style="display:inline-block;width:{s}px;height:{s}px;line-height:{s}px;text-align:center;'
+            'border-radius:{r}px;background:{c};color:#fff;font-size:11px;font-weight:700">{x}</span>').format(
+                s=size, r=size // 2, c=_col(color), x=_hx(text))
+
+
 def _refmark(ref_ids):
-    if ref_ids:
-        return '<span style="color:{};font-size:11px">✓&nbsp;{}&nbsp;ref{}</span>'.format(
-            _col("green"), len(ref_ids), "" if len(ref_ids) == 1 else "s")
-    return '<span style="color:{};font-size:11px;font-weight:700">⚠&nbsp;unverified</span>'.format(_col("amber"))
+    """The verified mark of an item: a green tint pill with the number of references, or an amber one saying none. It
+    repeats on every row, so it has no border: its text colour keeps it readable without the fill."""
+    ok = bool(ref_ids)
+    return ('<span style="display:inline-block;background:{t};color:{c};border-radius:10px;padding:0 9px;font-size:11px;'
+            'font-weight:700">{x}</span>').format(
+                t=_tint("green" if ok else "amber"), c=_col("green" if ok else "amber"),
+                x=("✓ {} ref{}".format(len(ref_ids), "" if len(ref_ids) == 1 else "s")) if ok else "⚠ unverified")
+
+
+def _counter(text):
+    return ('<span style="display:inline-block;background:{t};color:{c};border-radius:9px;padding:0 9px;font-size:11px;'
+            'font-weight:700;line-height:1.6">{x}</span>').format(t=_tint("grey"), c=GREY, x=_hx(text))
 
 
 def _box(title, body, details=False, count=None, accent=None):
-    label = _hx(title.upper()) + (" " + _mono(str(count), 11, GREY) if count else "")
-    head = 'font-size:11px;font-weight:700;color:{}'.format(GREY)
-    border = "border:1px solid {};".format(LINE) if not accent else "border:1px solid {c};border-left:4px solid {c};".format(
-        c=_col(accent))
+    """A section card: hairline border, rounded corners, an uppercase title and a count badge (both in the page's own
+    font). `accent` adds a heavier left edge."""
+    label = _hx(title.upper()) + ("&nbsp;&nbsp;" + _counter(count) if count else "")
+    head = "font-size:11px;font-weight:700;color:{}".format(GREY)
+    border = "border:1px solid {};".format(LINE)
+    if accent:
+        border += "border-left:5px solid {};".format(_col(accent))
     if details:
-        inner = '<details open><summary style="{}">{}</summary><div style="padding-top:8px">{}</div></details>'.format(
+        inner = '<details open><summary style="{}">{}</summary><div style="padding-top:12px">{}</div></details>'.format(
             head, label, body)
     else:
-        inner = '<div style="{};padding-bottom:8px">{}</div>{}'.format(head, label, body)
-    return ('<table cellspacing="0" style="width:100%;{}font-size:13px"><tr>'
-            '<td style="padding:10px 12px">{}</td></tr></table>').format(border, inner)
+        inner = '<div style="{};padding-bottom:12px">{}</div>{}'.format(head, label, body)
+    return ('<table cellspacing="0" style="width:100%;{}border-radius:8px;font-size:13px"><tr>'
+            '<td style="padding:14px 18px 16px 18px">{}</td></tr></table>').format(border, inner)
 
 
 def _note(name, exc):
@@ -570,6 +639,11 @@ def _note(name, exc):
 
 def _table(rows, extra=""):
     return '<table cellspacing="0" style="width:100%;{}">{}</table>'.format(extra, "".join(rows))
+
+
+def _label(text):
+    """A small grey caption above a value."""
+    return '<div style="font-size:10px;font-weight:700;color:{};padding-bottom:2px">{}</div>'.format(GREY, _hx(text.upper()))
 
 
 # -- normalising the model's report ---------------------------------------------------------------------------------
@@ -586,11 +660,37 @@ class _Ctx(object):
             if isinstance(key, str) and _ID.match(key) and isinstance(val, dict):
                 self.refs[key] = (_clip(val.get("tool"), 40), _clip(val.get("summary"), 200))
         self._cache = {}
+        self.keep = {}
 
-    def get(self, name):
+    def all(self, name):
+        """The validated list, never shortened."""
         if name not in self._cache:
             self._cache[name] = getattr(self, "_n_" + name)()
         return self._cache[name]
+
+    def get(self, name):
+        """The list as the page shows it: `all`, less the rows `trim` took off its end."""
+        items = self.all(name)
+        keep = self.keep.get(name)
+        return items if keep is None else items[:keep]
+
+    def _total(self, name):
+        return len(self.all("entities" if name == "graph" else name))
+
+    def can_trim(self, name):
+        return self.keep.get(name, self._total(name)) > 1
+
+    def trim(self, name):
+        """Take a quarter (at least one row) off the end of a list; `graph` is the entity count of the relationship map."""
+        now = self.keep.get(name, self._total(name))
+        self.keep[name] = max(1, now - max(1, now // 4))
+
+    def more(self, name):
+        """The muted line saying how many rows were left out of the section, or an empty string."""
+        hidden = self._total(name) - self.keep.get(name, self._total(name))
+        if hidden <= 0:
+            return ""
+        return '<div style="font-size:11px;color:{};padding-top:8px">{}</div>'.format(GREY, _hx(MORE_NOTE.format(hidden)))
 
     def ent_map(self):
         return dict((e["id"], e) for e in self.get("entities"))
@@ -694,17 +794,72 @@ class _Ctx(object):
         gaps = self.r.get("gaps")
         return [_clip(g, 200) for g in (gaps if isinstance(gaps, list) else []) if _clip(g, 200)][:CAPS["gaps"]]
 
+    def referenced(self):
+        """``(items with a reference, items)`` over the sections that carry references."""
+        with_ref = total = 0
+        for name in ("entities", "edges", "attack", "timeline", "tree", "findings"):
+            try:
+                items = self.all(name)
+            except Exception:
+                continue
+            total += len(items)
+            with_ref += sum(1 for item in items if item["ref"])
+        return with_ref, total
+
     def unverified(self):
         total = 0
         for name in ("entities", "edges", "attack", "timeline", "tree", "findings"):
             try:
-                total += sum(1 for item in self.get(name) if not item["ref"])
+                total += sum(1 for item in self.all(name) if not item["ref"])
             except Exception:
                 pass
         return total
 
 
 # -- A. header ------------------------------------------------------------------------------------------------------
+
+def _tag(text, color):
+    """A tiny uppercase type tag: a tint behind coloured bold text."""
+    return ('<span style="background:{};color:{};border-radius:4px;padding:0 5px;font-size:9px;font-weight:700">{}</span>'
+            ).format(_tint(color), _col(color), _hx(text))
+
+
+def _bar(percent, color):
+    """A confidence bar: a track (tint) and a fill (solid), both spans; the track has its own border."""
+    fill = ('<span style="display:inline-block;width:{}%;height:6px;background:{};border-radius:4px;font-size:1px;'
+            'line-height:6px">&nbsp;</span>').format(percent, _col(color)) if percent else ""
+    return ('<span style="display:inline-block;width:92%;height:6px;background:{};border:1px solid {};border-radius:5px;'
+            'font-size:1px;line-height:6px;text-align:left">{}</span>').format(_tint(color), _line(color), fill)
+
+
+def _key_indicators(c):
+    """The malicious and suspicious entities, worst first, as chips with a type tag."""
+    ents = [e for e in c.get("entities") if e["rep"] in ("malicious", "suspicious")]
+    ents.sort(key=lambda e: 0 if e["rep"] == "malicious" else 1)
+    chips = []
+    for e in ents[:MAX_KEY_INDICATORS]:
+        color = REP_COLOR[e["rep"]]
+        chips.append('<span style="display:inline-block;background:{t};border:1px solid {l};border-radius:6px;padding:0 8px;'
+                     'font-size:12px;line-height:1.6">{tag}&nbsp;{val}</span>'.format(
+                         t=_tint(color), l=_line(color), tag=_tag(ETAG[e["type"]], color),
+                         val=_mono(_clip(_shorten(e["value"], e["type"]), 40), 12, _col(color), True)))
+    return chips
+
+
+def _stat_rows(c):
+    m = c.meta
+    rows = []
+    for label, value in (("Tool calls", _num(m.get("tool_calls"))), ("Investigation turns", _num(m.get("turns"))),
+                         ("Tokens", _num(m.get("tokens"))), ("Cost", _num(m.get("cost")))):
+        if value is None:
+            continue
+        shown = "${:.4f}".format(value) if label == "Cost" else "{:,d}".format(int(value))
+        rows.append((label, shown))
+    with_ref, total = c.referenced()
+    if total:
+        rows.append(("References", "{}/{} referenced".format(with_ref, total)))
+    return rows
+
 
 def _sec_header(c):
     r = c.r
@@ -720,26 +875,23 @@ def _sec_header(c):
     color = VERDICT_COLOR.get(verdict, "blue")
     cells = []
     if verdict:
-        cells.append('<td valign="top" style="width:20%;padding:0 12px 8px 0">{}</td>'.format(_pill(verdict.upper(), color)))
+        cells.append('<td valign="top" style="width:22%;padding:0 12px 4px 0">{}{}</td>'.format(
+            _label("Verdict"), _pill(verdict.upper(), color, solid=True, size=15)))
     if conf is not None:
-        meter = []
-        if conf:
-            meter.append('<td style="width:{}%;height:6px;font-size:1px;border:1px solid {c};border-bottom:3px solid {c};'
-                         'background:{t}">&nbsp;</td>'.format(conf, c=_col(color), t=_tint(color)))
-        if conf < 100:
-            meter.append('<td style="width:{}%;height:6px;font-size:1px;border:1px solid {}">&nbsp;</td>'.format(
-                100 - conf, LINE))
-        cells.append('<td valign="top" style="width:30%;padding:0 16px 8px 0"><div style="font-size:11px;color:{}">CONFIDENCE '
-                     '<b style="color:{};font-size:13px">{}%</b></div>{}</td>'.format(
-                         GREY, _col(color), conf, _table(['<tr>' + "".join(meter) + '</tr>'], "margin-top:3px")))
+        cells.append('<td valign="top" style="width:30%;padding:0 12px 4px 0">{}<span style="font-size:26px;font-weight:700;'
+                     'line-height:1.1;color:{}">{}%</span><div style="padding-top:6px;line-height:8px">{}</div></td>'.format(
+                         _label("Confidence"), _col(color), conf, _bar(conf, color)))
     if sfrom or sto:
-        pills = " &#9656; ".join(_pill(s.upper(), SEV_COLOR[s]) for s in (sfrom, sto) if s)
-        cells.append('<td valign="top" style="padding:0 0 8px 0"><div style="font-size:11px;color:{}">SEVERITY</div>{}{}</td>'.format(
-            GREY, pills, '<div style="font-size:12px;padding-top:3px">{}</div>'.format(_hx(reason)) if reason else ""))
-    rows = ['<tr>{}</tr>'.format("".join(cells))] if cells else []
+        pills = " <span style=\"color:{}\">&#9656;</span> ".format(GREY).join(
+            _pill(s.upper(), SEV_COLOR[s], solid=True, size=13) for s in (sfrom, sto) if s)
+        cells.append('<td valign="top" style="padding:0 0 4px 0">{}{}{}</td>'.format(
+            _label("Severity"), pills,
+            '<div style="font-size:12px;color:{};padding-top:4px">{}</div>'.format(GREY, _hx(reason)) if reason else ""))
+    left = ['<div style="font-size:11px;font-weight:700;color:{};padding-bottom:10px">GUARDIAN ASSESSMENT</div>'.format(GREY)]
+    if cells:
+        left.append(_table(['<tr>{}</tr>'.format("".join(cells))]))
     if headline:
-        rows.append('<tr><td colspan="3" style="font-size:17px;font-weight:700;line-height:1.3;padding:2px 0 4px 0">{}</td>'
-                    '</tr>'.format(_hx(headline)))
+        left.append('<div style="font-size:18px;font-weight:700;line-height:1.35;padding-top:12px">{}</div>'.format(_hx(headline)))
     inc = c.meta.get("incident") if isinstance(c.meta.get("incident"), dict) else {}
     bits = []
     if _clip(inc.get("id"), 20):
@@ -748,14 +900,29 @@ def _sec_header(c):
         if _clip(inc.get(key), 80):
             bits.append(_t(inc.get(key), 80))
     if bits:
-        rows.append('<tr><td colspan="3" style="font-size:12px;color:{}">{}</td></tr>'.format(GREY, " &middot; ".join(bits)))
-    return _box("Guardian assessment", _table(rows), accent=color)
+        left.append('<div style="font-size:12px;color:{};padding-top:4px">{}</div>'.format(GREY, " &middot; ".join(bits)))
+    chips = _key_indicators(c)
+    if chips:
+        left.append('<div style="padding-top:12px">{}<div style="line-height:2.1">{}</div></div>'.format(
+            _label("Key indicators"), " ".join(chips)))
+    stats = _stat_rows(c)
+    if stats:
+        rows = ['<tr><td style="font-size:11px;color:{};padding:4px 0;border-bottom:1px solid {}">{}</td>'
+                '<td style="font-size:12px;font-weight:700;text-align:right;padding:4px 0;border-bottom:1px solid {}">{}</td></tr>'
+                .format(GREY, LINE, _hx(label), LINE, _hx(value)) for label, value in stats]
+        body = ('<table cellspacing="0" style="width:100%"><tr><td valign="top" style="width:70%;padding:0 20px 0 0">{}</td>'
+                '<td valign="top" style="width:30%;border-left:1px solid {};padding:0 0 0 20px">{}{}</td></tr></table>').format(
+                    "".join(left), LINE, _label("Run"), _table(rows))
+    else:
+        body = "".join(left)
+    return ('<table cellspacing="0" style="width:100%;border:1px solid {l};border-left:6px solid {c};border-radius:8px">'
+            '<tr><td style="padding:18px 22px 20px 22px">{b}</td></tr></table>').format(l=LINE, c=_col(color), b=body)
 
 
 # -- B. kill chain strip --------------------------------------------------------------------------------------------
 
 def _sec_killchain(c):
-    attack = c.get("attack")
+    attack = c.all("attack")
     if not attack:
         return ""
     counts = [0] * 14
@@ -764,34 +931,40 @@ def _sec_killchain(c):
             counts[a["slot"]] += 1
     cells = []
     for i, label in enumerate(TACTICS):
-        w = "width:7.1%;text-align:center;padding:5px 1px;font-size:10px;line-height:1.25;word-break:break-word;"
         if counts[i]:
-            cells.append('<td style="{}border:1px solid {c};border-top:4px solid {c};font-weight:700">{}<br>'
-                         '<span style="color:{c}">{}</span></td>'.format(w, _hx(label), counts[i], c=_col("orange")))
+            body = ('<span style="display:inline-block;width:90%;background:{o};color:#fff;border-radius:7px;'
+                    'padding:6px 0 5px 0;font-size:11px;font-weight:700;line-height:1.3;text-align:center">{lab}<br>'
+                    '<span style="display:inline-block;background:rgba(255,255,255,.3);border-radius:8px;padding:0 8px;'
+                    'font-size:11px">{n}</span></span>').format(o=_col("orange"), lab=_hx(label), n=counts[i])
         else:
-            cells.append('<td style="{}border:1px solid {};color:{}">{}<br>&nbsp;</td>'.format(w, LINE, GREY, _hx(label)))
+            body = ('<span style="display:inline-block;width:90%;background:{t};color:{g};border-radius:7px;'
+                    'padding:6px 0 5px 0;font-size:11px;line-height:1.3;text-align:center">{lab}<br>&nbsp;</span>').format(
+                        t=_tint("grey"), g=GREY, lab=_hx(label))
+        cells.append('<td style="width:7.14%;text-align:center;padding:0">{}</td>'.format(body))
     seen = sum(1 for n in counts if n)
     return _box("Kill chain", _table(['<tr>' + "".join(cells) + '</tr>']), count="{} of 14 tactics".format(seen))
 
 
 # -- C. attack chain ------------------------------------------------------------------------------------------------
 
-def _card(c, step, a, ents):
+def _card(c, step, a, ents, width):
     time = _tkey(a["time"])
-    chips = [ents[e]["value"] for e in a["ents"] if e in ents]
-    chips_html = " ".join(_rchip(_clip(v, 24), None, len(v) > 18) for v in chips[:3])
-    if len(chips) > 3:
-        chips_html += " " + _mono("+{}".format(len(chips) - 3), 11, GREY)
-    tech = (_mono(a["tech"], 12, bold=True) + " " if a["tech"] else "") + _hx(a["name"])
-    return ('<td valign="top" style="width:23%;border:1px solid {l};border-top:3px solid {o};padding:7px 9px;font-size:12px;line-height:1.4">'
-            '<div>{n} <b style="color:{o}">{tac}</b></div><div style="padding-top:2px">{tech}</div>'
-            '<div style="padding-top:3px;color:{g}">{ev}</div>'
-            '<div style="padding-top:4px;font-size:11px">{time}{refs}</div>'
-            '<div style="padding-top:4px;line-height:1.7">{chips}</div></td>').format(
-                l=LINE, o=_col("orange"), g=GREY, n=_mono("{:02d}".format(step), 12, GREY, True), tac=_hx(a["tactic"]),
-                tech=tech, ev=_hx(a["evidence"]),
-                time=(_mono("{} {}Z".format(time[0][5:], time[1][:5]), 11, GREY) + " &nbsp; ") if time else "",
-                refs=_refmark(a["ref"]), chips=chips_html)
+    shown = [e for e in a["ents"] if e in ents]
+    chips = " ".join(_rchip(_clip(ents[e]["value"], 28), None, True) for e in shown[:MAX_CARD_ENTITIES])
+    if len(shown) > MAX_CARD_ENTITIES:
+        chips += " " + _rchip("+{}".format(len(shown) - MAX_CARD_ENTITIES), None)
+    head = (_rchip(a["tech"], "orange", size=11) + " " if a["tech"] else "") + '<b style="font-size:13px">{}</b>'.format(_hx(a["name"]))
+    stamp = (_mono("{} {}Z".format(time[0][5:], time[1][:5]), 11, GREY) + " ") if time else ""
+    return ('<td valign="top" style="width:{w:.2f}%;border:1px solid {l};border-top:3px solid {o};border-radius:8px;'
+            'padding:11px 13px 12px 13px;font-size:12px;line-height:1.45">'
+            '<div>{n}&nbsp;&nbsp;<b style="color:{o};font-size:13px">{tac}</b></div>'
+            '<div style="padding-top:7px">{head}</div>'
+            '<div style="padding-top:4px;color:{g}">{ev}</div>'
+            '<div style="padding-top:7px;line-height:1.9">{stamp}{refs}</div>'
+            '{chips}</td>').format(
+                w=width, l=LINE, o=_col("orange"), g=GREY, n=_circle("{:02d}".format(step), "orange"), tac=_hx(a["tactic"]),
+                head=head, ev=_hx(a["evidence"]), stamp=stamp, refs=_refmark(a["ref"]),
+                chips='<div style="padding-top:3px;line-height:2.1">{}</div>'.format(chips) if chips else "")
 
 
 def _sec_attack(c):
@@ -799,35 +972,46 @@ def _sec_attack(c):
     if not attack:
         return ""
     ents, rows = c.ent_map(), []
-    blank = '<td style="width:23%">&nbsp;</td>'
-    arrow = '<td style="width:2.6%;text-align:center;font-size:14px;color:{}">&#9656;</td>'.format(GREY)
-    for start in range(0, len(attack), 4):
-        group = attack[start:start + 4]
+    per = max(1, min(len(attack), MAX_ATTACK_PER_ROW))
+    gap = 2.6
+    width = (100.0 - gap * (per - 1)) / per
+    arrow = ('<td style="width:{}%;text-align:center;padding:0"><span style="display:inline-block;width:22px;height:22px;'
+             'line-height:22px;text-align:center;border-radius:11px;background:{};color:{};font-size:12px">&#9656;</span></td>'
+             ).format(gap, _tint("grey"), GREY)
+    for start in range(0, len(attack), per):
+        group = attack[start:start + per]
         cells = []
-        for j in range(4):
+        for j in range(per):
             if j:
-                cells.append(arrow if j < len(group) else '<td style="width:2.6%">&nbsp;</td>')
-            cells.append(_card(c, start + j + 1, group[j], ents) if j < len(group) else blank)
+                cells.append(arrow if j < len(group) else '<td style="width:{}%">&nbsp;</td>'.format(gap))
+            cells.append(_card(c, start + j + 1, group[j], ents, width) if j < len(group)
+                         else '<td style="width:{:.2f}%">&nbsp;</td>'.format(width))
         rows.append('<tr>{}</tr>'.format("".join(cells)))
-        if start + 4 < len(attack):
-            rows.append('<tr><td colspan="7" style="height:8px;font-size:1px;line-height:8px">&nbsp;</td></tr>')
-    return _box("Attack chain", _table(rows), count="{} steps".format(len(attack)))
+        if start + per < len(attack):
+            rows.append('<tr><td colspan="{}" style="font-size:1px;line-height:12px">&nbsp;</td></tr>'.format(2 * per - 1))
+    total = len(c.all("attack"))
+    return _box("Attack chain", _table(rows) + c.more("attack"), count="{} step{}".format(total, "" if total == 1 else "s"))
 
 
 # -- D. relationship map --------------------------------------------------------------------------------------------
 
 def _graph(c):
-    """Layered left-to-right layout on a 9-column occupancy grid (5 node columns, 4 connector columns).
+    """Layered left-to-right layout on an occupancy grid: one node column per entity column that has a node, a connector
+    column between two node columns, and, when there are entities with no relationship, one more node column of their own
+    on the right. A column nobody is in is not drawn.
 
-    Returns {"rows": [[anchor, ...], ...], "unlinked": [entity, ...], "dropped": n}. An anchor is a dict with x (grid
-    column), cs, rs and kind: node / conn / empty. Covered grid cells are not emitted, so the anchors of all rows
-    tile the grid exactly once."""
+    Returns {"rows": [[anchor, ...], ...], "cols": [name, ...], "width": grid columns, "unlinked": [entity, ...],
+    "dropped": n}. An anchor is a dict with x (grid column), cs, rs and kind: node / unlinked / conn / empty. Covered grid
+    cells are not emitted, so the anchors of all rows tile the grid exactly once. With no relationship at all `rows` is
+    empty and `unlinked` holds every entity."""
     ents = c.ent_map()
-    order = [e["id"] for e in c.get("entities")]
+    order = [e["id"] for e in c.get("entities")][:c.keep.get("graph")]
     col = dict((i, TYPE_COL.get(ents[i]["type"], 3)) for i in order)
     fwd, has_in, notes, linked = {}, set(), {}, set()
     for e in c.get("edges"):
         a, b = e["from"], e["to"]
+        if a not in col or b not in col:
+            continue
         linked.update((a, b))
         if col[a] == col[b]:  # same column: kept as a note on the target node
             notes.setdefault(b, []).append("{} {}".format(REL_PASSIVE[e["rel"]], _clip(ents[a]["value"], 24)))
@@ -862,7 +1046,22 @@ def _graph(c):
             continue
         total += tree["span"]
         trees.append(tree)
-    grid = [[None] * 9 for _ in range(total)]
+    unlinked = [ents[i] for i in order if i not in linked]
+    if not trees:
+        return {"rows": [], "cols": [], "width": 0, "unlinked": unlinked, "dropped": dropped}
+
+    def walk(node):
+        yield node["id"]
+        for kid, _link in node["kids"]:
+            for nid in walk(kid):
+                yield nid
+
+    used = sorted(set(col[nid] for tree in trees for nid in walk(tree)))
+    pos = dict((x, n) for n, x in enumerate(used))
+    names = [GRAPH_COLS[x] for x in used] + ([UNLINKED_COL] if unlinked else [])
+    width = 2 * len(names) - 1
+    nrows = max(total, len(unlinked))
+    grid = [[None] * width for _ in range(nrows)]
     covered = object()
 
     def put(r, x, cell):
@@ -878,25 +1077,27 @@ def _graph(c):
         put(r, 2 * level, {"kind": "node", "node": node, "rs": node["span"], "cs": 1, "notes": notes.get(node["id"], [])})
         row = r
         for kid, link in node["kids"]:
-            kl = col[kid["id"]]
+            kl = pos[col[kid["id"]]]
             put(row, 2 * level + 1, {"kind": "conn", "link": link, "rs": kid["span"], "cs": 2 * (kl - level) - 1})
             place(kid, row, kl)
             row += kid["span"]
 
     r = 0
     for tree in trees:
-        place(tree, r, col[tree["id"]])
+        place(tree, r, pos[col[tree["id"]]])
         r += tree["span"]
+    for index, ent in enumerate(unlinked):
+        put(index, width - 1, {"kind": "unlinked", "ent": ent, "rs": 1, "cs": 1})
     rows = []
-    for ri in range(total):
+    for ri in range(nrows):
         cells, x = [], 0
-        while x < 9:
+        while x < width:
             cell = grid[ri][x]
             if cell is covered:
                 x += 1
             elif cell is None:
                 run = 1
-                while x + run < 9 and grid[ri][x + run] is None:
+                while x + run < width and grid[ri][x + run] is None:
                     run += 1
                 cells.append({"kind": "empty", "x": x, "cs": run, "rs": 1})
                 x += run
@@ -904,44 +1105,49 @@ def _graph(c):
                 cells.append(cell)
                 x += cell["cs"]
         rows.append(cells)
-    return {"rows": rows, "unlinked": [ents[i] for i in order if i not in linked], "dropped": dropped}
+    return {"rows": rows, "cols": names, "width": width, "unlinked": unlinked, "dropped": dropped}
 
 
 def _graph_rows(c):
     return _graph(c)["rows"]
 
 
-def _node_html(c, ent, dup, notes):
-    color = REP_COLOR.get(ent["rep"], "grey")
-    tag = [_hx(ETAG[ent["type"]])]
-    if ent["role"] in ("victim", "attacker"):
-        tag.append(_hx(ent["role"]))
-    if ent["rep"] in ("malicious", "suspicious"):
-        tag.append('<span style="color:{}">{}</span>'.format(_col(color), ent["rep"]))
-    head = '<div style="font-size:10px;font-weight:700;color:{};line-height:1.3">{}{}{}</div>'.format(
-        GREY, " &middot; ".join(tag), " <span style=\"color:{}\">&#8634;</span>".format(GREY) if dup else "",
-        "" if ent["ref"] else ' <span style="color:{};font-size:11px">&#9888;</span>'.format(_col("amber")))
-    value = '<div style="{};font-size:11px;word-break:break-all;line-height:1.3{}">{}</div>'.format(
-        MONO, ";color:{};font-weight:700".format(_col(color)) if ent["rep"] in ("malicious", "suspicious") else "",
-        _hx(_shorten(ent["value"], ent["type"])))
+def _node_html(c, ent, dup, notes, dashed=False):
+    """One entity: a rounded box with an edge in its colour (red or orange for a malicious or suspicious one, else the
+    colour of its type), a tiny type tag, the role and reputation, and the value in monospace."""
+    bad = ent["rep"] in ("malicious", "suspicious")
+    tcol = TYPE_COLOR.get(ent["type"], "grey")
+    edge = REP_COLOR[ent["rep"]] if bad else tcol
+    words = [ent["role"]] if ent["role"] in ("victim", "attacker") else []
+    if bad:
+        words.append(ent["rep"])
+    head = '<div style="line-height:1.7">{}{}{}{}</div>'.format(
+        _tag(ETAG[ent["type"]], tcol),
+        ' <span style="font-size:10px;font-weight:700;color:{}">{}</span>'.format(_col(edge), _hx(" · ".join(words))) if words else "",
+        ' <span style="font-size:11px;color:{}">&#8634;</span>'.format(GREY) if dup else "",
+        "" if ent["ref"] else ' <span style="font-size:11px;color:{}">&#9888;</span>'.format(_col("amber")))
+    value = '<div style="{};font-size:12px;word-break:break-all{}">{}</div>'.format(
+        MONO, ";color:{};font-weight:700".format(_col(edge)) if bad else "", _hx(_shorten(ent["value"], ent["type"])))
     extra = "".join('<div style="font-size:10px;color:{};line-height:1.3;word-break:break-word">&#9666; {}</div>'.format(
         GREY, _hx(n)) for n in notes[:2]) if not dup else ""
-    return '<div style="border:1px solid {c};border-left:3px solid {c};padding:3px 4px">{}{}{}</div>'.format(
-        head, value, extra, c=_col(color))
+    style = "dashed" if dashed else "solid"
+    return ('<div style="border:1px {st} {line};border-left:4px {st} {e};border-radius:7px;padding:4px 8px 5px 8px">{h}{v}{x}'
+            '</div>').format(st=style, line=LINE2 if dashed else _line(edge) if bad else LINE, e=_col(edge), h=head, v=value, x=extra)
 
 
 def _conn_html(link):
     rels = list(dict.fromkeys(link["rels"]))
     rev = all(r for _, r in rels)
-    label = "/".join(("\u25c2" if r and not rev else "") + REL_LABEL[k] for k, r in rels)
-    mark = '<span style="color:{};font-weight:700">&#9888;</span> '.format(_col("amber")) if not link["ok"] else ""
-    line = '<td style="height:0;font-size:1px;line-height:1px;padding:0;border:1px solid {};border-width:1px 0 0 0">&nbsp;</td>'.format(LINE2)
-    head = '<td style="width:9px;padding:0;font-size:11px;line-height:3px;height:3px;color:{}">&#9666;</td>'.format(GREY)
-    tail = '<td style="width:9px;padding:0;font-size:11px;line-height:3px;height:3px;color:{};text-align:right">&#9656;</td>'.format(GREY)
+    label = "/".join(("◂" if r and not rev else "") + REL_LABEL[k] for k, r in rels)
+    mark = '<span style="color:{}">&#9888;</span> '.format(_col("amber")) if not link["ok"] else ""
+    line = '<td style="font-size:1px;line-height:1px;padding:0;border:1px solid {};border-width:1px 0 0 0">&nbsp;</td>'.format(LINE2)
+    head = '<td style="width:9px;padding:0;font-size:11px;line-height:3px;color:{}">&#9666;</td>'.format(GREY)
+    tail = '<td style="width:9px;padding:0;font-size:11px;line-height:3px;color:{};text-align:right">&#9656;</td>'.format(GREY)
     cells = (head + line) if rev else (line + tail)
-    return ('<table cellspacing="0" style="width:100%"><tr><td colspan="2" style="text-align:center;font-size:10px;'
-            'line-height:1.2;padding-bottom:4px;word-break:break-all;{m};color:{g}">{mark}{label}</td></tr>'
-            '<tr>{cells}</tr></table>').format(m=MONO, g=GREY, mark=mark, label=_hx(label), cells=cells)
+    pill = '<span style="border:1px solid {};border-radius:8px;padding:0 7px;font-size:10px;{}">{}{}</span>'.format(
+        LINE, MONO, mark, _hx(label))
+    return ('<table cellspacing="0" style="width:100%"><tr><td colspan="2" style="text-align:center;padding-bottom:5px">{}</td>'
+            '</tr><tr>{}</tr></table>').format(pill, cells)
 
 
 def _sec_graph(c):
@@ -949,11 +1155,21 @@ def _sec_graph(c):
     if not c.get("edges") and not ents:
         return ""
     g = _graph(c)
-    widths = []
-    for i in range(9):
-        widths.append("14%" if i % 2 == 0 else "7.5%")
-    head = ['<td style="width:{};font-size:11px;font-weight:700;color:{};padding:0 0 2px 0">{}</td>'.format(
-        widths[i], GREY, _hx(GRAPH_COLS[i // 2]) if i % 2 == 0 else "&nbsp;") for i in range(9)]
+    if not g["rows"]:
+        per = 4
+        cells = ['<td valign="top" style="width:{:.2f}%;padding:0 8px 8px 0">{}</td>'.format(
+            100.0 / per, _node_html(c, e, False, [], True)) for e in g["unlinked"]]
+        while len(cells) % per:
+            cells.append('<td style="width:{:.2f}%">&nbsp;</td>'.format(100.0 / per))
+        body = _table(['<tr>{}</tr>'.format("".join(cells[i:i + per])) for i in range(0, len(cells), per)])
+        body = '<div style="font-size:11px;color:{};padding-bottom:8px">No relationships were reported.</div>'.format(GREY) + body
+        return _box("Relationship map", body + c.more("graph"), count="{} entit{}".format(len(ents), "y" if len(ents) == 1 else "ies"))
+    ncols = len(g["cols"])
+    link_w = 7.0 if ncols <= 4 else 5.5
+    node_w = (100.0 - link_w * (ncols - 1)) / ncols
+    widths = [("{:.2f}%".format(node_w) if i % 2 == 0 else "{:.2f}%".format(link_w)) for i in range(g["width"])]
+    head = ['<td style="width:{};font-size:11px;font-weight:700;color:{};padding:0 0 6px 0">{}</td>'.format(
+        widths[i], GREY, _hx(g["cols"][i // 2].upper()) if i % 2 == 0 else "&nbsp;") for i in range(g["width"])]
     rows = ['<tr>' + "".join(head) + '</tr>']
     for row in g["rows"]:
         tds = []
@@ -962,23 +1178,18 @@ def _sec_graph(c):
             span += ' rowspan="{}"'.format(cell["rs"]) if cell["rs"] > 1 else ""
             if cell["kind"] == "node":
                 n = cell["node"]
-                tds.append('<td{} style="padding:3px 0">{}</td>'.format(
-                    span, _node_html(c, ents[n["id"]], n["dup"], cell["notes"])))
+                tds.append('<td{} style="padding:4px 0">{}</td>'.format(span, _node_html(c, ents[n["id"]], n["dup"], cell["notes"])))
+            elif cell["kind"] == "unlinked":
+                tds.append('<td{} style="padding:4px 0">{}</td>'.format(span, _node_html(c, cell["ent"], False, [], True)))
             elif cell["kind"] == "conn":
-                tds.append('<td{} style="padding:0 3px">{}</td>'.format(span, _conn_html(cell["link"])))
+                tds.append('<td{} style="padding:0 4px">{}</td>'.format(span, _conn_html(cell["link"])))
             else:
                 tds.append('<td{}>&nbsp;</td>'.format(span))
         rows.append('<tr>' + "".join(tds) + '</tr>')
     body = _table(rows)
-    if g["unlinked"]:
-        chips = " ".join(
-            '<span style="color:{c};border:1px solid {c};padding:0 5px;font-size:11px;{m}">{t} {v}</span>'.format(
-                c=_col(REP_COLOR.get(e["rep"], "grey")), m=MONO, t=_hx(ETAG[e["type"]]),
-                v=_hx(_clip(_shorten(e["value"], e["type"]), 40))) for e in g["unlinked"])
-        body += '<div style="padding-top:8px;font-size:11px;color:{};line-height:1.9">Not linked&nbsp;&nbsp;{}</div>'.format(GREY, chips)
     if g["dropped"]:
-        body += '<div style="padding-top:4px;font-size:11px;color:{}">{} more graph branches not shown.</div>'.format(GREY, g["dropped"])
-    return _box("Relationship map", body, count="{} entities".format(len(ents)))
+        body += '<div style="padding-top:6px;font-size:11px;color:{}">{} more graph branches not shown.</div>'.format(GREY, g["dropped"])
+    return _box("Relationship map", body + c.more("graph"), count="{} entit{}".format(len(ents), "y" if len(ents) == 1 else "ies"))
 
 
 # -- E. causality chain ---------------------------------------------------------------------------------------------
@@ -986,7 +1197,7 @@ def _sec_graph(c):
 def _sec_tree(c):
     """The process tree, one small table per row: a prefix cell (the guides) and a name cell, so every row's name starts
     exactly where its prefix ends. A child's prefix is one step (three characters) longer than its parent's, and its branch
-    mark sits under the first character of the parent's name."""
+    mark sits under the first character of the parent's name. A malicious or suspicious process is a tinted chip."""
     nodes = c.get("tree")
     if not nodes:
         return ""
@@ -996,21 +1207,23 @@ def _sec_tree(c):
         parent = n["parent"] if n["parent"] in by_id and n["parent"] != n["id"] else None
         kids.setdefault(parent, []).append(n)
     rows, seen = [], set()
-    pipe, gap = "\u2502&nbsp;&nbsp;", "&nbsp;&nbsp;&nbsp;"
+    pipe, gap = "│\u00a0\u00a0", "\u00a0\u00a0\u00a0"  # no-break spaces, as characters: three bytes shorter than the entity each
 
     def emit(n, guides, last, top):
         seen.add(n["id"])
         base = "".join(pipe if g else gap for g in guides)
-        first = base + ("" if top else ("\u2514\u2500&nbsp;" if last else "\u251c\u2500&nbsp;"))
+        first = base + ("" if top else ("└─\u00a0" if last else "├─\u00a0"))
         child_guides = guides if top else guides + [not last]
         children = [k for k in kids.get(n["id"], []) if k["id"] not in seen]
         cont = "".join(pipe if g else gap for g in child_guides)
         color = FLAG_COLOR.get(n["flag"])
-        name = '<b style="{};font-size:12px{}">{}{}</b>'.format(
-            MONO, ";color:" + _col(color) if color else "", "\u25cf&nbsp;" if color else "", _hx(n["name"]))
+        name = '<b style="{};font-size:12px{}">{}</b>'.format(MONO, ";color:" + _col(color) if color else "", _hx(n["name"]))
+        if color:
+            name = ('<span style="display:inline-block;background:{};border:1px solid {};border-radius:5px;padding:0 7px;'
+                    'line-height:1.6">{}</span>').format(_tint(color), _line(color), name)
         line1 = name + (" " + _mono("[" + n["pid"] + "]", 11, GREY) if n["pid"] else "")
         if n["tech"]:
-            line1 += " " + _rchip(n["tech"])
+            line1 += " " + _rchip(n["tech"], "orange")
         line1 += " " + _refmark(n["ref"])
         line2 = ""
         if n["cmd"]:
@@ -1018,8 +1231,8 @@ def _sec_tree(c):
                 MONO, GREY, _hx(_clip(n["cmd"], 130)))
         prefix = '<span style="{};font-size:12px;color:{}">{}{}</span>'.format(
             MONO, GREY, first, "<br>" + cont if line2 else "")
-        rows.append('<table cellspacing="0" style="width:100%"><tr><td valign="top" style="width:1px;line-height:1.35;'
-                    'padding:0 0 3px 0">{}</td><td valign="top" style="line-height:1.35;padding:0 0 3px 0">{}{}</td></tr></table>'
+        rows.append('<table cellspacing="0" style="width:100%"><tr><td valign="top" style="width:1px;line-height:1.7;'
+                    'padding:0 0 3px 0">{}</td><td valign="top" style="line-height:1.7;padding:0 0 3px 0">{}{}</td></tr></table>'
                     .format(prefix, line1, line2))
         for i, k in enumerate(children):
             if k["id"] not in seen:
@@ -1031,7 +1244,9 @@ def _sec_tree(c):
     for n in nodes:  # a parent cycle never reaches a root: show the rest as roots
         if n["id"] not in seen:
             emit(n, [], True, True)
-    return _box("Causality chain", "".join(rows), details=True, count="{} processes".format(len(nodes)))
+    total = len(c.all("tree"))
+    return _box("Causality chain", "".join(rows) + c.more("tree"), details=True,
+                count="{} process{}".format(total, "" if total == 1 else "es"))
 
 
 # -- F. timeline ----------------------------------------------------------------------------------------------------
@@ -1045,23 +1260,22 @@ def _sec_timeline(c):
         key = _tkey(x["t"])
         if key and key[0] != day:
             day = key[0]
-            out.append('<tr><td colspan="6" style="padding:6px 0 3px 0;font-size:12px;font-weight:700">{}</td></tr>'.format(
+            out.append('<tr><td colspan="5" style="padding:8px 0 4px 0;font-size:12px;font-weight:700">{}</td></tr>'.format(
                 _mono(day + " UTC", 12, None, True)))
         verified = bool(x["ref"])
-        dot = '<span style="color:{}">{}</span>'.format(
-            _col("orange" if x["tech"] else "blue") if verified else _col("amber"), "●" if verified else "○")
+        dot = '<span style="color:{}">{}</span>'.format(_col("orange" if x["tech"] else "blue") if verified else _col("amber"),
+                                                       "\u25cf" if verified else "\u25cb")
         shown = key[1] if key else _clip(x["t"], 20)
+        tags = " ".join(t for t in (_rchip(x["src"], None) if x["src"] else "", _rchip(x["tech"], "orange") if x["tech"] else "") if t)
         out.append(
-            '<tr><td valign="top" style="width:62px;padding:3px 6px 3px 0">{t}</td>'
-            '<td valign="top" style="width:22px;text-align:center;border:1px solid {l};border-top:0;border-bottom:0;border-right:0;'
-            'padding:3px 0">{dot}</td><td valign="top" style="padding:3px 8px;font-size:12px;line-height:1.4">{ev}</td>'
-            '<td valign="top" style="width:70px;padding:3px 4px">{src}</td>'
-            '<td valign="top" style="width:76px;padding:3px 4px">{tech}</td>'
-            '<td valign="top" style="width:84px;padding:3px 0">{ref}</td></tr>'.format(
-                t=_mono(shown, 12, GREY), l=LINE2, dot=dot, ev=_hx(x["event"]),
-                src=_rchip(x["src"], "grey") if x["src"] else "", tech=_rchip(x["tech"]) if x["tech"] else "",
-                ref=_refmark(x["ref"])))
-    return _box("Timeline", _table(out), details=True, count="{} events".format(len(rows)))
+            '<tr><td valign="top" style="width:9%;padding:4px 6px 4px 0;line-height:1.9">{t}</td>'
+            '<td valign="top" style="width:3%;text-align:center;border:1px solid {l};border-top:0;border-bottom:0;border-right:0;'
+            'padding:3px 0 4px 0;font-size:14px;line-height:1.5">{dot}</td><td valign="top" style="width:78%;padding:3px 10px;font-size:12px;line-height:1.9">'
+            '{ev}&nbsp;&nbsp;{tags}</td>'
+            '<td valign="top" style="width:10%;padding:3px 0;text-align:right;line-height:1.9">{ref}</td></tr>'.format(
+                t=_mono(shown, 12, GREY), l=LINE, dot=dot, ev=_hx(x["event"]), tags=tags, ref=_refmark(x["ref"])))
+    total = len(c.all("timeline"))
+    return _box("Timeline", _table(out) + c.more("timeline"), details=True, count="{} event{}".format(total, "" if total == 1 else "s"))
 
 
 # -- G. findings ----------------------------------------------------------------------------------------------------
@@ -1072,12 +1286,15 @@ def _sec_findings(c):
         return ""
     out = []
     for i, f in enumerate(rows, 1):
-        chips = " ".join(_rchip("{} {}".format(r, _clip(c.refs[r][0], 28)), "green") for r in f["ref"]) if f["ref"] else \
-            '<span style="color:{};font-weight:700;font-size:12px">⚠&nbsp;unverified</span>'.format(_col("amber"))
-        out.append('<tr><td valign="top" style="width:22px;padding:4px 0">{}</td><td valign="top" style="padding:4px 0;line-height:1.45">'
-                   '{}<div style="padding-top:3px;line-height:1.8">{}</div></td></tr>'.format(
-                       _mono(str(i), 12, GREY, True), _hx(f["text"]), chips))
-    return _box("Findings", _table(out), details=True, count=str(len(rows)))
+        edge = "border-bottom:1px solid {};".format(LINE) if i < len(rows) else ""
+        chips = " ".join(_rchip("{} {}".format(r, _clip(c.refs[r][0], 28)), "green") for r in f["ref"][:MAX_FINDING_REFS]) \
+            + (" " + _rchip("+{}".format(len(f["ref"]) - MAX_FINDING_REFS), "green") if len(f["ref"]) > MAX_FINDING_REFS else "") \
+            if f["ref"] else _pill("⚠ unverified", "amber", size=11)
+        out.append('<tr><td valign="top" style="width:3%;padding:8px 0;{e}">{n}</td>'
+                   '<td valign="top" style="width:67%;padding:8px 12px 8px 0;line-height:1.5;{e}">{t}</td>'
+                   '<td valign="top" style="width:30%;padding:7px 0;text-align:right;line-height:2;{e}">{c}</td></tr>'.format(
+                       e=edge, n=_circle(str(i), "blue"), t=_hx(f["text"]), c=chips))
+    return _box("Findings", _table(out) + c.more("findings"), details=True, count=str(len(c.all("findings"))))
 
 
 # -- H. actions, I. gaps --------------------------------------------------------------------------------------------
@@ -1086,81 +1303,116 @@ def _sec_actions(c):
     rows = c.get("actions")
     if not rows:
         return ""
-    th = 'font-size:11px;font-weight:700;color:{};padding:0 6px 4px 0'.format(GREY)
-    out = ['<tr><td style="{w}width:34px">P</td><td style="{w}">ACTION</td><td style="{w}width:72px">OWNER</td>'
-           '<td style="{w}width:88px">APPROVAL</td><td style="{w}width:30%">COMMAND</td></tr>'.format(w=th)]
-    for a in rows:
+    th = 'font-size:10px;font-weight:700;color:{};padding:0 8px 6px 0;border-bottom:1px solid {}'.format(GREY, LINE)
+    out = ['<tr><td style="{w}width:7%">P</td><td style="{w}width:41%">ACTION</td><td style="{w}width:10%">OWNER</td>'
+           '<td style="{w}width:14%">APPROVAL</td><td style="{w}width:28%">COMMAND</td></tr>'.format(w=th)]
+    for i, a in enumerate(rows, 1):
+        edge = "border-bottom:1px solid {};".format(LINE) if i < len(rows) else ""
         out.append(
-            '<tr><td valign="top" style="width:34px;padding:5px 6px 5px 0">{p}</td><td valign="top" style="'
-            'padding:5px 8px 5px 0;line-height:1.4">{a}</td><td valign="top" style="width:72px;padding:5px 6px 5px 0;'
-            'font-size:12px">{o}</td><td valign="top" style="width:88px;padding:5px 6px 5px 0;font-size:12px">{ap}</td>'
-            '<td valign="top" style="width:30%;padding:5px 0;word-break:break-all">{cmd}</td></tr>'.format(
-                p=_pill("P{}".format(a["p"]), PRIO_COLOR[a["p"]]), a=_hx(a["action"]), o=_hx(a["owner"]),
-                ap=('<span style="color:{};font-weight:700">needs&nbsp;approval</span>'.format(_col("amber")) if a["approval"]
-                    else '<span style="color:{}">automatic</span>'.format(GREY)),
-                cmd=_mono(a["cmd"], 11, GREY) if a["cmd"] else ""))
-    return _box("Recommended actions", _table(out), count=str(len(rows)))
+            '<tr><td valign="top" style="width:7%;padding:8px 8px 8px 0;{e}">{p}</td><td valign="top" style="width:41%;'
+            'padding:8px 12px 8px 0;line-height:1.45;{e}">{a}</td><td valign="top" style="width:10%;padding:8px 8px 8px 0;'
+            'font-size:12px;{e}">{o}</td><td valign="top" style="width:14%;padding:7px 8px 7px 0;{e}">{ap}</td>'
+            '<td valign="top" style="width:28%;padding:7px 0;line-height:1.9;{e}">{cmd}</td></tr>'.format(
+                e=edge, p=_pill("P{}".format(a["p"]), PRIO_COLOR[a["p"]], solid=True, size=11), a=_hx(a["action"]),
+                o=_hx(a["owner"]),
+                ap=_pill("needs approval", "amber", size=11) if a["approval"] else _pill("automatic", "green", size=11),
+                cmd=_rchip(a["cmd"], None, True) if a["cmd"] else ""))
+    return _box("Recommended actions", _table(out) + c.more("actions"), count=str(len(c.all("actions"))))
 
 
 def _sec_gaps(c):
     gaps = c.get("gaps")
     if not gaps:
         return ""
-    rows = ['<tr><td valign="top" style="width:18px;color:{};padding:2px 0">&#9656;</td>'
-            '<td valign="top" style="padding:2px 0;line-height:1.45">{}</td></tr>'.format(_col("amber"), _hx(g)) for g in gaps]
-    return _box("Gaps", _table(rows))
+    rows = ['<tr><td valign="top" style="width:2%;color:{};padding:3px 0;font-weight:700">&#9656;</td>'
+            '<td valign="top" style="padding:3px 0;line-height:1.5">{}</td></tr>'.format(_col("amber"), _hx(g)) for g in gaps]
+    return _box("Gaps", _table(rows) + c.more("gaps"), count=str(len(c.all("gaps"))), accent="amber")
 
 
 # -- J. footer ------------------------------------------------------------------------------------------------------
 
 def _sec_footer(c):
     m = c.meta
-    bits = []
+    chips = []
     if _clip(m.get("model"), 60):
-        bits.append("model " + _mono(_clip(m.get("model"), 60), 11))
-    turns, tokens, cost = _num(m.get("turns")), _num(m.get("tokens")), _num(m.get("cost"))
-    if turns is not None:
-        bits.append("turns {:d}".format(int(turns)))
-    if tokens is not None:
-        bits.append("tokens {:,d}".format(int(tokens)))
-    if cost is not None:
-        bits.append("cost ${:.4f}".format(cost))
+        chips.append(_rchip("model " + _clip(m.get("model"), 60), None))
     if _clip(m.get("run_id"), 40):
-        bits.append("run " + _mono(_clip(m.get("run_id"), 40), 11))
+        chips.append(_rchip("run " + _clip(m.get("run_id"), 40), None))
+    if _clip(m.get("generated"), 30):
+        chips.append(_rchip("built " + _clip(m.get("generated"), 30), None))
     n = c.unverified()
-    bits.append('<span style="color:{};font-weight:700">{}</span>'.format(
-        _col("amber"), "⚠ {} unverified item{}".format(n, "" if n == 1 else "s")) if n
-        else '<span style="color:{}">✓ every item has a reference</span>'.format(_col("green")))
-    return '<div style="font-size:11px;color:{};padding:2px 2px">{}</div>'.format(GREY, " &nbsp;|&nbsp; ".join(bits))
+    chips.append(_pill("⚠ {} unverified item{}".format(n, "" if n == 1 else "s"), "amber", size=11) if n
+                 else _pill("✓ every item has a reference", "green", size=11))
+    return '<div style="font-size:11px;line-height:2.1;padding:2px 2px">{}</div>'.format(" ".join(chips))
 
 
-SECTIONS = (("Guardian assessment", _sec_header), ("Kill chain", _sec_killchain), ("Attack chain", _sec_attack),
-            ("Relationship map", _sec_graph), ("Causality chain", _sec_tree), ("Timeline", _sec_timeline),
-            ("Findings", _sec_findings), ("Recommended actions", _sec_actions), ("Gaps", _sec_gaps))
+#: The sections of each part of the page. The incident page limits how much one dynamic section may return, so the page is
+#: three sections (the layout has one per part), each far below that limit.
+PART_SECTIONS = {
+    "overview": (("Guardian assessment", _sec_header), ("Kill chain", _sec_killchain), ("Attack chain", _sec_attack)),
+    "story": (("Relationship map", _sec_graph), ("Causality chain", _sec_tree), ("Timeline", _sec_timeline)),
+    "findings": (("Findings", _sec_findings), ("Recommended actions", _sec_actions), ("Gaps", _sec_gaps)),
+}
+PARTS = ("overview", "story", "findings", "all")
+DEFAULT_PART = "overview"
+SECTIONS = PART_SECTIONS["overview"] + PART_SECTIONS["story"] + PART_SECTIONS["findings"]
+#: The list a section can be shortened by, when its part is over the size limit.
+TRIM_KEYS = {"Attack chain": "attack", "Relationship map": "graph", "Causality chain": "tree", "Timeline": "timeline",
+             "Findings": "findings", "Recommended actions": "actions", "Gaps": "gaps"}
+MAX_PART_BYTES = 30000
+MORE_NOTE = "{} more not shown, see the full report with !GuardianLayoutAssessment part=all"
+SEE_ABOVE = "See the assessment above."
+NOTHING_HERE = "Nothing to show here for this report."
 
 
-def render_report(report: dict, meta: dict = None) -> str:
-    """HTML for the report, or None when there is nothing to draw (the caller shows the old card)."""
+def _wrap(parts):
+    return '<div style="font-size:13px;line-height:1.45">{}</div>'.format(_GAP.join(parts))
+
+
+def _size(parts):
+    return len(_wrap(parts).encode("utf-8"))
+
+
+def render_report(report: dict, meta: dict = None, part: str = "all") -> str:
+    """HTML for one part of the report (`overview`, `story`, `findings`) or all of it, or None when there is nothing to draw
+    in it (the caller shows the old card or a note). A part over `MAX_PART_BYTES` is shortened: rows are dropped from the end
+    of its biggest section until it fits, and the section says how many are not shown. `all` is never shortened."""
     try:
         if not isinstance(report, dict):
             return None
         c = _Ctx(report, meta)
-        parts, drawn = [], 0
-        for name, fn in SECTIONS:
+        sections = SECTIONS if part == "all" else PART_SECTIONS.get(part, ())
+        rendered, drawn = [], 0
+        for name, fn in sections:
             try:
                 out = fn(c)
                 drawn += 1 if out else 0
             except Exception as exc:  # one broken section must not take the page down
                 out = _note(name, exc)
-            if out:
-                parts.append(out)
+            rendered.append([name, fn, out])
         if not drawn:
             return None
-        try:
-            parts.append(_sec_footer(c))
-        except Exception as exc:
-            parts.append(_note("Footer", exc))
-        return '<div style="font-size:13px;line-height:1.45">{}</div>'.format(_GAP.join(parts))
+        footer = ""
+        if part in ("findings", "all"):
+            try:
+                footer = _sec_footer(c)
+            except Exception as exc:
+                footer = _note("Footer", exc)
+
+        def parts():
+            return [out for _n, _f, out in rendered if out] + ([footer] if footer else [])
+
+        while part != "all" and _size(parts()) > MAX_PART_BYTES:
+            candidates = [item for item in rendered if item[2] and item[0] in TRIM_KEYS and c.can_trim(TRIM_KEYS[item[0]])]
+            if not candidates:
+                break
+            item = max(candidates, key=lambda i: len(i[2]))
+            c.trim(TRIM_KEYS[item[0]])
+            try:
+                item[2] = item[1](c)
+            except Exception as exc:
+                item[2] = _note(item[0], exc)
+        return _wrap(parts())
     except Exception:
         return None
 
@@ -1185,8 +1437,9 @@ def _report_for_run(m):
     return record
 
 
-def _report_page(m):
-    """The report page for the run, or ``None`` when there is no report of this run or it cannot be drawn."""
+def _report_parts(m):
+    """``(report, meta)`` ready to draw for this run, or ``None`` when there is no report of this run or nothing in it can be
+    drawn. The header values are the run's own, never the report's."""
     record = _report_for_run(m)
     if record is None:
         return None
@@ -1201,44 +1454,76 @@ def _report_page(m):
         report["verdict"] = verdict
     if m["confidence"] is not None:
         report["confidence"] = m["confidence"]
-    report["severity"] = {"from": m["severity_before"], "to": m["severity_after"] or "", "reason": m["severity_text"]}
+    report["severity"] = {"from": m["severity_before"], "to": m["severity_after"] or "", "reason": m["severity_head"]}
+    activity = _dict(loop.get("activity"))
     meta = {
         "model": _s(record.get("model")), "turns": loop.get("tick"), "tokens": loop.get("cost_tokens_total"),
-        "cost": loop.get("cost_usd"), "run_id": _s(loop.get("run_id")),
+        "cost": loop.get("cost_usd"), "run_id": _s(loop.get("run_id")), "tool_calls": activity.get("calls"),
+        "generated": _s(record.get("generated_at"))[:16].replace("T", " ") + ("Z" if _s(record.get("generated_at")) else ""),
         "incident": {"id": _s(incident.get("id")), "name": _s(incident.get("name")), "type": _s(incident.get("type")),
                      "owner": _s(incident.get("owner"))},
     }
-    return render_report(report, meta)
+    return report, meta
+
+
+def _report_page(m, part="all"):
+    """One part of the report page for the run, or ``None`` when there is no report of this run or it cannot be drawn."""
+    ready = _report_parts(m)
+    return None if ready is None else render_report(ready[0], ready[1], part)
 
 
 def _entry(kind, contents):
     return {"Type": entryTypes["note"], "ContentsFormat": formats[kind], "Contents": contents}
 
 
-def build_entry(incident, context, output_format="html"):
+def _part_note(kind, text):
+    return _entry("markdown", text) if kind == "markdown" else \
+        _entry("html", '<div style="opacity:.7;font-size:12px">{}</div>'.format(_esc(text)))
+
+
+def build_entry(incident, context, output_format="html", part=DEFAULT_PART):
+    """The entry for one part of the page. The incident page limits what one dynamic section may return, so the layout has
+    three sections, each asking for a part: `overview` (the default, what a section with no arguments gets), `story` and
+    `findings`. `all` is everything, for a War Room command. The states with no report of this run (and the card that
+    shows them) are in `overview`; the other parts then say to see it."""
+    part = part if part in PARTS else DEFAULT_PART
     model = _collect(incident, context)
+    later = part in ("story", "findings")
     if not model["has_data"]:
+        if later:
+            return _part_note(output_format, SEE_ABOVE)
         message = "Guardian has not assessed this incident yet."
         return _entry("markdown", message) if output_format == "markdown" else \
             _entry("html", '<div style="opacity:.75;font-size:13px">{}</div>'.format(message))
-    if output_format != "markdown":
+    if output_format == "markdown":
+        return _part_note("markdown", SEE_ABOVE) if later else _entry("markdown", render_markdown(model))
+    try:
         try:
-            try:
-                page = _report_page(model)
-            except Exception as exc:  # the report is the richer page; the card is the fallback
-                demisto.error("GuardianLayoutAssessment: report page failed, using the card: {}".format(exc))
-                page = None
-            return _entry("html", page or render_html(model))
-        except Exception as exc:  # a display script must not break the layout: show the Markdown instead
-            demisto.error("GuardianLayoutAssessment: HTML build failed, using Markdown: {}".format(exc))
-    return _entry("markdown", render_markdown(model))
+            if later:
+                ready = _report_parts(model)
+                if ready is None:
+                    return _part_note("html", SEE_ABOVE)
+                page = render_report(ready[0], ready[1], part)
+                return _entry("html", page) if page else _part_note("html", NOTHING_HERE)
+            page = _report_page(model, part)
+        except Exception as exc:  # the report is the richer page; the card is the fallback
+            demisto.error("GuardianLayoutAssessment: report page failed, using the card: {}".format(exc))
+            if later:
+                return _part_note("html", SEE_ABOVE)
+            page = None
+        return _entry("html", page or render_html(model))
+    except Exception as exc:  # a display script must not break the layout: show the Markdown instead
+        demisto.error("GuardianLayoutAssessment: HTML build failed, using Markdown: {}".format(exc))
+    return _part_note("markdown", SEE_ABOVE) if later else _entry("markdown", render_markdown(model))
 
 
 def main():
     try:
-        output_format = str((demisto.args() or {}).get("format") or "html").strip().lower()
+        args = demisto.args() or {}
+        output_format = str(args.get("format") or "html").strip().lower()
+        part = str(args.get("part") or DEFAULT_PART).strip().lower()
         incident = _dict(demisto.incident())
-        return_results(build_entry(incident, demisto.context() or {}, output_format))
+        return_results(build_entry(incident, demisto.context() or {}, output_format, part))
     except Exception as exc:
         return_error("GuardianLayoutAssessment failed unexpectedly: {}".format(exc))
 

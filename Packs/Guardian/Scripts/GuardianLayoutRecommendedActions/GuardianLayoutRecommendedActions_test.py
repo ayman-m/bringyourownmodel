@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 import GuardianLayoutRecommendedActions as gra
 
 
@@ -511,3 +513,82 @@ def test_main_falls_back_to_markdown_without_rereading_when_the_html_builder_rai
     readable = results[0].readable_output  # CommandResults, as before the redesign
     assert "Awaiting human approval (2)" in readable and "Recommend closing as False Positive" in readable
     assert calls.count("guardian_approvals_ledger") == 1  # the fallback reuses the first read
+
+
+# --- the agent's conclusion as a verdict block ----------------------------------------------------------------------------
+
+VERDICT = {"verdict": "Malicious", "confidence": 92, "techniques": ["T1204.002", "T1059.001", "T1071.001"],
+           "summary": "Confirmed malicious downloader execution on WS-0421 with active C2 <b>quarantine</b> failed."}
+
+
+def _loop_with(conclusion):
+    return {"status": "done", "tick": 7, "messages": [{"role": "user", "content": "task"},
+                                                      {"role": "assistant", "content": conclusion}]}
+
+
+def _conclusion_html(conclusion):
+    return str(gra.guardian_recommended_render_html({"id": "5"}, _loop_with(conclusion), _ok_load([]), sla_minutes=60, now=NOW))
+
+
+def test_a_bare_json_verdict_block_is_a_pill_a_confidence_technique_chips_and_the_summary():
+    html = _conclusion_html(json.dumps(VERDICT, indent=2))
+    assert "MALICIOUS" in html and "background:#c0392b" in html and "Confidence&nbsp;<b>92%</b>" in html
+    for technique in VERDICT["techniques"]:
+        assert "<code" in html and technique in html
+    assert "Confirmed malicious downloader execution on WS-0421" in html
+    assert "&quot;verdict&quot;" not in html and "&quot;confidence&quot;" not in html and "{" not in html.split("Conclusion")[1]
+    assert "Agent&#x27;s verdict" in html or "Agent's verdict" in html
+
+
+def test_a_fenced_verdict_block_is_read_the_same_way():
+    for fence in ("```json\n{}\n```", "```\n{}\n```", "```JSON\n{}```"):
+        html = _conclusion_html(fence.format(json.dumps(VERDICT)))
+        assert "MALICIOUS" in html and "T1204.002" in html and "```" not in html
+
+
+@pytest.mark.parametrize("verdict, color", [("Malicious", "#c0392b"), ("suspicious", "#b36b00"), ("BENIGN", "#1f8a5b"),
+                                           ("Inconclusive", "#667085")])
+def test_the_pill_colour_follows_the_verdict(verdict, color):
+    html = _conclusion_html(json.dumps({"verdict": verdict, "confidence": 50, "summary": "x"}))
+    assert "background:{}".format(color) in html and verdict.upper() in html
+
+
+def test_the_model_text_of_a_verdict_block_is_escaped():
+    html = _conclusion_html(json.dumps({"verdict": "Malicious", "summary": "<script>alert(1)</script>",
+                                        "techniques": ["T1059<img>", "T1059"]}))
+    assert "<script>" not in html and "&lt;script&gt;" in html and "<img" not in html and "T1059" in html
+
+
+def test_a_verdict_block_without_confidence_techniques_or_summary_still_renders():
+    html = _conclusion_html(json.dumps({"verdict": "Benign"}))
+    assert "BENIGN" in html and "Confidence" not in html and "<code" not in html
+
+
+def test_confidence_is_clamped_and_techniques_are_deduplicated_and_validated():
+    block = gra.guardian_recommended_verdict_block(json.dumps({
+        "verdict": "suspicious", "confidence": 250, "techniques": ["T1059", "t1059", "TA0001", "T1059.001", 5, None, "x"]}))
+    assert block == {"verdict": "Suspicious", "confidence": 100, "techniques": ["T1059", "T1059.001"], "summary": ""}
+    assert gra.guardian_recommended_verdict_block('{"verdict": "Benign", "confidence": "high"}')["confidence"] is None
+    assert gra.guardian_recommended_verdict_block('{"verdict": "Benign", "confidence": true}')["confidence"] is None
+    many = gra.guardian_recommended_verdict_block(json.dumps({"verdict": "Benign", "techniques": ["T%04d" % i for i in range(40)]}))
+    assert len(many["techniques"]) == 12
+
+
+@pytest.mark.parametrize("text", [
+    "Recommend closing as a false positive.",                                         # prose
+    "Findings first.\n```json\n" + json.dumps(VERDICT) + "\n```",                       # prose around the block
+    json.dumps(VERDICT) + "\nand more text",                                           # text after the block
+    '{"verdict": "Maybe", "confidence": 3}',                                           # not a verdict
+    '{"verdict": 5}', '{"summary": "no verdict"}', '[{"verdict": "Malicious"}]', '{"verdict": "Malicious"',    # not a block
+    "", None, 7])
+def test_anything_else_keeps_the_text_block(text):
+    assert gra.guardian_recommended_verdict_block(text) is None
+    if isinstance(text, str) and text.strip():
+        html = _conclusion_html(text)
+        assert "Agent&#x27;s conclusion" in html or "Agent's conclusion" in html
+
+
+def test_the_verdict_block_does_not_change_the_other_sections():
+    html = str(gra.guardian_recommended_render_html({"id": "22486"}, _loop_with(json.dumps(VERDICT)),
+                                                    _ok_load(SAMPLE_LEDGER_ROWS), sla_minutes=60, now=NOW))
+    assert "closeInvestigation" in html and "Awaiting your decision" in html and "2 awaiting approval" in html

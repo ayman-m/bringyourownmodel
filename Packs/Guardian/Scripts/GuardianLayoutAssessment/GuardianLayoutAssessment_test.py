@@ -121,7 +121,7 @@ def test_apply_raised_dry_run_and_error(monkeypatch):
 def test_applied_without_a_severity_change_for_a_repaired_result(monkeypatch):
     apply_record = dict(APPLY, severity_after="high", reason="severity: a repaired result never changes the severity")
     page = _html(monkeypatch, {"Triage": dict(TRIAGE, status="repaired"), "TriageApply": apply_record})
-    assert "Unchanged: severity: a repaired result never changes the severity" in page
+    assert "Unchanged by Guardian triage" in page and "a repaired result never changes" not in page
     assert "Lowered" not in page and "Raised" not in page
 
 
@@ -584,18 +584,19 @@ class Robust(unittest.TestCase):
 class Graph(unittest.TestCase):
     def check_rows(self, report):
         c = gla._Ctx(report, META)
-        rows = gla._graph_rows(c)
+        graph = gla._graph(c)
+        rows, width = graph["rows"], graph["width"]
         self.assertTrue(rows)
         # rowspans: every column position is covered exactly once per row
         nrows = len(rows)
-        occupancy = [[0] * 9 for _ in range(nrows)]
+        occupancy = [[0] * width for _ in range(nrows)]
         for r, row in enumerate(rows):
             for cell in row:
                 for dr in range(cell["rs"]):
                     for dc in range(cell["cs"]):
                         occupancy[r + dr][cell["x"] + dc] += 1
         for line in occupancy:
-            self.assertEqual(line, [1] * 9)
+            self.assertEqual(line, [1] * width)
         return c, rows
 
     def test_sample_widths(self):
@@ -661,9 +662,10 @@ RECORD = {"v": 1, "run_id": "4217", "tick": 7, "model": "model-x", "calls": 3, "
 WITH_REPORT = {"Triage": TRIAGE, "TriageApply": APPLY, "Loop": RUN, "Report": RECORD}
 
 
-def _entry(monkeypatch, guardian, output_format="html", **kwargs):
+def _entry(monkeypatch, guardian, output_format="html", part="all", **kwargs):
+    """The whole page by default: the tests of one part say so."""
     _install(monkeypatch, guardian=guardian, **kwargs)
-    return gla.build_entry(gla.demisto.incident(), gla.demisto.context(), output_format)
+    return gla.build_entry(gla.demisto.incident(), gla.demisto.context(), output_format, part)
 
 
 def _is_report(page):
@@ -686,18 +688,19 @@ def test_the_header_is_the_runs_own_not_the_reports(monkeypatch):
     # the report says malicious, 92%, medium to critical; the run says Suspicious, 70%, high lowered to low
     page = _entry(monkeypatch, WITH_REPORT)["Contents"]
     header = page[:page.index("KILL CHAIN")]
-    assert "SUSPICIOUS" in header and "70%" in header and "MALICIOUS" not in header and "92%" not in header
+    assert "SUSPICIOUS" in header and ">70%<" in header and "MALICIOUS" not in header and ">92%<" not in header
     assert ">HIGH<" in header and ">LOW<" in header and "CRITICAL" not in header
-    assert "Lowered by Guardian triage" in header and "lowered from high to low" in header
+    assert "Lowered by Guardian triage" in header and "lowered from high to low" not in header
     assert "#4217" in header and "Repeated failed sign-ins for jdoe-example" in header
+    assert "123,456" in header and "$0.0421" in header and "Investigation turns" in header
     footer = page[page.rindex("model"):]
-    assert "model-x" in footer and "tokens 123,456" in footer and "cost $0.0421" in footer and "turns 7" in footer
+    assert "model-x" in footer and "run 4217" in footer
 
 
 def test_the_header_of_an_unchanged_severity_is_one_badge(monkeypatch):
     guardian = dict(WITH_REPORT, TriageApply={})
     header = _entry(monkeypatch, guardian)["Contents"].split("KILL CHAIN")[0]
-    assert header.count("&#9656;") == 0 and ">HIGH<" in header and "Severity was not changed by Guardian" in header
+    assert header.count("&#9656;") == 0 and ">HIGH<" in header and "Not changed by Guardian" in header
 
 
 def test_a_report_of_an_earlier_run_never_shows(monkeypatch):
@@ -775,7 +778,7 @@ def _tree_rows(markup):
                        r'<td valign="top" style="[^"]*">(.*?)</td></tr></table>', section)
     rows = []
     for prefix, name in cells:
-        text = re.sub(r"<[^>]+>", "", prefix.replace("<br>", "\n")).replace("&nbsp;", " ")
+        text = re.sub(r"<[^>]+>", "", prefix.replace("<br>", "\n")).replace("&nbsp;", " ").replace("\xa0", " ")
         rows.append((text.split("\n"), re.sub(r"<[^>]+>", "", name.split("</b>")[0] + "</b>").replace("&nbsp;", " ").strip()))
     return rows
 
@@ -820,10 +823,438 @@ def test_the_tree_is_one_small_table_per_node_so_no_column_is_shared():
 def test_a_tree_row_names_its_command_and_reference_and_flags_a_bad_process():
     out = gla.render_report({"tree": [{"id": "n1", "name": "ps.exe", "flag": "malicious", "pid": 12, "tech": "T1059.001",
                                       "cmd": "ps.exe -enc AAA", "ref": ["t1"]}], "refs": {"t1": {"tool": "x", "summary": "y"}}}, {})
-    assert "●" in out and "[12]" in out and "T1059.001" in out and "ps.exe -enc AAA" in out and "1&nbsp;ref" in out
+    assert gla._tint("red") in out and "[12]" in out and "T1059.001" in out and "ps.exe -enc AAA" in out and "\u2713 1 ref" in out
 
 
 def test_the_layout_script_stays_self_contained():
     source = open(gla.__file__).read()
     assert "GUARDIAN_COMMON" not in source and "guardian_execute" not in source
     assert set(re.findall(r"^(?:import|from) (\w+)", source, re.M)) == {"html", "json", "math", "re", "demistomock", "CommonServerPython"}
+
+
+# --- the premium page: layout rules, the map, the severity line ------------------------------------------------------------
+
+def _render(report, meta=None):
+    out = gla.render_report(report, META if meta is None else meta)
+    assert out is not None
+    return out
+
+
+def test_fills_are_only_ever_on_spans_and_every_colour_comes_from_the_palette():
+    out = _render(SAMPLE)
+    for tag in ("td", "div", "table", "tr", "details", "summary", "b"):
+        for match in re.findall(r"<{}\b[^>]*>".format(tag), out):
+            assert "background" not in match, match
+    assert 'background' in out and "<span" in out
+    solids = {value[0].lower() for value in gla.PAL.values()}
+    for color in re.findall(r"#[0-9a-fA-F]{6}\b", out):
+        assert color.lower() in solids, color
+    allowed = {value[1] for value in gla.PAL.values()} | {value[2] for value in gla.PAL.values()} | {gla.LINE, "rgba(255,255,255,.3)"}
+    for color in re.findall(r"rgba\([^)]*\)", out):
+        assert color in allowed, color
+
+
+def test_every_filled_element_also_has_a_border_or_a_text_colour_of_its_own():
+    out = _render(SAMPLE)
+    for style in re.findall(r'<span style="([^"]*background[^"]*)"', out):
+        assert "border" in style or "color:" in style, style
+
+
+def test_no_light_hex_fill_and_no_inline_font_family_but_monospace():
+    out = _render(SAMPLE)
+    assert not re.search(r"background:#", out.replace("background:#e5484d", "").replace("background:#f76b15", "").replace(
+        "background:#2f80ed", "").replace("background:#2f9e63", "").replace("background:#d18b00", "").replace("background:#7f8791", "")
+        .replace("background:#8e5bd9", "").replace("background:#14a39a", ""))
+    assert set(re.findall(r"font-family:([a-z]+)", out)) == {"monospace"}
+
+
+def test_section_cards_are_rounded_have_an_uppercase_title_and_a_count_badge():
+    out = _render(SAMPLE)
+    for title, count in (("KILL CHAIN", "8 of 14 tactics"), ("ATTACK CHAIN", "9 steps"), ("RELATIONSHIP MAP", "16 entities"),
+                         ("CAUSALITY CHAIN", "9 processes"), ("TIMELINE", "14 events"), ("FINDINGS", ">5<"),
+                         ("RECOMMENDED ACTIONS", ">5<"), ("GAPS", ">2<")):
+        assert title in out and count in out, title
+    assert out.count("border-radius:8px;font-size:13px") >= 8
+
+
+def test_the_kill_chain_is_fourteen_equal_cells_with_solid_active_and_tinted_inactive_tactics():
+    out = _render(SAMPLE)
+    chain = out[out.index("KILL CHAIN"):out.index("ATTACK CHAIN")]
+    assert chain.count('style="width:7.14%') == 14
+    active = [m for m in re.findall(r'<span style="([^"]*)">', chain) if "background:#f76b15;color:#fff" in m]
+    assert len(active) == 8
+    assert chain.count("background:{};color:{};border-radius:7px".format(gla._tint("grey"), gla.GREY)) == 6
+
+
+def test_attack_cards_share_the_full_row():
+    for count, per in ((1, 1), (2, 2), (3, 3), (4, 4), (5, 4), (9, 4)):
+        report = {"attack": [{"tactic": "Execution", "name": "n%d" % i, "ref": ["t1"]} for i in range(count)],
+                  "refs": {"t1": {"tool": "x", "summary": "y"}}}
+        chain = gla._sec_attack(gla._Ctx(report, {}))
+        widths = [float(w) for w in re.findall(r'<td valign="top" style="width:([\d.]+)%;border:1px solid', chain)]
+        assert len(widths) == count and len(set(widths)) == 1
+        arrows = 2.6 * (per - 1)
+        assert abs(widths[0] * per + arrows - 100.0) < 0.1, (count, widths)
+
+
+def _graph_report(entities, edges):
+    return {"entities": [dict(e, ref=["t1"]) for e in entities], "edges": [dict(e, ref=["t1"]) for e in edges],
+            "refs": {"t1": {"tool": "x", "summary": "y"}}}
+
+
+ENTS = [{"id": "e1", "type": "user", "value": "jdoe"}, {"id": "e2", "type": "process", "value": "a.exe"},
+        {"id": "e3", "type": "host", "value": "WS-1"}, {"id": "e4", "type": "ip", "value": "203.0.113.9"}]
+
+
+def test_a_column_nobody_is_in_is_not_drawn():
+    report = _graph_report(ENTS[:2], [{"from": "e1", "to": "e2", "rel": "ran"}])
+    graph = gla._graph(gla._Ctx(report, {}))
+    assert graph["cols"] == ["Identity", "Process / File"] and graph["width"] == 3
+    page = gla._sec_graph(gla._Ctx(report, {}))
+    for dropped in ("HOST", "INDICATOR", "EXTERNAL", "NOT LINKED"):
+        assert ">{}<".format(dropped) not in page, dropped
+    assert ">IDENTITY<" in page and ">PROCESS / FILE<" in page
+
+
+def test_an_edge_over_a_dropped_column_spans_it():
+    report = _graph_report([ENTS[0], ENTS[3]], [{"from": "e1", "to": "e4", "rel": "connected"}])
+    graph = gla._graph(gla._Ctx(report, {}))
+    assert graph["cols"] == ["Identity", "External"] and graph["width"] == 3
+    conn = [cell for row in graph["rows"] for cell in row if cell["kind"] == "conn"]
+    assert len(conn) == 1 and conn[0]["cs"] == 1
+
+
+def test_entities_with_no_relationship_get_their_own_dashed_column_on_the_right():
+    report = _graph_report(ENTS, [{"from": "e1", "to": "e2", "rel": "ran"}])
+    c = gla._Ctx(report, {})
+    graph = gla._graph(c)
+    assert graph["cols"] == ["Identity", "Process / File", "Not linked"] and graph["width"] == 5
+    assert [e["value"] for e in graph["unlinked"]] == ["WS-1", "203.0.113.9"]
+    cells = [(r, cell) for r, row in enumerate(graph["rows"]) for cell in row if cell["kind"] == "unlinked"]
+    assert [(r, cell["x"]) for r, cell in cells] == [(0, 4), (1, 4)]
+    page = gla._sec_graph(c)
+    assert ">NOT LINKED<" in page and page.count("dashed") >= 4
+    for value in ("WS-1", "203.0.113.9"):
+        assert value in page
+    # the linked entities' nodes are solid, not dashed
+    assert page.count("border:1px solid") >= 2
+
+
+def test_more_unlinked_entities_than_rows_add_rows_and_still_tile_the_grid():
+    ents = ENTS[:2] + [{"id": "u%d" % i, "type": "domain", "value": "d%d.example" % i} for i in range(6)]
+    c = gla._Ctx(_graph_report(ents, [{"from": "e1", "to": "e2", "rel": "ran"}]), {})
+    graph = gla._graph(c)
+    assert len(graph["rows"]) == 6 and len(graph["unlinked"]) == 6
+    occupancy = [[0] * graph["width"] for _ in graph["rows"]]
+    for r, row in enumerate(graph["rows"]):
+        for cell in row:
+            for dr in range(cell["rs"]):
+                for dc in range(cell["cs"]):
+                    occupancy[r + dr][cell["x"] + dc] += 1
+    assert all(line == [1] * graph["width"] for line in occupancy)
+
+
+def test_with_no_relationship_at_all_the_entities_are_a_dashed_group_and_the_page_says_so():
+    c = gla._Ctx(_graph_report(ENTS, []), {})
+    graph = gla._graph(c)
+    assert graph["rows"] == [] and len(graph["unlinked"]) == 4
+    page = gla._sec_graph(c)
+    assert "No relationships were reported." in page and page.count("dashed") >= 8
+    for e in ENTS:
+        assert e["value"] in page
+
+
+def test_a_node_has_a_type_tag_a_coloured_edge_and_the_reputation_word():
+    c = gla._Ctx(_graph_report([dict(ENTS[1], rep="malicious", role="tool"), dict(ENTS[0], role="victim")], []), {})
+    page = gla._sec_graph(c)
+    assert "PROC" in page and "USER" in page and "malicious" in page and "victim" in page
+    assert "border-left:4px dashed {}".format(gla._col("red")) in page and "border-left:4px dashed {}".format(gla._col("blue")) in page
+
+
+def _header(monkeypatch, apply_record, severity=3):
+    guardian = {"Triage": TRIAGE, "TriageApply": apply_record, "Loop": RUN, "Report": RECORD}
+    _install(monkeypatch, guardian=guardian, incident=dict(INCIDENT, severity=severity))
+    page = gla.build_entry(gla.demisto.incident(), gla.demisto.context())["Contents"]
+    return page[:page.index("KILL CHAIN")]
+
+
+def test_an_unchanged_severity_reads_as_one_pill_and_unchanged_by_triage(monkeypatch):
+    unchanged = dict(APPLY, severity_before="high", severity_after="high",
+                     reason="severity: the severity is already high; phase: Guardian triage: endpoint_threat")
+    header = _header(monkeypatch, unchanged)
+    assert ">HIGH<" in header and header.count("&#9656;") == 0 and "Unchanged by Guardian triage" in header
+    assert "severity: the severity is already high" not in header and "phase:" not in header
+
+
+def test_a_raised_severity_reads_from_to_and_raised_by_triage(monkeypatch):
+    header = _header(monkeypatch, dict(APPLY, severity_before="medium", severity_after="high", reason="long reason text"))
+    assert ">MEDIUM<" in header and ">HIGH<" in header and header.count("&#9656;") == 1
+    assert "Raised by Guardian triage" in header and "long reason text" not in header
+
+
+def test_the_severity_text_of_the_card_still_says_why_when_triage_skipped_the_incident(monkeypatch):
+    skipped = {"status": "skipped", "severity_before": "high", "severity_after": "high", "reason": "the incident already has an owner"}
+    assert gla._severity_change({"severity": 3}, skipped)[2] == "Unchanged: the incident already has an owner"
+    assert gla._severity_change({"severity": 3}, None)[2] == "Severity was not changed by Guardian in this run."
+    applied = gla._severity_change({"severity": 3}, {"status": "applied", "severity_before": "high", "severity_after": "high",
+                                                      "reason": "severity: the severity is already high; phase: x"})
+    assert applied == ("high", None, "Unchanged by Guardian triage")
+
+
+def test_the_hero_header_has_the_big_confidence_the_bar_key_indicators_and_the_run_stats():
+    out = _render(SAMPLE, dict(META, tool_calls=6, turns=7, tokens=61230, cost=0.1832))
+    hero = out[:out.index("KILL CHAIN")]
+    assert "font-size:26px" in hero and "92%" in hero and "font-size:18px" in hero
+    assert "border-left:6px solid {}".format(gla._col("red")) in hero
+    assert "KEY INDICATORS" in hero and "invoice.docm" in hero and "powershell.exe" in hero
+    for label, value in (("Tool calls", ">6<"), ("Investigation turns", ">7<"), ("Tokens", "61,230"), ("Cost", "$0.1832")):
+        assert label in hero and value in hero
+    assert re.search(r"\d+/\d+ referenced", hero)
+    assert "turns 14" not in out
+
+
+def test_the_footer_has_the_model_the_run_and_the_reference_pill():
+    out = _render(SAMPLE)
+    footer = out[out.rindex('<div style="font-size:11px;line-height:2.1'):]
+    assert "model example-model-35b" in footer and "run GR-4821-7f3a2c" in footer and "unverified" in footer
+    clean = _render({"headline": "h", "findings": [{"text": "t", "ref": ["t1"]}], "refs": {"t1": {"tool": "x", "summary": "y"}}})
+    assert "every item has a reference" in clean[clean.rindex("line-height:2.1"):]
+
+
+def test_a_finding_shows_its_references_on_the_same_row():
+    report = {"findings": [{"text": "first", "ref": ["t1", "t2"]}, {"text": "second", "ref": []}],
+              "refs": {"t1": {"tool": "getEntries", "summary": ""}, "t2": {"tool": "domain", "summary": ""}}}
+    section = gla._sec_findings(gla._Ctx(report, {}))
+    rows = re.findall(r"<tr>.*?</tr>", section)
+    assert len(rows) == 2 and "first" in rows[0] and "t1 getEntries" in rows[0] and "t2 domain" in rows[0]
+    assert "second" in rows[1] and "unverified" in rows[1]
+
+
+def test_the_timeline_keeps_the_tags_next_to_the_text_in_percentage_columns():
+    section = gla._sec_timeline(gla._Ctx(SAMPLE, META))
+    rows = re.findall(r"<tr><td valign=\"top\" style=\"width:9%.*?</tr>", section)
+    assert len(rows) == 14
+    widths = [int(w) for w in re.findall(r"width:(\d+)%", rows[0])]
+    assert widths == [9, 3, 78, 10]
+    assert "powershell" in rows[2] and re.search(r"powershell[^<]*(&nbsp;)+<span", rows[2])
+
+
+def test_actions_are_in_percentage_columns_with_solid_priority_and_tint_approval_pills():
+    section = gla._sec_actions(gla._Ctx(SAMPLE, META))
+    assert re.findall(r'<td style="[^"]*?width:(\d+)%', section.split("</tr>")[0]) == ["7", "41", "10", "14", "28"]
+    assert "background:{};color:#fff".format(gla._col("red")) in section
+    assert "needs approval" in section and "automatic" in section
+    assert "background:{};color:{}".format(gla._tint("amber"), gla._col("amber")) in section
+
+
+def test_a_malicious_process_is_a_red_tint_chip_in_the_tree():
+    section = gla._sec_tree(gla._Ctx({"tree": [{"id": "n1", "name": "bad.exe", "flag": "malicious"},
+                                               {"id": "n2", "parent": "n1", "name": "ok.exe"}]}, {}))
+    assert "background:{};border:1px solid {}".format(gla._tint("red"), gla._line("red")) in section
+    assert section.count(gla._tint("red")) == 1
+
+
+# --- the three parts: the incident page limits one dynamic section, so the page is three sections ------------------------
+
+def _words(length, seed=0):
+    base = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa quebec romeo".split()
+    out, i = "", seed
+    while len(out) < length:
+        out += base[i % len(base)] + " "
+        i += 1
+    return out[:length].strip()
+
+
+def _capped_report():
+    """Every list at its cap and every string at its length limit: the largest report the page has to draw."""
+    types = ["user", "host", "process", "file", "ip", "domain", "url", "email", "hash", "cloud"]
+    caps = gla.CAPS
+    entities = [{"id": "e%d" % i, "type": types[i % 10], "value": ("v%d-" % i) + _words(120).replace(" ", "-")[:116],
+                 "rep": ["malicious", "suspicious", "benign", "unknown"][i % 4], "role": ["victim", "attacker", "infra", "asset"][i % 4],
+                 "ref": ["t1", "t2", "t3"]} for i in range(caps["entities"])]
+    edges = [{"from": "e%d" % (i % 19), "to": "e%d" % (i % 19 + 1), "rel": gla.RELS[i % 12], "ref": ["t1", "t2"]}
+             for i in range(caps["edges"])]
+    attack = [{"tactic": gla.TACTIC_FULL[i % 14], "tech": "T1%03d.001" % i, "name": _words(60, i), "time": "2026-10-27T21:%02d:08Z" % i,
+               "evidence": _words(160, i), "ents": ["e%d" % j for j in range(6)], "ref": ["t1", "t2", "t3"]} for i in range(caps["attack"])]
+    timeline = [{"t": "2026-10-27T21:%02d:08Z" % i, "event": _words(160, i), "src": _words(24, i), "ents": ["e1"],
+                 "tech": "T1%03d" % i, "ref": ["t1", "t2"]} for i in range(caps["timeline"])]
+    tree = [{"id": "n%d" % i, "parent": "n%d" % (i - 1) if i else None, "ent": "e1", "name": _words(60, i), "cmd": _words(160, i),
+             "pid": "1234567890", "flag": ["malicious", "suspicious", ""][i % 3], "tech": "T1059.001", "ref": ["t1", "t2"]}
+            for i in range(caps["tree"])]
+    findings = [{"text": _words(200, i), "ref": ["t%d" % (j + 1) for j in range(8)]} for i in range(caps["findings"])]
+    actions = [{"p": 1 + i % 3, "action": _words(160, i), "owner": ["guardian", "analyst"][i % 2], "approval": i % 2 == 0,
+                "cmd": _words(200, i).replace(" ", "-")} for i in range(caps["actions"])]
+    gaps = [_words(200, i) for i in range(caps["gaps"])]
+    refs = dict(("t%d" % (i + 1), {"tool": _words(40, i), "summary": _words(200, i)}) for i in range(60))
+    return {"v": 1, "headline": _words(140), "verdict": "malicious", "confidence": 92,
+            "severity": {"from": "medium", "to": "high", "reason": _words(160)}, "entities": entities, "edges": edges,
+            "attack": attack, "timeline": timeline, "tree": tree, "findings": findings, "actions": actions, "gaps": gaps, "refs": refs}
+
+
+CAPPED_META = {"model": _words(60), "turns": 14, "tokens": 368320, "cost": 0.0642, "run_id": _words(40).replace(" ", "-"),
+               "tool_calls": 6, "generated": "2026-10-28 07:15Z",
+               "incident": {"id": "55503", "name": _words(80), "type": _words(80), "owner": _words(80)}}
+
+
+def test_the_synthetic_report_really_is_at_every_cap():
+    report = _capped_report()
+    for key, cap in gla.CAPS.items():
+        assert len(report[key]) == cap, key
+    c = gla._Ctx(report, CAPPED_META)
+    for key, cap in gla.CAPS.items():
+        assert len(c.all(key)) == cap, key
+
+
+@pytest.mark.parametrize("part", ["overview", "story", "findings"])
+def test_every_part_of_the_largest_report_stays_under_the_size_limit(part):
+    out = gla.render_report(_capped_report(), CAPPED_META, part)
+    assert out is not None and len(out.encode("utf-8")) <= gla.MAX_PART_BYTES == 30000
+
+
+@pytest.mark.parametrize("report", [_capped_report(), SAMPLE])
+def test_every_part_of_every_report_is_under_the_limit_even_with_text_that_escapes_to_more_bytes(report):
+    noisy = json.loads(json.dumps(report).replace("alpha", "a&b<c>").replace("echo", "e&c'h"))
+    for part in ("overview", "story", "findings"):
+        for r in (report, noisy):
+            assert len(gla.render_report(r, CAPPED_META, part).encode("utf-8")) <= gla.MAX_PART_BYTES, part
+
+
+def test_the_whole_page_is_not_cut_and_says_nothing_is_missing():
+    out = gla.render_report(_capped_report(), CAPPED_META, "all")
+    assert len(out.encode("utf-8")) > 3 * gla.MAX_PART_BYTES and "more not shown" not in out
+    assert out.count("<table") > 60 and "CAUSALITY CHAIN" in out and "GAPS" in out and "KILL CHAIN" in out
+
+
+def test_an_oversize_part_loses_rows_from_the_end_of_its_biggest_section_and_says_how_many():
+    report = _capped_report()
+    out = gla.render_report(report, CAPPED_META, "story")
+    notes = re.findall(r"(\d+) more not shown, see the full report with !GuardianLayoutAssessment part=all", out)
+    assert notes and all(int(n) >= 1 for n in notes)
+    kept_tree = len(re.findall(r'<td valign="top" style="width:1px;', out))
+    kept_events = len(re.findall(r'<tr><td valign="top" style="width:9%', out))
+    assert 0 < kept_tree < 30 and 0 < kept_events < 25
+    # the rows that remain are the first ones: a row is only ever taken off the end
+    assert report["tree"][0]["name"][:19] in out
+    assert re.findall(r"(\d\d):\d\d:08", out)[:1] == ["21"] and "21:%02d:08" % (kept_events - 1) in out
+    assert "21:%02d:08" % kept_events not in out and "21:24:08" not in out
+    # the count in each badge is still the whole list
+    assert ">30 processes<" in out and ">25 events<" in out and ">20 entities<" in out
+
+
+def test_a_part_that_fits_is_not_touched():
+    out = gla.render_report(SAMPLE, META, "findings")
+    assert "more not shown" not in out and len(out.encode("utf-8")) < gla.MAX_PART_BYTES
+
+
+def test_trimming_never_takes_the_last_row_and_never_loops_forever():
+    report = {"entities": [{"id": "e1", "type": "host", "value": "x" * 120, "ref": ["t1"]}], "edges": [],
+              "timeline": [{"t": "2026-10-27T21:14:08Z", "event": "y" * 160, "ref": ["t1"]}],
+              "refs": {"t1": {"tool": "a", "summary": "b"}}}
+    c = gla._Ctx(report, {})
+    assert not c.can_trim("timeline") and not c.can_trim("graph")
+    old = gla.MAX_PART_BYTES
+    try:
+        gla.MAX_PART_BYTES = 100
+        out = gla.render_report(report, {}, "story")
+    finally:
+        gla.MAX_PART_BYTES = old
+    assert out is not None and "y" * 160 in out
+
+
+def test_the_default_part_is_overview(monkeypatch):
+    assert gla.DEFAULT_PART == "overview" and gla.PARTS == ("overview", "story", "findings", "all")
+    _install(monkeypatch, guardian=WITH_REPORT)
+    default = gla.build_entry(gla.demisto.incident(), gla.demisto.context())["Contents"]
+    overview = gla.build_entry(gla.demisto.incident(), gla.demisto.context(), "html", "overview")["Contents"]
+    assert default == overview
+    for title in ("GUARDIAN ASSESSMENT", "KILL CHAIN", "ATTACK CHAIN"):
+        assert title in default
+    for title in ("RELATIONSHIP MAP", "CAUSALITY CHAIN", "TIMELINE", "FINDINGS", "RECOMMENDED ACTIONS", "GAPS"):
+        assert title not in default
+
+
+def test_an_unknown_part_is_the_overview(monkeypatch):
+    _install(monkeypatch, guardian=WITH_REPORT)
+    default = gla.build_entry(gla.demisto.incident(), gla.demisto.context())["Contents"]
+    for odd in ("", "bogus", None, "STORY ", 5):
+        assert gla.build_entry(gla.demisto.incident(), gla.demisto.context(), "html", odd)["Contents"] == default
+
+
+def test_main_reads_the_part_argument_and_defaults_to_the_overview(monkeypatch):
+    results = []
+    _install(monkeypatch, guardian=WITH_REPORT)
+    monkeypatch.setattr(gla, "return_results", results.append)
+    for args in ({}, {"part": "story"}, {"part": " FINDINGS "}, {"part": "all"}):
+        monkeypatch.setattr(gla.demisto, "args", lambda args=args: args)
+        gla.main()
+    default, story, findings, everything = [r["Contents"] for r in results]
+    assert "ATTACK CHAIN" in default and "TIMELINE" not in default
+    assert "TIMELINE" in story and "FINDINGS" not in story and "ATTACK CHAIN" not in story
+    assert "FINDINGS" in findings and "RECOMMENDED ACTIONS" in findings and "GAPS" in findings and "TIMELINE" not in findings
+    assert "ATTACK CHAIN" in everything and "TIMELINE" in everything and "GAPS" in everything
+
+
+def test_the_three_parts_hold_the_sections_the_layout_promises(monkeypatch):
+    out = {}
+    for part in ("overview", "story", "findings"):
+        out[part] = _entry(monkeypatch, WITH_REPORT, part=part)["Contents"]
+    assert [t in out["overview"] for t in ("GUARDIAN ASSESSMENT", "KILL CHAIN", "ATTACK CHAIN")] == [True] * 3
+    assert [t in out["story"] for t in ("RELATIONSHIP MAP", "CAUSALITY CHAIN", "TIMELINE")] == [True] * 3
+    assert [t in out["findings"] for t in ("FINDINGS", "RECOMMENDED ACTIONS", "GAPS")] == [True] * 3
+    assert "every item" in out["findings"] or "unverified" in out["findings"]          # the footer is in the last part
+    assert "run 4217" not in out["overview"] and "run 4217" not in out["story"] and "run 4217" in out["findings"]
+
+
+def test_the_no_report_states_render_once_in_the_overview_and_the_other_parts_point_to_it(monkeypatch):
+    states = {
+        "no report": {"Triage": TRIAGE, "TriageApply": APPLY, "Loop": RUN},
+        "stale": dict(WITH_REPORT, Report=dict(RECORD, run_id="1")),
+        "failed": dict(WITH_REPORT, Report={"v": 1, "run_id": "4217", "tick": 7, "report": None, "errors": ["x"]}),
+        "undrawable": dict(WITH_REPORT, Report=dict(RECORD, report={"entities": "x"}, refs={}), Loop=dict(RUN, verdict=None)),
+    }
+    for name, guardian in states.items():
+        overview = _entry(monkeypatch, guardian, part="overview")["Contents"]
+        assert "Twelve failed sign-ins" in overview, name                       # today's card
+        for part in ("story", "findings"):
+            entry = _entry(monkeypatch, guardian, part=part)
+            assert entry["Type"] == 1 and entry["ContentsFormat"] == "html"
+            assert entry["Contents"] == '<div style="opacity:.7;font-size:12px">See the assessment above.</div>', (name, part)
+
+
+def test_no_assessment_yet_says_so_once(monkeypatch):
+    _install(monkeypatch, guardian={}, incident={"id": "1"})
+    for part in ("story", "findings"):
+        entry = gla.build_entry(gla.demisto.incident(), gla.demisto.context(), "html", part)
+        assert "See the assessment above." in entry["Contents"] and "has not assessed" not in entry["Contents"]
+    assert "has not assessed" in gla.build_entry(gla.demisto.incident(), gla.demisto.context(), "html", "overview")["Contents"]
+
+
+def test_a_part_with_nothing_to_draw_says_so(monkeypatch):
+    report = {"headline": "only a headline", "refs": {}}
+    record = dict(RECORD, report=report, refs={})
+    entry = _entry(monkeypatch, dict(WITH_REPORT, Report=record), part="story")
+    assert "Nothing to show here for this report." in entry["Contents"]
+    assert "only a headline" in _entry(monkeypatch, dict(WITH_REPORT, Report=record), part="overview")["Contents"]
+
+
+def test_markdown_follows_the_same_split(monkeypatch):
+    overview = _entry(monkeypatch, WITH_REPORT, "markdown", part="overview")
+    assert overview["ContentsFormat"] == "markdown" and overview["Contents"].startswith("### Guardian assessment")
+    for part in ("story", "findings"):
+        entry = _entry(monkeypatch, WITH_REPORT, "markdown", part=part)
+        assert entry["ContentsFormat"] == "markdown" and entry["Contents"] == "See the assessment above."
+    assert _entry(monkeypatch, WITH_REPORT, "markdown", part="all")["Contents"] == overview["Contents"]
+
+
+def test_an_error_in_a_later_part_shows_the_note_not_an_error(monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("renderer broke")
+
+    monkeypatch.setattr(gla, "render_report", boom)
+    for part in ("story", "findings"):
+        assert "See the assessment above." in _entry(monkeypatch, WITH_REPORT, part=part)["Contents"]
+
+
+def test_the_header_values_are_the_runs_own_in_every_part_that_has_a_header(monkeypatch):
+    overview = _entry(monkeypatch, WITH_REPORT, part="overview")["Contents"]
+    assert "SUSPICIOUS" in overview and ">70%<" in overview and "MALICIOUS" not in overview

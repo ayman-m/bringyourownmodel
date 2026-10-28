@@ -12,6 +12,23 @@ args:
   - html
   - markdown
   defaultValue: html
+- name: part
+  description: >-
+    Which part of the report to return: "overview" (the default: header, kill chain, attack chain), "story"
+    (relationship map, causality chain, timeline), "findings" (findings, actions, gaps) or "all". The Story and
+    Findings layout sections call this script with their part through GuardianLayoutAssessmentStory and
+    GuardianLayoutAssessmentFindings. The server drops an argument that is not declared here.
+  required: false
+  isArray: false
+  default: false
+  secret: false
+  auto: PREDEFINED
+  predefined:
+  - overview
+  - story
+  - findings
+  - all
+  defaultValue: overview
 comment: >-
   Layout section for the Guardian tab of the Guardian Agent Run layout. Shows Guardian's triage and investigation
   outcome as one card: verdict, confidence, investigation type and complexity, the severity before and after

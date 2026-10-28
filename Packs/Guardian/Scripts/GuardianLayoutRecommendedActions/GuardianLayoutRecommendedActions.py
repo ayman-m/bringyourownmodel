@@ -3223,6 +3223,70 @@ def guardian_recommended_build_pending_html(pending_rows, sla_minutes=None, now=
     return guardian_html_join(parts)
 
 
+#: The verdicts of a verdict block, and the badge kind of each.
+GUARDIAN_RECOMMENDED_VERDICT_KINDS = {"malicious": "danger", "suspicious": "warn", "benign": "ok", "inconclusive": "muted"}
+GUARDIAN_RECOMMENDED_MAX_SUMMARY_CHARS = 1500
+GUARDIAN_RECOMMENDED_MAX_TECHNIQUES = 12
+
+
+def guardian_recommended_verdict_block(text):
+    """The verdict block a conclusion consists of, or ``None``. Only a conclusion that is the block itself counts: one JSON
+    object (bare, or inside one fence) with a `verdict` of Malicious, Suspicious, Benign or Inconclusive. Prose around the
+    block, a different object or a bad verdict is not a block, and the text is shown as it is.
+
+    :return: ``{"verdict", "confidence", "techniques", "summary"}`` (confidence is ``None`` and techniques empty when the
+        block has none), or ``None``.
+    """
+    import re as _re
+
+    if not isinstance(text, str):
+        return None
+    body = text.strip()
+    fenced = _re.match(r"^```[ \t]*[\w+-]*[ \t]*\n(.*)\n?```$", body, _re.S)
+    body = fenced.group(1).strip() if fenced else body
+    if not body.startswith("{"):
+        return None
+    try:
+        raw = json.loads(body)
+    except ValueError:
+        return None
+    if not isinstance(raw, dict) or not isinstance(raw.get("verdict"), str):
+        return None
+    verdict = raw["verdict"].strip().title()
+    if verdict.lower() not in GUARDIAN_RECOMMENDED_VERDICT_KINDS:
+        return None
+    confidence = raw.get("confidence")
+    confidence = None if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or confidence != confidence \
+        else int(min(100, max(0, confidence)))
+    techniques = []
+    for item in raw.get("techniques") if isinstance(raw.get("techniques"), list) else []:
+        candidate = str(item).strip().upper()
+        if _re.match(GUARDIAN_TECHNIQUE_PATTERN_STR, candidate) and candidate not in techniques:
+            techniques.append(candidate)
+    summary = raw.get("summary")
+    return {"verdict": verdict, "confidence": confidence, "techniques": techniques[:GUARDIAN_RECOMMENDED_MAX_TECHNIQUES],
+            "summary": summary.strip() if isinstance(summary, str) else ""}
+
+
+def guardian_recommended_verdict_html(block):
+    """The card of a verdict block: the verdict as a badge, the confidence, the technique ids as small tags and the summary."""
+    kind = GUARDIAN_RECOMMENDED_VERDICT_KINDS[block["verdict"].lower()]
+    top = [guardian_html_badge(block["verdict"].upper(), kind)]
+    if block["confidence"] is not None:
+        top.append(guardian_html_trusted("&nbsp;&nbsp;Confidence&nbsp;"))
+        top.append(guardian_html_bold("{}%".format(block["confidence"])))
+    parts = [guardian_html_join(top)]
+    if block["techniques"]:
+        chip_open = guardian_html_trusted('<span style="display:inline-block;border:1px solid rgba(128,128,128,.5);'
+                                          'border-radius:4px;padding:0 6px;line-height:20px">')
+        chips = [guardian_html_join([chip_open, guardian_html_code(tech), guardian_html_trusted("</span>")])
+                 for tech in block["techniques"]]
+        parts.append(guardian_html_join(chips, " "))
+    if block["summary"]:
+        parts.append(guardian_html_text_block(block["summary"], GUARDIAN_RECOMMENDED_MAX_SUMMARY_CHARS))
+    return guardian_html_card("Agent's verdict", guardian_html_join(parts, '<div style="padding-top:8px"></div>'), kind=kind)
+
+
 def guardian_recommended_render_html(incident, loop, load_result, sla_minutes=None, now=None):
     """Build the full HTML for the recommended-actions dynamic section.
 
@@ -3272,7 +3336,10 @@ def guardian_recommended_render_html(incident, loop, load_result, sla_minutes=No
 
     conclusion = guardian_recommended_final_conclusion(loop)
     messages = loop.get("messages")
-    if conclusion:
+    block = guardian_recommended_verdict_block(conclusion)
+    if block:
+        conclusion_part = guardian_recommended_verdict_html(block)
+    elif conclusion:
         conclusion_part = guardian_html_card(
             "Agent's conclusion", guardian_html_text_block(conclusion, GUARDIAN_RECOMMENDED_MAX_CONCLUSION_CHARS), kind="info"
         )
